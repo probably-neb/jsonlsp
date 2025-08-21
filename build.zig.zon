@@ -37,6 +37,11 @@
     // internet connectivity.
     .dependencies = .{
         // See `zig fetch --save <url>` for a command-line interface for adding dependencies.
+        .json_schema_test_suite = .{
+            .url = "git+https://github.com/json-schema-org/JSON-Schema-Test-Suite.git#15e4505bf689de5d30c29d50782bb48fa465c93f",
+            .lazy = true,
+            .hash = "N-V-__8AAFOgJgAiy7oY1TWfxw1UriUFQokgABVhNRkAU939",
+        },
         //.example = .{
         //    // When updating this field to a new URL, be sure to delete the corresponding
         //    // `hash`, otherwise you are communicating that you expect to find the old hash at
