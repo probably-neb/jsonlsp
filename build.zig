@@ -27,7 +27,17 @@ pub fn build(b: *std.Build) void {
         .name = "jsonls",
         .root_module = exe_mod,
     });
-    b.installArtifact(exe);
+
+    const no_bin = b.option(bool, "no-bin", "Don't build a binary, just check") orelse false;
+    if (no_bin) {
+        const bin = b.addExecutable(.{
+            .name = "jsonls",
+            .root_module = exe_mod,
+        });
+        b.default_step.dependOn(&bin.step);
+    } else {
+        b.installArtifact(exe);
+    }
 
     // Run step
     {
@@ -51,8 +61,11 @@ pub fn build(b: *std.Build) void {
             const tests_path = test_suite.path("tests");
             const tool = b.addExecutable(.{
                 .name = "generate_json_schema_test_suite",
-                .optimize = .Debug,
-                .root_module = b.createModule(.{ .root_source_file = b.path("src/json-schema/tools/build-test-suite.zig"), .target = b.graph.host }),
+                .root_module = b.createModule(.{
+                    .root_source_file = b.path("src/json-schema/tools/build-test-suite.zig"),
+                    .target = b.graph.host,
+                    .optimize = .Debug,
+                }),
             });
             const tool_step = b.addRunArtifact(tool);
             tool_step.addDirectoryArg(tests_path);
