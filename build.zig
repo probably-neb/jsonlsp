@@ -14,7 +14,7 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
 
     _ = subsystem(b, "json", exe_mod, test_step, target, optimize);
-    _ = subsystem(b, "json-schema", exe_mod, test_step, target, optimize);
+    const mod_json_schema = subsystem(b, "json-schema", exe_mod, test_step, target, optimize);
     _ = subsystem(b, "lsp", exe_mod, test_step, target, optimize);
 
     const exe_unit_tests = b.addTest(.{
@@ -57,10 +57,21 @@ pub fn build(b: *std.Build) void {
         const test_suite_step = b.step("test:suite", "Run the JSON Schema test suite");
 
         const build_test_suite = b.option(bool, "build-test-suite", "Run the JSON Schema test suite") orelse false;
-        const test_suite_file_path = "src/json-schema/test-suite.zig";
+        const test_suite_dir_path = "src/json-schema/test-suite";
         const build_test_suite_path = b.path("src/json-schema/tools/build-test-suite.zig");
 
+        const drafts = &.{
+            "draft3",
+            "draft4",
+            "draft6",
+            "draft7",
+            "draft2019-09",
+            "draft2020-12",
+            "draft-next",
+        };
+
         if (build_test_suite) blk: {
+            test_suite_step.addWatchInput(build_test_suite_path) catch std.debug.panic("OOM", .{});
             const test_suite = b.lazyDependency("json_schema_test_suite", .{}) orelse break :blk;
             const tests_path = test_suite.path("tests");
             const tool = b.addExecutable(.{
@@ -73,25 +84,32 @@ pub fn build(b: *std.Build) void {
             });
             const tool_step = b.addRunArtifact(tool);
             tool_step.addDirectoryArg(tests_path);
-            const output = tool_step.addOutputFileArg("test-suite.zig");
-            const wf = b.addUpdateSourceFiles();
-            wf.addCopyFileToSource(output, test_suite_file_path);
-            const fmt = b.addFmt(.{ .paths = &.{test_suite_file_path} });
-            fmt.step.dependOn(&wf.step);
+            const generated_test_suite_dir = tool_step.addOutputDirectoryArg("build-test-suite-output");
+            const usf = b.addUpdateSourceFiles();
+            const fmt = b.addFmt(.{ .paths = &.{test_suite_dir_path} });
+            inline for (drafts) |draft| {
+                const source_draft_test_file = generated_test_suite_dir.path(b, draft ++ ".zig");
+                const target_draft_test_file = test_suite_dir_path ++ "/" ++ draft ++ ".zig";
+                usf.addCopyFileToSource(source_draft_test_file, target_draft_test_file);
+                fmt.step.dependOn(&usf.step);
+            }
             exe.step.dependOn(&fmt.step);
             test_suite_step.dependOn(&fmt.step);
         }
-        const test_suite_module = b.createModule(.{
-            .root_source_file = b.path(test_suite_file_path),
-            .optimize = optimize,
-            .target = target,
-        });
-        const test_suite_test = b.addTest(.{
-            .root_module = test_suite_module,
-        });
-        const run_test_suite = b.addRunArtifact(test_suite_test);
-        test_suite_step.addWatchInput(build_test_suite_path) catch std.debug.panic("OOM", .{});
-        test_suite_step.dependOn(&run_test_suite.step);
+        inline for (drafts) |draft| {
+            const test_suite_module = b.createModule(.{
+                .root_source_file = b.path(test_suite_dir_path).path(b, draft ++ ".zig"),
+                .optimize = optimize,
+                .target = target,
+            });
+            test_suite_module.addImport("json-schema", mod_json_schema);
+            const test_suite_test = b.addTest(.{
+                .root_module = test_suite_module,
+            });
+            const run_test_suite = b.addRunArtifact(test_suite_test);
+            run_test_suite.setName("run test " ++ draft ++ (" " ** (12 - draft.len)));
+            test_suite_step.dependOn(&run_test_suite.step);
+        }
     }
 }
 

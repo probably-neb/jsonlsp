@@ -12,26 +12,12 @@ pub fn main() !void {
     if (args.len != 3) {
         std.debug.panic("Not enough args", .{});
     }
-    const test_suite = try fs.createFileAbsolute(args[2], .{});
     const tests_dir = try fs.openDirAbsolute(args[1], .{
         .iterate = true,
     });
-
-    var output_buf: [4096]u8 = undefined;
-    var output_writer = test_suite.writer(&output_buf);
-    const output = &output_writer.interface;
-    defer output.flush() catch unreachable;
+    const test_suite_dir = try fs.openDirAbsolute(args[2], .{});
 
     var tests_dir_iter = tests_dir.iterate();
-
-    try output.print(
-        \\ const std = @import("std");
-        \\ const JSONSchema = @import("json-schema.zig");
-        \\
-        \\
-    ,
-        .{},
-    );
 
     while (try tests_dir_iter.next()) |draft| {
         if (draft.kind != .directory) continue;
@@ -40,6 +26,25 @@ pub fn main() !void {
             .iterate = true,
         });
         var draft_dir_iter = draft_dir.iterate();
+        const draft_test_file = try test_suite_dir.createFile(
+            try std.mem.join(arena, "", &.{ draft_name, ".zig" }),
+            .{},
+        );
+
+        var output_buf: [4096]u8 = undefined;
+        var output_writer = draft_test_file.writer(&output_buf);
+        const output = &output_writer.interface;
+        defer output.flush() catch unreachable;
+
+        try output.print(
+            \\ const std = @import("std");
+            \\ const JSONSchema = @import("json-schema");
+            \\
+            \\
+        ,
+            .{},
+        );
+
         while (try draft_dir_iter.next()) |test_case| {
             if (test_case.kind != .file) continue;
             if (!mem.eql(u8, fs.path.extension(test_case.name), ".json")) continue;
@@ -67,7 +72,6 @@ pub fn main() !void {
                 })});
                 for (file_test.tests) |file_test_case| {
                     const zig_test_name = try mem.join(arena, ".", &.{
-                        draft_name,
                         test_case_name,
                         file_test.description,
                         file_test_case.description,
