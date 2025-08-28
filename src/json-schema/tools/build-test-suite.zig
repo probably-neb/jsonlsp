@@ -17,7 +17,10 @@ pub fn main() !void {
         .iterate = true,
     });
 
-    var output = test_suite.writer();
+    var output_buf: [4096]u8 = undefined;
+    var output_writer = test_suite.writer(&output_buf);
+    const output = &output_writer.interface;
+    defer output.flush() catch unreachable;
 
     var tests_dir_iter = tests_dir.iterate();
 
@@ -44,8 +47,11 @@ pub fn main() !void {
             const test_case_name = fs.path.stem(test_case.name);
 
             const test_case_file = try draft_dir.openFile(test_case.name, .{});
+            var test_case_file_reader_buf: [512]u8 = undefined;
+            var test_case_file_reader_impl = test_case_file.reader(&test_case_file_reader_buf);
+            const test_case_file_reader = &test_case_file_reader_impl.interface;
 
-            var json_reader = std.json.reader(arena, test_case_file.reader());
+            var json_reader: std.json.Reader = .init(arena, test_case_file_reader);
             const file_tests = std.json.parseFromTokenSource([]const Test_File, arena, &json_reader, .{
                 .allocate = .alloc_always,
                 .ignore_unknown_fields = true,
@@ -56,19 +62,21 @@ pub fn main() !void {
             };
 
             for (file_tests.value) |file_test| {
-                const schema = try std.json.stringifyAlloc(arena, file_test.schema, .{
+                const schema = try std.fmt.allocPrint(arena, "{f}", .{std.json.fmt(file_test.schema, .{
                     .whitespace = .indent_4,
-                });
+                })});
                 for (file_test.tests) |file_test_case| {
-                    const test_case_json = try std.json.stringifyAlloc(arena, file_test_case.data, .{
-                        .whitespace = .indent_4,
-                    });
                     const zig_test_name = try mem.join(arena, ".", &.{
                         draft_name,
                         test_case_name,
                         file_test.description,
                         file_test_case.description,
                     });
+                    defer arena.free(zig_test_name);
+                    const test_case_json = try std.fmt.allocPrint(arena, "{f}", .{std.json.fmt(file_test_case.data, .{
+                        .whitespace = .indent_4,
+                    })});
+                    defer arena.free(test_case_json);
                     for (zig_test_name) |*char| {
                         if (char.* == '"') {
                             char.* = '\'';
@@ -79,14 +87,14 @@ pub fn main() !void {
                     }
                     try output.print(
                         \\ test "{s}" {{
-                        \\   const schema = JSONSchema.parse(
-                        \\      {s}
+                        \\   const schema = try JSONSchema.parse(
+                        \\      {f}
                         \\   );
                         \\
                         \\   const case =
-                        \\            {s}
+                        \\            {f}
                         \\   ;
-                        \\   std.testing.assertEqual(schema.is_valid(case), {});
+                        \\   try std.testing.expectEqual(schema.is_valid(case), {});
                         \\ }}
                         \\
                     ,
@@ -108,9 +116,7 @@ const MultiLineStringFormat = struct {
 
     pub fn format(
         self: @This(),
-        comptime _: []const u8,
-        _: std.fmt.FormatOptions,
-        writer: anytype,
+        writer: *std.Io.Writer,
     ) !void {
         var line_iter = mem.splitScalar(u8, self.str, '\n');
         while (line_iter.next()) |line| {
@@ -118,23 +124,6 @@ const MultiLineStringFormat = struct {
             try writer.writeAll(line);
             try writer.writeByte('\n');
         }
-    }
-};
-
-const PrettyJsonFmt = struct {
-    json: std.json.Value,
-
-    pub fn format(
-        self: @This(),
-        comptime _: []const u8,
-        _: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        const jws = std.json.writeStream(writer, .{
-            .whitespace = .indent_4,
-        });
-
-        try self.json.jsonStringify(jws);
     }
 };
 
