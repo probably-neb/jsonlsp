@@ -23,7 +23,7 @@ pub const Schema = struct {
             true: void,
             false: void,
             type: []ValidationType,
-            all: void, // corresponds to allOf,
+            all: *Constraint, // corresponds to allOf,
             min_len: u64,
             max_len: u64,
             min_int: i64,
@@ -77,11 +77,13 @@ fn check(constraint: *const Schema.Constraint, value: *const std.json.Value) boo
             }
             return result;
         },
-        .all => {
+        .all => |first_child| {
             var result = true;
-            var cur_constraint = constraint.next;
+            var cur_constraint = @as(?*Schema.Constraint, first_child);
+            std.debug.print("\nevaluating all\n", .{});
             while (cur_constraint) |cur| : (cur_constraint = cur.next) {
                 result = result and check(cur, value);
+                std.debug.print("evaluating {t} -> {}\n", .{ cur.kind, result });
             }
             return result;
         },
@@ -235,18 +237,17 @@ fn chain_with(arena: *Arena, from: *Schema.Constraint, new_kind: Schema.Constrai
     if (from.kind == .all) {
         // add new link to chain
         const new = try arena.allocator().create(Schema.Constraint);
-        new.next = from.next;
+        new.next = from.kind.all;
         new.kind = new_kind;
-        from.next = new;
+        from.kind.all = new;
     } else if (from.kind != .true) {
         // turn from into chain of length two with it's current constraint and the new constraint
         var constraints = try arena.allocator().alloc(Schema.Constraint, 2);
         @memset(constraints, .zero);
         constraints[0].kind = from.kind;
         constraints[0].next = &constraints[1];
-        from.next = &constraints[0];
-        from.kind = .all;
         constraints[1].kind = new_kind;
+        from.kind = .{ .all = &constraints[0] };
     } else {
         from.kind = new_kind;
     }
