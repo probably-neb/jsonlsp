@@ -26,6 +26,10 @@ pub const Schema = struct {
             all: void, // corresponds to allOf,
             min_len: u64,
             max_len: u64,
+            min_int: i64,
+            max_int: i64,
+            min_f64: f64,
+            max_f64: f64,
         };
 
         pub const zero = Constraint{
@@ -42,7 +46,7 @@ pub const Schema = struct {
             .parse_numbers = true,
             .ignore_unknown_fields = false,
             .duplicate_field_behavior = .use_last,
-            .max_value_len = 1024,
+            .max_value_len = std.json.default_max_value_len,
         }) catch unreachable; // todo: error
         return check(schema.root, &json.value);
     }
@@ -80,6 +84,38 @@ fn check(constraint: *const Schema.Constraint, value: *const std.json.Value) boo
         },
         .max_len => |max_len| {
             return value.* != .string or (std.unicode.utf8CountCodepoints(value.string) catch 0) <= max_len;
+        },
+        .max_int => |max_int| {
+            return switch (value.*) {
+                .integer => |int_val| int_val <= max_int,
+                .float => |float_val| float_val <= @as(f64, @floatFromInt(max_int)),
+                .number_string => true, // todo: handle?
+                else => true,
+            };
+        },
+        .min_int => |min_int| {
+            return switch (value.*) {
+                .integer => |int_val| int_val >= min_int,
+                .float => |float_val| float_val >= @as(f64, @floatFromInt(min_int)),
+                .number_string => true, // todo: handle?
+                else => true,
+            };
+        },
+        .max_f64 => |max_f64| {
+            return switch (value.*) {
+                .integer => |int_val| @as(f64, @floatFromInt(int_val)) <= max_f64,
+                .float => |float_val| float_val <= max_f64,
+                .number_string => true, // todo: handle?
+                else => true,
+            };
+        },
+        .min_f64 => |min_f64| {
+            return switch (value.*) {
+                .integer => |int_val| @as(f64, @floatFromInt(int_val)) >= min_f64,
+                .float => |float_val| float_val >= min_f64,
+                .number_string => true, // todo: handle?
+                else => true,
+            };
         },
     }
 }
@@ -119,42 +155,45 @@ fn parse_constraint(arena: *Arena, schema: std.json.Value) !*Schema.Constraint {
             }
             // todo: error
             if (parse_validation__type(arena, &obj) catch null) |v_types| {
-                constraint.kind = .{ .type = v_types };
+                try chain_with(arena, constraint, .{ .type = v_types });
             }
             if (parse_validation__min_length(&obj)) |min_length| {
-                var min_len_constraint = constraint;
-                if (constraint.kind != .true) {
-                    var constraints = try arena.allocator().alloc(Schema.Constraint, 2);
-                    @memset(constraints, .zero);
-                    constraints[0].kind = constraint.kind;
-                    constraints[0].next = &constraints[1];
-                    constraint.next = &constraints[0];
-                    constraint.kind = .all;
-                    min_len_constraint = &constraints[1];
-                }
-                min_len_constraint.kind = .{ .min_len = min_length };
+                try chain_with(arena, constraint, .{ .min_len = min_length });
             }
             if (parse_validation__max_length(&obj)) |max_length| {
-                var max_len_constraint = constraint;
-                if (constraint.kind == .all) {
-                    max_len_constraint = try arena.allocator().create(Schema.Constraint);
-                    max_len_constraint.next = constraint.next;
-                    constraint.next = max_len_constraint;
-                } else if (constraint.kind != .true) {
-                    var constraints = try arena.allocator().alloc(Schema.Constraint, 2);
-                    @memset(constraints, .zero);
-                    constraints[0].kind = constraint.kind;
-                    constraints[0].next = &constraints[1];
-                    constraint.next = &constraints[0];
-                    constraint.kind = .all;
-                    max_len_constraint = &constraints[1];
-                }
-                max_len_constraint.kind = .{ .max_len = max_length };
+                try chain_with(arena, constraint, .{ .max_len = max_length });
+            }
+            if (parse_validation__min(&obj)) |min| {
+                try chain_with(arena, constraint, min);
+            }
+            if (parse_validation__max(&obj)) |max| {
+                try chain_with(arena, constraint, max);
             }
         },
         else => return error.UnrecognizedSchemaType,
     }
     return constraint;
+}
+
+fn chain_with(arena: *Arena, from: *Schema.Constraint, new_kind: Schema.Constraint.Kind) !void {
+    if (from.kind == .all) {
+        // add new link to chain
+        const new = try arena.allocator().create(Schema.Constraint);
+        new.next = from.next;
+        new.kind = new_kind;
+        from.next = new;
+    } else if (from.kind != .true) {
+        // turn from into chain of length two with it's current constraint and the new constraint
+        var constraints = try arena.allocator().alloc(Schema.Constraint, 2);
+        @memset(constraints, .zero);
+        constraints[0].kind = from.kind;
+        constraints[0].next = &constraints[1];
+        from.next = &constraints[0];
+        from.kind = .all;
+        constraints[1].kind = new_kind;
+    } else {
+        from.kind = new_kind;
+    }
 }
 
 /// The "type" field on an object
@@ -234,6 +273,32 @@ fn parse_validation__max_length(obj: *const std.json.ObjectMap) ?u64 {
                 return 0;
             }
             return @intCast(int_val);
+        },
+        else => return null,
+    }
+}
+
+fn parse_validation__min(obj: *const std.json.ObjectMap) ?Schema.Constraint.Kind {
+    const min_val = obj.get("minimum") orelse return null;
+    switch (min_val) {
+        .integer => |int_val| {
+            return .{ .min_int = int_val };
+        },
+        .float => |float_val| {
+            return .{ .min_f64 = float_val };
+        },
+        else => return null,
+    }
+}
+
+fn parse_validation__max(obj: *const std.json.ObjectMap) ?Schema.Constraint.Kind {
+    const max_val = obj.get("maximum") orelse return null;
+    switch (max_val) {
+        .integer => |int_val| {
+            return .{ .max_int = int_val };
+        },
+        .float => |float_val| {
+            return .{ .max_f64 = float_val };
         },
         else => return null,
     }
