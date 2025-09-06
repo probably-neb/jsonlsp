@@ -30,6 +30,12 @@ pub const Schema = struct {
             max_int: i64,
             min_f64: f64,
             max_f64: f64,
+            min_int_exclusive: i64,
+            max_int_exclusive: i64,
+            min_f64_exclusive: f64,
+            max_f64_exclusive: f64,
+            max_items: u64,
+            min_items: u64,
         };
 
         pub const zero = Constraint{
@@ -85,6 +91,12 @@ fn check(constraint: *const Schema.Constraint, value: *const std.json.Value) boo
         .max_len => |max_len| {
             return value.* != .string or (std.unicode.utf8CountCodepoints(value.string) catch 0) <= max_len;
         },
+        .max_items => |max_items| {
+            return value.* != .array or value.array.items.len <= max_items;
+        },
+        .min_items => |min_items| {
+            return value.* != .array or value.array.items.len >= min_items;
+        },
         .max_int => |max_int| {
             return switch (value.*) {
                 .integer => |int_val| int_val <= max_int,
@@ -113,6 +125,38 @@ fn check(constraint: *const Schema.Constraint, value: *const std.json.Value) boo
             return switch (value.*) {
                 .integer => |int_val| @as(f64, @floatFromInt(int_val)) >= min_f64,
                 .float => |float_val| float_val >= min_f64,
+                .number_string => true, // todo: handle?
+                else => true,
+            };
+        },
+        .max_int_exclusive => |max_int| {
+            return switch (value.*) {
+                .integer => |int_val| int_val < max_int,
+                .float => |float_val| float_val < @as(f64, @floatFromInt(max_int)),
+                .number_string => true, // todo: handle?
+                else => true,
+            };
+        },
+        .min_int_exclusive => |min_int| {
+            return switch (value.*) {
+                .integer => |int_val| int_val > min_int,
+                .float => |float_val| float_val > @as(f64, @floatFromInt(min_int)),
+                .number_string => true, // todo: handle?
+                else => true,
+            };
+        },
+        .max_f64_exclusive => |max_f64| {
+            return switch (value.*) {
+                .integer => |int_val| @as(f64, @floatFromInt(int_val)) < max_f64,
+                .float => |float_val| float_val < max_f64,
+                .number_string => true, // todo: handle?
+                else => true,
+            };
+        },
+        .min_f64_exclusive => |min_f64| {
+            return switch (value.*) {
+                .integer => |int_val| @as(f64, @floatFromInt(int_val)) > min_f64,
+                .float => |float_val| float_val > min_f64,
                 .number_string => true, // todo: handle?
                 else => true,
             };
@@ -168,6 +212,18 @@ fn parse_constraint(arena: *Arena, schema: std.json.Value) !*Schema.Constraint {
             }
             if (parse_validation__max(&obj)) |max| {
                 try chain_with(arena, constraint, max);
+            }
+            if (parse_validation__exclusive_min(&obj)) |exclusive_min| {
+                try chain_with(arena, constraint, exclusive_min);
+            }
+            if (parse_validation__exclusive_max(&obj)) |exclusive_max| {
+                try chain_with(arena, constraint, exclusive_max);
+            }
+            if (parse_validation__min_items(&obj)) |min_items| {
+                try chain_with(arena, constraint, min_items);
+            }
+            if (parse_validation__max_items(&obj)) |max_items| {
+                try chain_with(arena, constraint, max_items);
             }
         },
         else => return error.UnrecognizedSchemaType,
@@ -252,32 +308,30 @@ fn parse_validation__type(arena: *Arena, obj: *const std.json.ObjectMap) !?[]Val
         else => return null,
     }
 }
+
+/// https://www.learnjsonschema.com/2020-12/validation/minlength/
 fn parse_validation__min_length(obj: *const std.json.ObjectMap) ?u64 {
     const min_len = obj.get("minLength") orelse return null;
     switch (min_len) {
         .integer => |int_val| {
-            if (int_val < 0) {
-                return 0;
-            }
-            return @intCast(int_val);
+            return std.math.lossyCast(u64, int_val);
         },
         else => return null,
     }
 }
 
+/// https://www.learnjsonschema.com/2020-12/validation/maxlength/
 fn parse_validation__max_length(obj: *const std.json.ObjectMap) ?u64 {
     const min_len = obj.get("maxLength") orelse return null;
     switch (min_len) {
         .integer => |int_val| {
-            if (int_val < 0) {
-                return 0;
-            }
-            return @intCast(int_val);
+            return std.math.lossyCast(u64, int_val);
         },
         else => return null,
     }
 }
 
+/// https://www.learnjsonschema.com/2020-12/validation/minimum/
 fn parse_validation__min(obj: *const std.json.ObjectMap) ?Schema.Constraint.Kind {
     const min_val = obj.get("minimum") orelse return null;
     switch (min_val) {
@@ -291,6 +345,7 @@ fn parse_validation__min(obj: *const std.json.ObjectMap) ?Schema.Constraint.Kind
     }
 }
 
+/// https://www.learnjsonschema.com/2020-12/validation/maximum/
 fn parse_validation__max(obj: *const std.json.ObjectMap) ?Schema.Constraint.Kind {
     const max_val = obj.get("maximum") orelse return null;
     switch (max_val) {
@@ -299,6 +354,60 @@ fn parse_validation__max(obj: *const std.json.ObjectMap) ?Schema.Constraint.Kind
         },
         .float => |float_val| {
             return .{ .max_f64 = float_val };
+        },
+        else => return null,
+    }
+}
+
+/// https://www.learnjsonschema.com/2020-12/validation/exclusiveminimum/
+fn parse_validation__exclusive_min(obj: *const std.json.ObjectMap) ?Schema.Constraint.Kind {
+    const min_val = obj.get("exclusiveMinimum") orelse return null;
+    switch (min_val) {
+        .integer => |int_val| {
+            return .{ .min_int_exclusive = int_val };
+        },
+        .float => |float_val| {
+            return .{ .min_f64_exclusive = float_val };
+        },
+        else => return null,
+    }
+}
+
+/// https://www.learnjsonschema.com/2020-12/validation/exclusivemaximum/
+fn parse_validation__exclusive_max(obj: *const std.json.ObjectMap) ?Schema.Constraint.Kind {
+    const max_val = obj.get("exclusiveMaximum") orelse return null;
+    switch (max_val) {
+        .integer => |int_val| {
+            return .{ .max_int_exclusive = int_val };
+        },
+        .float => |float_val| {
+            return .{ .max_f64_exclusive = float_val };
+        },
+        else => return null,
+    }
+}
+
+fn parse_validation__min_items(obj: *const std.json.ObjectMap) ?Schema.Constraint.Kind {
+    const min_items = obj.get("minItems") orelse return null;
+    switch (min_items) {
+        .integer => |int_val| {
+            return .{ .min_items = std.math.lossyCast(u64, int_val) };
+        },
+        .float => |flt_val| {
+            return .{ .min_items = std.math.lossyCast(u64, flt_val) };
+        },
+        else => return null,
+    }
+}
+
+fn parse_validation__max_items(obj: *const std.json.ObjectMap) ?Schema.Constraint.Kind {
+    const max_items = obj.get("maxItems") orelse return null;
+    switch (max_items) {
+        .integer => |int_val| {
+            return .{ .max_items = std.math.lossyCast(u64, int_val) };
+        },
+        .float => |flt_val| {
+            return .{ .max_items = std.math.lossyCast(u64, flt_val) };
         },
         else => return null,
     }
