@@ -12,13 +12,26 @@ const Arena = std.heap.ArenaAllocator;
 const str8 = []const u8;
 
 pub const Schema = struct {
-    root: *const Check,
+    root: *const Constraint,
     arena: Arena,
 
-    pub const Check = union(enum) {
-        true: void,
-        false: void,
-        type: []ValidationType,
+    pub const Constraint = struct {
+        next: ?*Constraint,
+        kind: Kind,
+
+        pub const Kind = union(enum) {
+            true: void,
+            false: void,
+            type: []ValidationType,
+            all: void, // corresponds to allOf,
+            min_len: u64,
+            max_len: u64,
+        };
+
+        pub const zero = Constraint{
+            .next = null,
+            .kind = .true,
+        };
     };
 
     pub fn is_valid(schema: *const Schema, input: str8) bool {
@@ -31,27 +44,45 @@ pub const Schema = struct {
             .duplicate_field_behavior = .use_last,
             .max_value_len = 1024,
         }) catch unreachable; // todo: error
-        return switch (schema.root.*) {
-            .true => true,
-            .false => false,
-            .type => |v_types| {
-                var result = false;
-                for (v_types) |v_type| {
-                    result = result or switch (v_type) {
-                        .string => json.value == .string,
-                        .object => json.value == .object,
-                        .array => json.value == .array,
-                        .number => json.value == .float or json.value == .integer or json.value == .number_string,
-                        .boolean => json.value == .bool,
-                        .null => json.value == .null,
-                        .integer => json.value == .integer,
-                    };
-                }
-                return result;
-            },
-        };
+        return check(schema.root, &json.value);
     }
 };
+
+fn check(constraint: *const Schema.Constraint, value: *const std.json.Value) bool {
+    switch (constraint.kind) {
+        .true => return true,
+        .false => return false,
+        .type => |v_types| {
+            var result = false;
+            for (v_types) |v_type| {
+                result = result or switch (v_type) {
+                    .string => value.* == .string,
+                    .object => value.* == .object,
+                    .array => value.* == .array,
+                    .number => value.* == .float or value.* == .integer or value.* == .number_string,
+                    .boolean => value.* == .bool,
+                    .null => value.* == .null,
+                    .integer => value.* == .integer,
+                };
+            }
+            return result;
+        },
+        .all => {
+            var result = true;
+            var cur_constraint = constraint.next;
+            while (cur_constraint) |cur| : (cur_constraint = cur.next) {
+                result = result and check(cur, value);
+            }
+            return result;
+        },
+        .min_len => |min_len| {
+            return value.* != .string or (std.unicode.utf8CountCodepoints(value.string) catch 0) >= min_len;
+        },
+        .max_len => |max_len| {
+            return value.* != .string or (std.unicode.utf8CountCodepoints(value.string) catch 0) <= max_len;
+        },
+    }
+}
 
 pub fn parse(schema_contents: str8) !Schema {
     var arena_state = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -63,38 +94,67 @@ pub fn parse(schema_contents: str8) !Schema {
         .duplicate_field_behavior = .use_last,
         .max_value_len = 1024,
     });
-    const root = try parse_check(&arena_state, parsed_schema.value);
+    const root = try parse_constraint(&arena_state, parsed_schema.value);
     return Schema{
         .root = root,
         .arena = arena_state,
     };
 }
 
-fn parse_check(arena: *Arena, schema: std.json.Value) !*Schema.Check {
-    const check = try arena.allocator().create(Schema.Check);
-    check.* = .true;
+fn parse_constraint(arena: *Arena, schema: std.json.Value) !*Schema.Constraint {
+    const constraint = try arena.allocator().create(Schema.Constraint);
+    constraint.next = null;
+    constraint.kind = .true;
     parse: switch (schema) {
         .bool => |value| {
-            check.* = switch (value) {
+            constraint.kind = switch (value) {
                 true => .true,
                 false => .false,
             };
         },
         .object => |obj| {
             if (obj.count() == 0) {
-                check.* = .true;
+                constraint.kind = .true;
                 break :parse;
             }
             // todo: error
             if (parse_validation__type(arena, &obj) catch null) |v_types| {
-                check.* = .{ .type = v_types };
-                break :parse;
+                constraint.kind = .{ .type = v_types };
             }
-            return error.UnrecognizedSchemaType;
+            if (parse_validation__min_length(&obj)) |min_length| {
+                var min_len_constraint = constraint;
+                if (constraint.kind != .true) {
+                    var constraints = try arena.allocator().alloc(Schema.Constraint, 2);
+                    @memset(constraints, .zero);
+                    constraints[0].kind = constraint.kind;
+                    constraints[0].next = &constraints[1];
+                    constraint.next = &constraints[0];
+                    constraint.kind = .all;
+                    min_len_constraint = &constraints[1];
+                }
+                min_len_constraint.kind = .{ .min_len = min_length };
+            }
+            if (parse_validation__max_length(&obj)) |max_length| {
+                var max_len_constraint = constraint;
+                if (constraint.kind == .all) {
+                    max_len_constraint = try arena.allocator().create(Schema.Constraint);
+                    max_len_constraint.next = constraint.next;
+                    constraint.next = max_len_constraint;
+                } else if (constraint.kind != .true) {
+                    var constraints = try arena.allocator().alloc(Schema.Constraint, 2);
+                    @memset(constraints, .zero);
+                    constraints[0].kind = constraint.kind;
+                    constraints[0].next = &constraints[1];
+                    constraint.next = &constraints[0];
+                    constraint.kind = .all;
+                    max_len_constraint = &constraints[1];
+                }
+                max_len_constraint.kind = .{ .max_len = max_length };
+            }
         },
         else => return error.UnrecognizedSchemaType,
     }
-    return check;
+    return constraint;
 }
 
 /// The "type" field on an object
@@ -149,6 +209,31 @@ fn parse_validation__type(arena: *Arena, obj: *const std.json.ObjectMap) !?[]Val
                 v_types.appendAssumeCapacity(v_type);
             }
             return v_types.items;
+        },
+        else => return null,
+    }
+}
+fn parse_validation__min_length(obj: *const std.json.ObjectMap) ?u64 {
+    const min_len = obj.get("minLength") orelse return null;
+    switch (min_len) {
+        .integer => |int_val| {
+            if (int_val < 0) {
+                return 0;
+            }
+            return @intCast(int_val);
+        },
+        else => return null,
+    }
+}
+
+fn parse_validation__max_length(obj: *const std.json.ObjectMap) ?u64 {
+    const min_len = obj.get("maxLength") orelse return null;
+    switch (min_len) {
+        .integer => |int_val| {
+            if (int_val < 0) {
+                return 0;
+            }
+            return @intCast(int_val);
         },
         else => return null,
     }
