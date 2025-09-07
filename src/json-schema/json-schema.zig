@@ -42,10 +42,12 @@ pub const Schema = struct {
             max_f64_exclusive: f64,
             max_items: u64,
             min_items: u64,
+            items: *Constraint,
             properties: struct {
                 first_property: ?*Constraint,
                 additional: *Constraint,
             },
+            // todo: just store in slice, not actual constraint
             property: struct {
                 name: str8,
                 constraint: *Constraint,
@@ -149,6 +151,16 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *std.json.V
                 if (try hashes.fetchPut(arena.allocator(), .hash_value(item), {})) |_| {
                     return false;
                 }
+            }
+            return true;
+        },
+        .items => |item_sub_schema| {
+            if (value.* != .array) {
+                return true;
+            }
+
+            for (value.array.items) |*item| {
+                if (!try check(arena, item_sub_schema, item)) return false;
             }
             return true;
         },
@@ -360,6 +372,9 @@ fn parse_constraint(arena: *Arena, schema: std.json.Value) ParseError!*Schema.Co
             }
             if (parse_validation__unique_items(&obj)) |unique_items| {
                 try chain_with(arena, constraint, unique_items);
+            }
+            if (parse_applicitor__items(arena, &obj) catch null) |items| {
+                try chain_with(arena, constraint, items);
             }
             if (parse_applicitor__properties(arena, &obj) catch null) |properties| {
                 try chain_with(arena, constraint, properties);
@@ -652,6 +667,11 @@ fn parse_validation__unique_items(obj: *const std.json.ObjectMap) ?Schema.Constr
     // todo: how to handle
     if (unique_items != .bool or !unique_items.bool) return null;
     return .unique_items;
+}
+
+fn parse_applicitor__items(arena: *Arena, obj: *const std.json.ObjectMap) !?Schema.Constraint.Kind {
+    const items_sub_schema = obj.get("items") orelse return null;
+    return .{ .items = try parse_constraint(arena, items_sub_schema) };
 }
 
 fn parse_applicitor__properties(arena: *Arena, obj: *const std.json.ObjectMap) !?Schema.Constraint.Kind {
