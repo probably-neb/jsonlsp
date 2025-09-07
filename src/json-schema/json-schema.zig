@@ -25,6 +25,8 @@ pub const Schema = struct {
             false: void,
             type: []ValidationType,
             all: ?*Constraint, // corresponds to allOf,
+            any: ?*Constraint, // corresponds to anyOf,
+            one: ?*Constraint, // corresponds to oneOf,
             @"const": ValueHash,
             @"enum": []ValueHash,
             unique_items: void,
@@ -100,6 +102,26 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *std.json.V
             // std.debug.print("\nall\n", .{});
             while (cur_constraint) |cur| : (cur_constraint = cur.next) {
                 result = result and try check(arena, cur, value);
+                // std.debug.print("Constraint {t} -> {}\n", .{ cur.kind, result });
+            }
+            return result;
+        },
+        .any => |first_child| {
+            var result = false;
+            var cur_constraint = first_child;
+            // std.debug.print("\nall\n", .{});
+            while (cur_constraint) |cur| : (cur_constraint = cur.next) {
+                result = result or try check(arena, cur, value);
+                // std.debug.print("Constraint {t} -> {}\n", .{ cur.kind, result });
+            }
+            return result;
+        },
+        .one => |first_child| {
+            var result = false;
+            var cur_constraint = first_child;
+            // std.debug.print("\nall\n", .{});
+            while (cur_constraint) |cur| : (cur_constraint = cur.next) {
+                result = result != try check(arena, cur, value);
                 // std.debug.print("Constraint {t} -> {}\n", .{ cur.kind, result });
             }
             return result;
@@ -349,6 +371,12 @@ fn parse_constraint(arena: *Arena, schema: std.json.Value) ParseError!*Schema.Co
                 try chain_with(arena, constraint, not);
             }
             if (parse_applicitor__all_of(arena, &obj) catch null) |all| {
+                try chain_with(arena, constraint, all);
+            }
+            if (parse_applicitor__any_of(arena, &obj) catch null) |all| {
+                try chain_with(arena, constraint, all);
+            }
+            if (parse_applicitor__one_of(arena, &obj) catch null) |all| {
                 try chain_with(arena, constraint, all);
             }
             if (parse_validation__multiple_of(&obj)) |multiple_of| {
@@ -686,6 +714,36 @@ fn parse_applicitor__all_of(arena: *Arena, obj: *const std.json.ObjectMap) !?Sch
         prev_next_ptr = &sub_schema.next;
     }
     return all_of_constraint;
+}
+
+fn parse_applicitor__any_of(arena: *Arena, obj: *const std.json.ObjectMap) !?Schema.Constraint.Kind {
+    const items = obj.get("anyOf") orelse return null;
+    if (items != .array) return null;
+    var any_of_constraint = Schema.Constraint.Kind{
+        .any = null,
+    };
+    var prev_next_ptr = &any_of_constraint.any;
+    for (items.array.items) |item| {
+        const sub_schema = try parse_constraint(arena, item);
+        prev_next_ptr.* = sub_schema;
+        prev_next_ptr = &sub_schema.next;
+    }
+    return any_of_constraint;
+}
+
+fn parse_applicitor__one_of(arena: *Arena, obj: *const std.json.ObjectMap) !?Schema.Constraint.Kind {
+    const items = obj.get("oneOf") orelse return null;
+    if (items != .array) return null;
+    var one_of_constraint = Schema.Constraint.Kind{
+        .one = null,
+    };
+    var prev_next_ptr = &one_of_constraint.one;
+    for (items.array.items) |item| {
+        const sub_schema = try parse_constraint(arena, item);
+        prev_next_ptr.* = sub_schema;
+        prev_next_ptr = &sub_schema.next;
+    }
+    return one_of_constraint;
 }
 
 fn parse_validation__multiple_of(obj: *const std.json.ObjectMap) ?Schema.Constraint.Kind {
