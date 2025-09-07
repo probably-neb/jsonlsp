@@ -435,40 +435,49 @@ fn chain_with(arena: *Arena, from: *Schema.Constraint, new_kind: Schema.Constrai
 }
 
 const ValueHash = packed struct(u68) {
-    kind: u3,
-    neg: u1,
+    kind: u4,
     hash: u64,
 
-    fn hash_value(value: *std.json.Value) ValueHash {
+    fn hash_value(json_value: *std.json.Value) ValueHash {
+        var hasher = std.hash.Wyhash.init(0xdeadbeef);
+        var fake_float_value: ?std.json.Value = null;
+        if (json_value.* == .integer) {
+            fake_float_value = .{ .float = @floatFromInt(json_value.integer) };
+        }
+        const value = if (fake_float_value) |*ffv| ffv else json_value;
+
         return .{
             .kind = @intCast(@intFromEnum(value.*)),
-            .neg = switch (value.*) {
-                .integer => |val| @intFromBool(val < 0),
-                else => 0,
-            },
-            .hash = switch (value.*) {
-                .null => 0,
-                .bool => |val| @intCast(@intFromBool(val)),
-                .integer => |val| @bitCast(std.hash.int(val)),
-                .float => |val| @bitCast(val),
-                .number_string => |val| std.hash.Wyhash.hash(0xdeadbeef, val),
-                .string => |val| std.hash.Wyhash.hash(0xdeadbeef, val),
-                .array => blk: {
-                    var hasher = std.hash.Wyhash.init(0xdeadbeef);
-                    hash_inner(&hasher, value);
-                    break :blk hasher.final();
-                },
-                .object => blk: {
-                    var hasher = std.hash.Wyhash.init(0xdeadbeef);
-                    hash_inner(&hasher, value);
-                    break :blk hasher.final();
-                },
-            },
+            .hash = top_level_value_hash(&hasher, value),
         };
+    }
+
+    fn top_level_value_hash(hasher: *std.hash.Wyhash, value: *std.json.Value) u64 {
+        switch (value.*) {
+            .null => return 0,
+            .bool => |val| return @intCast(@intFromBool(val)),
+            .integer => |val| return @bitCast(@as(f64, @floatFromInt(val))),
+            .float => |val| return @bitCast(val),
+            .number_string => |val| hasher.update(val),
+            .string => |val| hasher.update(val),
+            .array => {
+                hash_inner(hasher, value);
+            },
+            .object => {
+                hash_inner(hasher, value);
+            },
+        }
+        return hasher.final();
     }
 
     fn hash_inner(hasher: *std.hash.Wyhash, value: *std.json.Value) void {
         switch (value.*) {
+            .null, .bool, .integer, .float => {
+                const primitive_value_hash = hash_value(value);
+                hasher.update(mem.asBytes(&primitive_value_hash));
+            },
+            .number_string => |val| hasher.update(val),
+            .string => |val| hasher.update(val),
             .array => |val| {
                 for (val.items) |*item| {
                     hash_inner(hasher, item);
@@ -488,7 +497,6 @@ const ValueHash = packed struct(u68) {
                     hash_inner(hasher, entry.value_ptr);
                 }
             },
-            else => unreachable,
         }
     }
 };
