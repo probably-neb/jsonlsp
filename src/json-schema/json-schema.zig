@@ -10,6 +10,7 @@ const mem = std.mem;
 const Arena = std.heap.ArenaAllocator;
 
 const str8 = []const u8;
+pub const OOM = error{OutOfMemory};
 
 pub const Schema = struct {
     root: *const Constraint,
@@ -39,6 +40,12 @@ pub const Schema = struct {
             max_f64_exclusive: f64,
             max_items: u64,
             min_items: u64,
+            properties: ?*Constraint,
+            property: struct {
+                name: str8,
+                constraint: *Constraint,
+            },
+            required: []ValueHash,
         };
 
         pub const zero = Constraint{
@@ -91,6 +98,7 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *std.json.V
         },
         .@"const" => |value_hash| {
             // perf: check type then hash
+            // todo: make pr to zig to have .hash_value() work here
             return value_hash == ValueHash.hash_value(value);
         },
         .@"enum" => |hashes| {
@@ -190,6 +198,34 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *std.json.V
                 else => true,
             };
         },
+        .properties => |first_property| {
+            if (value.* != .object) {
+                return true;
+            }
+            var current_property = first_property;
+            while (current_property) |property_constraint| : (current_property = property_constraint.next) {
+                const sub_value = value.object.getPtr(property_constraint.kind.property.name) orelse continue;
+                if (!try check(arena, property_constraint.kind.property.constraint, sub_value)) {
+                    return false;
+                }
+            }
+            return true;
+        },
+        .property => unreachable,
+        .required => |required_property_hashes| {
+            if (value.* != .object) {
+                return true;
+            }
+
+            for (required_property_hashes) |required_property_hash| {
+                // perf: should be improved
+                for (value.object.keys()) |key| {
+                    const key_hash = ValueHash.hash_value(@constCast(@as(*const std.json.Value, &.{ .string = key })));
+                    if (key_hash == required_property_hash) break;
+                } else return false;
+            }
+            return true;
+        },
     }
 }
 
@@ -210,7 +246,9 @@ pub fn parse(schema_contents: str8) !Schema {
     };
 }
 
-fn parse_constraint(arena: *Arena, schema: std.json.Value) !*Schema.Constraint {
+const ParseError = OOM || error{UnrecognizedSchemaType};
+
+fn parse_constraint(arena: *Arena, schema: std.json.Value) ParseError!*Schema.Constraint {
     const constraint = try arena.allocator().create(Schema.Constraint);
     constraint.next = null;
     constraint.kind = .true;
@@ -262,6 +300,12 @@ fn parse_constraint(arena: *Arena, schema: std.json.Value) !*Schema.Constraint {
             }
             if (parse_validation__unique_items(&obj)) |unique_items| {
                 try chain_with(arena, constraint, unique_items);
+            }
+            if (parse_applicitor__properties(arena, &obj) catch null) |properties| {
+                try chain_with(arena, constraint, properties);
+            }
+            if (parse_validation__required_properties(arena, &obj) catch null) |required_properties| {
+                try chain_with(arena, constraint, required_properties);
             }
         },
         else => return error.UnrecognizedSchemaType,
@@ -533,6 +577,44 @@ fn parse_validation__unique_items(obj: *const std.json.ObjectMap) ?Schema.Constr
     // todo: how to handle
     if (unique_items != .bool or !unique_items.bool) return null;
     return .unique_items;
+}
+
+fn parse_applicitor__properties(arena: *Arena, obj: *const std.json.ObjectMap) !?Schema.Constraint.Kind {
+    const properties_value = obj.get("properties") orelse return null;
+    if (properties_value != .object) return null;
+    var property_iter = properties_value.object.iterator();
+    var property_constraints = try arena.allocator().alloc(Schema.Constraint, properties_value.object.count());
+    var index: u64 = 0;
+    while (property_iter.next()) |entry| : (index += 1) {
+        if (index > 0) {
+            property_constraints[index - 1].next = &property_constraints[index];
+        }
+        property_constraints[index] = .{
+            .next = null,
+            .kind = .{
+                .property = .{
+                    .name = try arena.allocator().dupe(u8, entry.key_ptr.*),
+                    .constraint = try parse_constraint(arena, entry.value_ptr.*),
+                },
+            },
+        };
+    }
+    return .{
+        .properties = if (property_constraints.len > 0) &property_constraints[0] else null,
+    };
+}
+
+fn parse_validation__required_properties(arena: *Arena, obj: *const std.json.ObjectMap) !?Schema.Constraint.Kind {
+    const required_properties_value = obj.get("required") orelse return null;
+    if (required_properties_value != .array) return null;
+    var required_properties: std.ArrayList(ValueHash) = try .initCapacity(arena.allocator(), required_properties_value.array.items.len);
+    for (required_properties_value.array.items) |required_property| {
+        if (required_property != .string) continue;
+        required_properties.appendAssumeCapacity(.hash_value(@constCast(&required_property)));
+    }
+    return .{
+        .required = required_properties.items,
+    };
 }
 
 test "boolean schema - true schema accepts everything" {
