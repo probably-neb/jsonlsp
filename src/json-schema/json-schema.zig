@@ -40,7 +40,10 @@ pub const Schema = struct {
             max_f64_exclusive: f64,
             max_items: u64,
             min_items: u64,
-            properties: ?*Constraint,
+            properties: struct {
+                first_property: ?*Constraint,
+                additional: *Constraint,
+            },
             property: struct {
                 name: str8,
                 constraint: *Constraint,
@@ -203,16 +206,23 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *std.json.V
                 else => true,
             };
         },
-        .properties => |first_property| {
+        .properties => |properties| {
             if (value.* != .object) {
                 return true;
             }
-            var current_property = first_property;
+            var current_property = properties.first_property;
+            var checked_properties: std.StringArrayHashMapUnmanaged(void) = .empty;
             while (current_property) |property_constraint| : (current_property = property_constraint.next) {
                 const sub_value = value.object.getPtr(property_constraint.kind.property.name) orelse continue;
+                try checked_properties.put(arena.allocator(), property_constraint.kind.property.name, {});
                 if (!try check(arena, property_constraint.kind.property.constraint, sub_value)) {
                     return false;
                 }
+            }
+            var obj_iter = value.object.iterator();
+            while (obj_iter.next()) |entry| {
+                if (checked_properties.contains(entry.key_ptr.*)) continue;
+                if (!try check(arena, properties.additional, entry.value_ptr)) return false;
             }
             return true;
         },
@@ -636,9 +646,11 @@ fn parse_applicitor__properties(arena: *Arena, obj: *const std.json.ObjectMap) !
             },
         };
     }
-    return .{
-        .properties = if (property_constraints.len > 0) &property_constraints[0] else null,
-    };
+
+    return .{ .properties = .{
+        .first_property = if (property_constraints.len > 0) &property_constraints[0] else null,
+        .additional = if (obj.get("additionalProperties")) |additional| try parse_constraint(arena, additional) else @constCast(&Schema.Constraint.zero),
+    } };
 }
 
 fn parse_validation__required_properties(arena: *Arena, obj: *const std.json.ObjectMap) !?Schema.Constraint.Kind {
