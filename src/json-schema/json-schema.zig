@@ -25,6 +25,8 @@ pub const Schema = struct {
             type: []ValidationType,
             all: *Constraint, // corresponds to allOf,
             @"const": ValueHash,
+            @"enum": []ValueHash,
+            unique_items: void,
             min_len: u64,
             max_len: u64,
             min_int: i64,
@@ -55,11 +57,12 @@ pub const Schema = struct {
             .duplicate_field_behavior = .use_last,
             .max_value_len = std.json.default_max_value_len,
         }) catch unreachable; // todo: error
-        return check(schema.root, &json.value);
+        // todo: oom error
+        return check(&arena_state, schema.root, &json.value) catch unreachable;
     }
 };
 
-fn check(constraint: *const Schema.Constraint, value: *std.json.Value) bool {
+fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *std.json.Value) !bool {
     switch (constraint.kind) {
         .true => return true,
         .false => return false,
@@ -81,16 +84,35 @@ fn check(constraint: *const Schema.Constraint, value: *std.json.Value) bool {
         .all => |first_child| {
             var result = true;
             var cur_constraint = @as(?*Schema.Constraint, first_child);
-            std.debug.print("\nevaluating all\n", .{});
             while (cur_constraint) |cur| : (cur_constraint = cur.next) {
-                result = result and check(cur, value);
-                std.debug.print("evaluating {t} -> {}\n", .{ cur.kind, result });
+                result = result and try check(arena, cur, value);
             }
             return result;
         },
         .@"const" => |value_hash| {
             // perf: check type then hash
             return value_hash == ValueHash.hash_value(value);
+        },
+        .@"enum" => |hashes| {
+            // perf: check type then hash
+            for (hashes) |hash| {
+                if (hash == ValueHash.hash_value(value)) return true;
+            }
+            return false;
+        },
+        .unique_items => {
+            if (value.* != .array) {
+                return true;
+            }
+            var hashes: std.AutoHashMapUnmanaged(ValueHash, void) = .empty;
+            defer hashes.deinit(arena.allocator());
+            try hashes.ensureTotalCapacity(arena.allocator(), @intCast(value.array.items.len));
+            for (value.array.items) |*item| {
+                if (try hashes.fetchPut(arena.allocator(), .hash_value(item), {})) |_| {
+                    return false;
+                }
+            }
+            return true;
         },
         .min_len => |min_len| {
             return value.* != .string or (std.unicode.utf8CountCodepoints(value.string) catch 0) >= min_len;
@@ -234,6 +256,12 @@ fn parse_constraint(arena: *Arena, schema: std.json.Value) !*Schema.Constraint {
             }
             if (parse_validation__const(&obj)) |@"const"| {
                 try chain_with(arena, constraint, @"const");
+            }
+            if (parse_validation__enum(arena, &obj) catch null) |@"enum"| {
+                try chain_with(arena, constraint, @"enum");
+            }
+            if (parse_validation__unique_items(&obj)) |unique_items| {
+                try chain_with(arena, constraint, unique_items);
             }
         },
         else => return error.UnrecognizedSchemaType,
@@ -484,6 +512,27 @@ fn parse_validation__max_items(obj: *const std.json.ObjectMap) ?Schema.Constrain
 fn parse_validation__const(obj: *const std.json.ObjectMap) ?Schema.Constraint.Kind {
     const value = obj.getPtr("const") orelse return null;
     return .{ .@"const" = .hash_value(value) };
+}
+
+fn parse_validation__enum(arena: *Arena, obj: *const std.json.ObjectMap) !?Schema.Constraint.Kind {
+    const value = obj.get("enum") orelse return null;
+    if (value != .array) {
+        return .{ .@"enum" = &.{} };
+    }
+    var hashes: std.ArrayList(ValueHash) = try .initCapacity(arena.allocator(), value.array.items.len);
+    for (value.array.items) |*item| {
+        hashes.appendAssumeCapacity(.hash_value(item));
+    }
+    return .{
+        .@"enum" = hashes.items,
+    };
+}
+
+fn parse_validation__unique_items(obj: *const std.json.ObjectMap) ?Schema.Constraint.Kind {
+    const unique_items = obj.get("uniqueItems") orelse return null;
+    // todo: how to handle
+    if (unique_items != .bool or !unique_items.bool) return null;
+    return .unique_items;
 }
 
 test "boolean schema - true schema accepts everything" {
