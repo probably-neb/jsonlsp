@@ -30,12 +30,12 @@ pub const Schema = struct {
             unique_items: void,
             min_len: u64,
             max_len: u64,
-            min_int: i64,
-            max_int: i64,
+            min_i64: i64,
+            max_i64: i64,
             min_f64: f64,
             max_f64: f64,
-            min_int_exclusive: i64,
-            max_int_exclusive: i64,
+            min_i64_exclusive: i64,
+            max_i64_exclusive: i64,
             min_f64_exclusive: f64,
             max_f64_exclusive: f64,
             max_items: u64,
@@ -47,6 +47,8 @@ pub const Schema = struct {
             },
             required: []ValueHash,
             not: *Constraint,
+            multiple_of_i64: i64,
+            multiple_of_f64: f64,
         };
 
         pub const zero = Constraint{
@@ -137,7 +139,7 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *std.json.V
         .min_items => |min_items| {
             return value.* != .array or value.array.items.len >= min_items;
         },
-        .max_int => |max_int| {
+        .max_i64 => |max_int| {
             return switch (value.*) {
                 .integer => |int_val| int_val <= max_int,
                 .float => |float_val| float_val <= @as(f64, @floatFromInt(max_int)),
@@ -145,7 +147,7 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *std.json.V
                 else => true,
             };
         },
-        .min_int => |min_int| {
+        .min_i64 => |min_int| {
             return switch (value.*) {
                 .integer => |int_val| int_val >= min_int,
                 .float => |float_val| float_val >= @as(f64, @floatFromInt(min_int)),
@@ -169,7 +171,7 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *std.json.V
                 else => true,
             };
         },
-        .max_int_exclusive => |max_int| {
+        .max_i64_exclusive => |max_int| {
             return switch (value.*) {
                 .integer => |int_val| int_val < max_int,
                 .float => |float_val| float_val < @as(f64, @floatFromInt(max_int)),
@@ -177,7 +179,7 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *std.json.V
                 else => true,
             };
         },
-        .min_int_exclusive => |min_int| {
+        .min_i64_exclusive => |min_int| {
             return switch (value.*) {
                 .integer => |int_val| int_val > min_int,
                 .float => |float_val| float_val > @as(f64, @floatFromInt(min_int)),
@@ -231,6 +233,26 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *std.json.V
         },
         .not => |constraint_to_invert| {
             return !try check(arena, constraint_to_invert, value);
+        },
+        .multiple_of_f64 => |multiple_of| {
+            if (multiple_of == 0.0) return false;
+            const float_val = switch (value.*) {
+                .integer => |int_val| @as(f64, @floatFromInt(int_val)),
+                .float => |float_val| float_val,
+                .number_string => 0.0, // todo: handle?
+                else => 0.0,
+            };
+            return @rem(float_val, multiple_of) <= std.math.floatEps(f64);
+        },
+        .multiple_of_i64 => |multiple_of| {
+            if (multiple_of == 0) return false;
+            const int_val = switch (value.*) {
+                .integer => |int_val| int_val,
+                .float => |float_val| float_as_int(float_val) orelse return false,
+                .number_string => 0,
+                else => 0,
+            };
+            return @rem(int_val, multiple_of) == 0;
         },
     }
 }
@@ -318,6 +340,9 @@ fn parse_constraint(arena: *Arena, schema: std.json.Value) ParseError!*Schema.Co
             }
             if (parse_applicitor__all_of(arena, &obj) catch null) |all| {
                 try chain_with(arena, constraint, all);
+            }
+            if (parse_validation__multiple_of(&obj)) |multiple_of| {
+                try chain_with(arena, constraint, multiple_of);
             }
         },
         else => return error.UnrecognizedSchemaType,
@@ -488,7 +513,7 @@ fn parse_validation__min(obj: *const std.json.ObjectMap) ?Schema.Constraint.Kind
     const min_val = obj.get("minimum") orelse return null;
     switch (min_val) {
         .integer => |int_val| {
-            return .{ .min_int = int_val };
+            return .{ .min_i64 = int_val };
         },
         .float => |float_val| {
             return .{ .min_f64 = float_val };
@@ -502,7 +527,7 @@ fn parse_validation__max(obj: *const std.json.ObjectMap) ?Schema.Constraint.Kind
     const max_val = obj.get("maximum") orelse return null;
     switch (max_val) {
         .integer => |int_val| {
-            return .{ .max_int = int_val };
+            return .{ .max_i64 = int_val };
         },
         .float => |float_val| {
             return .{ .max_f64 = float_val };
@@ -516,7 +541,7 @@ fn parse_validation__exclusive_min(obj: *const std.json.ObjectMap) ?Schema.Const
     const min_val = obj.get("exclusiveMinimum") orelse return null;
     switch (min_val) {
         .integer => |int_val| {
-            return .{ .min_int_exclusive = int_val };
+            return .{ .min_i64_exclusive = int_val };
         },
         .float => |float_val| {
             return .{ .min_f64_exclusive = float_val };
@@ -530,7 +555,7 @@ fn parse_validation__exclusive_max(obj: *const std.json.ObjectMap) ?Schema.Const
     const max_val = obj.get("exclusiveMaximum") orelse return null;
     switch (max_val) {
         .integer => |int_val| {
-            return .{ .max_int_exclusive = int_val };
+            return .{ .max_i64_exclusive = int_val };
         },
         .float => |float_val| {
             return .{ .max_f64_exclusive = float_val };
@@ -649,6 +674,23 @@ fn parse_applicitor__all_of(arena: *Arena, obj: *const std.json.ObjectMap) !?Sch
         prev_next_ptr = &sub_schema.next;
     }
     return all_of_constraint;
+}
+
+fn parse_validation__multiple_of(obj: *const std.json.ObjectMap) ?Schema.Constraint.Kind {
+    const multiple_of = obj.get("multipleOf") orelse return null;
+    return switch (multiple_of) {
+        .float => |float_val| .{ .multiple_of_f64 = float_val },
+        .integer => |int_val| .{ .multiple_of_i64 = int_val },
+        else => null,
+    };
+}
+
+fn float_as_int(float: f64) ?i64 {
+    if (@trunc(float) != float) return null;
+    const min_int: f64 = @floatFromInt(std.math.minInt(i64));
+    const max_int: f64 = @floatFromInt(std.math.maxInt(i64));
+    if (std.math.clamp(float, min_int, max_int) != float) return null;
+    return @intFromFloat(float);
 }
 
 test "boolean schema - true schema accepts everything" {
