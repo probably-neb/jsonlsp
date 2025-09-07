@@ -24,7 +24,7 @@ pub const Schema = struct {
             true: void,
             false: void,
             type: []ValidationType,
-            all: *Constraint, // corresponds to allOf,
+            all: ?*Constraint, // corresponds to allOf,
             @"const": ValueHash,
             @"enum": []ValueHash,
             unique_items: void,
@@ -91,9 +91,11 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *std.json.V
         },
         .all => |first_child| {
             var result = true;
-            var cur_constraint = @as(?*Schema.Constraint, first_child);
+            var cur_constraint = first_child;
+            // std.debug.print("\nall\n", .{});
             while (cur_constraint) |cur| : (cur_constraint = cur.next) {
                 result = result and try check(arena, cur, value);
+                // std.debug.print("Constraint {t} -> {}\n", .{ cur.kind, result });
             }
             return result;
         },
@@ -313,6 +315,9 @@ fn parse_constraint(arena: *Arena, schema: std.json.Value) ParseError!*Schema.Co
             }
             if (parse_applicator_not(arena, &obj) catch null) |not| {
                 try chain_with(arena, constraint, not);
+            }
+            if (parse_applicitor__all_of(arena, &obj) catch null) |all| {
+                try chain_with(arena, constraint, all);
             }
         },
         else => return error.UnrecognizedSchemaType,
@@ -629,6 +634,21 @@ fn parse_applicator_not(arena: *Arena, obj: *const std.json.ObjectMap) !?Schema.
     return .{
         .not = try parse_constraint(arena, sub_schema),
     };
+}
+
+fn parse_applicitor__all_of(arena: *Arena, obj: *const std.json.ObjectMap) !?Schema.Constraint.Kind {
+    const items = obj.get("allOf") orelse return null;
+    if (items != .array) return null;
+    var all_of_constraint = Schema.Constraint.Kind{
+        .all = null,
+    };
+    var prev_next_ptr = &all_of_constraint.all;
+    for (items.array.items) |item| {
+        const sub_schema = try parse_constraint(arena, item);
+        prev_next_ptr.* = sub_schema;
+        prev_next_ptr = &sub_schema.next;
+    }
+    return all_of_constraint;
 }
 
 test "boolean schema - true schema accepts everything" {
