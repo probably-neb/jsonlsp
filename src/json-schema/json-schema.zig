@@ -46,6 +46,7 @@ pub const Schema = struct {
                 constraint: *Constraint,
             },
             required: []ValueHash,
+            not: *Constraint,
         };
 
         pub const zero = Constraint{
@@ -226,6 +227,9 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *std.json.V
             }
             return true;
         },
+        .not => |constraint_to_invert| {
+            return !try check(arena, constraint_to_invert, value);
+        },
     }
 }
 
@@ -306,6 +310,9 @@ fn parse_constraint(arena: *Arena, schema: std.json.Value) ParseError!*Schema.Co
             }
             if (parse_validation__required_properties(arena, &obj) catch null) |required_properties| {
                 try chain_with(arena, constraint, required_properties);
+            }
+            if (parse_applicator_not(arena, &obj) catch null) |not| {
+                try chain_with(arena, constraint, not);
             }
         },
         else => return error.UnrecognizedSchemaType,
@@ -614,6 +621,13 @@ fn parse_validation__required_properties(arena: *Arena, obj: *const std.json.Obj
     }
     return .{
         .required = required_properties.items,
+    };
+}
+
+fn parse_applicator_not(arena: *Arena, obj: *const std.json.ObjectMap) !?Schema.Constraint.Kind {
+    const sub_schema = obj.get("not") orelse return null;
+    return .{
+        .not = try parse_constraint(arena, sub_schema),
     };
 }
 
