@@ -1,0 +1,30 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    strategy:
+      matrix:
+        zig-version: ["0.14.0"]
+        runs-on: ["ubuntu-latest", "macos-13", "macos-latest", "windows-latest"]
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: goto-bus-stop/setup-zig@2a9625d550eefc3a9b1a43d342ad655f563f8241
+        with:
+          version: ${{ matrix.zig-version }}
+      - run: zig build
+      - run: zig build test
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: recursive
+      - uses: goto-bus-stop/setup-zig@v1
+        with:
+          version: 0.14.0
+      - run: zig fmt --check build.zig src/*.zig

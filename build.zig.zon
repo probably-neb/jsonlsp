@@ -70,6 +70,11 @@
         //    // actually used.
         //    .lazy = false,
         //},
+        .libpcre_zig = .{
+            // .url = "git+https://nossa.ee/~talya/libpcre.zig#04224f0bed09888d043c6fe4352458dbd907c815",
+            // .hash = "libpcre_zig-0.1.0-Dtf6CQg4AACWtDDhtI-rjGGLKdBowMQiQrK1O5sx5icv",
+            .path = "src/json-schema/vendor/libpcre.zig",
+        },
     },
 
     // Specifies the set of files and directories that are included in this package.

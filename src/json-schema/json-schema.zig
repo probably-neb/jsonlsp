@@ -12,6 +12,8 @@ const Arena = std.heap.ArenaAllocator;
 const str8 = []const u8;
 pub const OOM = error{OutOfMemory};
 
+const pcre = @import("pcre");
+
 pub const Schema = struct {
     root: *const Constraint,
     arena: Arena,
@@ -56,6 +58,7 @@ pub const Schema = struct {
             not: *Constraint,
             multiple_of_i64: i64,
             multiple_of_f64: f64,
+            pattern: pcre.Regex,
         };
 
         pub const zero = Constraint{
@@ -298,6 +301,11 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *std.json.V
             };
             return @rem(int_val, multiple_of) == 0;
         },
+        .pattern => |regex| {
+            if (value.* != .string) return true;
+            const matches = try regex.matches(value.string, .{});
+            return matches != null;
+        },
     }
 }
 
@@ -396,6 +404,9 @@ fn parse_constraint(arena: *Arena, schema: std.json.Value) ParseError!*Schema.Co
             }
             if (parse_validation__multiple_of(&obj)) |multiple_of| {
                 try chain_with(arena, constraint, multiple_of);
+            }
+            if (parse_validation__pattern(arena, &obj) catch null) |pattern| {
+                try chain_with(arena, constraint, pattern);
             }
         },
         else => return error.UnrecognizedSchemaType,
@@ -772,6 +783,22 @@ fn parse_validation__multiple_of(obj: *const std.json.ObjectMap) ?Schema.Constra
         .float => |float_val| .{ .multiple_of_f64 = float_val },
         .integer => |int_val| .{ .multiple_of_i64 = int_val },
         else => null,
+    };
+}
+
+fn parse_validation__pattern(arena: *Arena, obj: *const std.json.ObjectMap) !?Schema.Constraint.Kind {
+    const pattern = obj.get("pattern") orelse return null;
+    if (pattern != .string) return null;
+
+    const pattern_c = try arena.allocator().dupeZ(u8, pattern.string);
+    const re = try pcre.Regex.compile(pattern_c, .{
+        .Dotall = true,
+        .JavascriptCompat = true,
+        .Utf8 = true,
+    });
+
+    return .{
+        .pattern = re,
     };
 }
 
