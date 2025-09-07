@@ -24,6 +24,7 @@ pub const Schema = struct {
             false: void,
             type: []ValidationType,
             all: *Constraint, // corresponds to allOf,
+            @"const": ValueHash,
             min_len: u64,
             max_len: u64,
             min_int: i64,
@@ -47,7 +48,7 @@ pub const Schema = struct {
     pub fn is_valid(schema: *const Schema, input: str8) bool {
         var arena_state = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         const arena = arena_state.allocator();
-        const json = std.json.parseFromSlice(std.json.Value, arena, input, .{
+        var json = std.json.parseFromSlice(std.json.Value, arena, input, .{
             .allocate = .alloc_if_needed,
             .parse_numbers = true,
             .ignore_unknown_fields = false,
@@ -58,7 +59,7 @@ pub const Schema = struct {
     }
 };
 
-fn check(constraint: *const Schema.Constraint, value: *const std.json.Value) bool {
+fn check(constraint: *const Schema.Constraint, value: *std.json.Value) bool {
     switch (constraint.kind) {
         .true => return true,
         .false => return false,
@@ -86,6 +87,10 @@ fn check(constraint: *const Schema.Constraint, value: *const std.json.Value) boo
                 std.debug.print("evaluating {t} -> {}\n", .{ cur.kind, result });
             }
             return result;
+        },
+        .@"const" => |value_hash| {
+            // perf: check type then hash
+            return value_hash == ValueHash.hash_value(value);
         },
         .min_len => |min_len| {
             return value.* != .string or (std.unicode.utf8CountCodepoints(value.string) catch 0) >= min_len;
@@ -227,6 +232,9 @@ fn parse_constraint(arena: *Arena, schema: std.json.Value) !*Schema.Constraint {
             if (parse_validation__max_items(&obj)) |max_items| {
                 try chain_with(arena, constraint, max_items);
             }
+            if (parse_validation__const(&obj)) |@"const"| {
+                try chain_with(arena, constraint, @"const");
+            }
         },
         else => return error.UnrecognizedSchemaType,
     }
@@ -252,6 +260,65 @@ fn chain_with(arena: *Arena, from: *Schema.Constraint, new_kind: Schema.Constrai
         from.kind = new_kind;
     }
 }
+
+const ValueHash = packed struct(u68) {
+    kind: u3,
+    neg: u1,
+    hash: u64,
+
+    fn hash_value(value: *std.json.Value) ValueHash {
+        return .{
+            .kind = @intCast(@intFromEnum(value.*)),
+            .neg = switch (value.*) {
+                .integer => |val| @intFromBool(val < 0),
+                else => 0,
+            },
+            .hash = switch (value.*) {
+                .null => 0,
+                .bool => |val| @intCast(@intFromBool(val)),
+                .integer => |val| @bitCast(std.hash.int(val)),
+                .float => |val| @bitCast(val),
+                .number_string => |val| std.hash.Wyhash.hash(0xdeadbeef, val),
+                .string => |val| std.hash.Wyhash.hash(0xdeadbeef, val),
+                .array => blk: {
+                    var hasher = std.hash.Wyhash.init(0xdeadbeef);
+                    hash_inner(&hasher, value);
+                    break :blk hasher.final();
+                },
+                .object => blk: {
+                    var hasher = std.hash.Wyhash.init(0xdeadbeef);
+                    hash_inner(&hasher, value);
+                    break :blk hasher.final();
+                },
+            },
+        };
+    }
+
+    fn hash_inner(hasher: *std.hash.Wyhash, value: *std.json.Value) void {
+        switch (value.*) {
+            .array => |val| {
+                for (val.items) |*item| {
+                    hash_inner(hasher, item);
+                }
+            },
+            .object => |*val| {
+                val.sort(struct {
+                    val: @TypeOf(val),
+                    pub fn lessThan(ctx: @This(), a: usize, b: usize) bool {
+                        const keys = ctx.val.keys();
+                        return mem.lessThan(u8, keys[a], keys[b]);
+                    }
+                }{ .val = val });
+                var iter = val.iterator();
+                while (iter.next()) |entry| {
+                    hasher.update(entry.key_ptr.*);
+                    hash_inner(hasher, entry.value_ptr);
+                }
+            },
+            else => unreachable,
+        }
+    }
+};
 
 /// The "type" field on an object
 /// https://www.learnjsonschema.com/2020-12/validation/type/
@@ -412,6 +479,11 @@ fn parse_validation__max_items(obj: *const std.json.ObjectMap) ?Schema.Constrain
         },
         else => return null,
     }
+}
+
+fn parse_validation__const(obj: *const std.json.ObjectMap) ?Schema.Constraint.Kind {
+    const value = obj.getPtr("const") orelse return null;
+    return .{ .@"const" = .hash_value(value) };
 }
 
 test "boolean schema - true schema accepts everything" {
