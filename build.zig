@@ -45,7 +45,7 @@ pub fn build(b: *std.Build) void {
     const no_bin = b.option(bool, "no-bin", "Don't build a binary, just check") orelse false;
     if (no_bin) {
         const bin = b.addExecutable(.{
-            .name = "jsonls",
+            .name = "jsonlsp",
             .root_module = exe_mod,
         });
         b.default_step.dependOn(&bin.step);
