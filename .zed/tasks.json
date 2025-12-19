@@ -8,15 +8,6 @@
     "cwd": "$ZED_WORKTREE_ROOT"
   },
   {
-    "label": "build-debug-tests",
-    "command": "zig",
-    "args": [
-      "build",
-      "debug-tests"
-    ],
-    "cwd": "$ZED_WORKTREE_ROOT"
-  },
-  {
     "label": "test",
     "command": "zig",
     "args": [
@@ -26,11 +17,11 @@
     "cwd": "$ZED_WORKTREE_ROOT"
   },
   {
-    "label": "check",
+    "label": "test:suite",
     "command": "zig",
     "args": [
       "build",
-      "check"
+      "test:suite"
     ],
     "cwd": "$ZED_WORKTREE_ROOT"
   }

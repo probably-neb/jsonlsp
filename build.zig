@@ -45,15 +45,17 @@ pub fn build(b: *std.Build) void {
         .root_module = exe_mod,
     });
 
-    const no_bin = b.option(bool, "no-bin", "Don't build a binary, just check") orelse false;
-    if (no_bin) {
-        const bin = b.addExecutable(.{
-            .name = "jsonlsp",
+    b.installArtifact(exe);
+
+    // Check step (for ZLS build-on-save and fast compilation checks)
+    // This creates an executable but doesn't install it, so Zig uses -fno-emit-bin
+    {
+        const exe_check = b.addExecutable(.{
+            .name = "jsonls",
             .root_module = exe_mod,
         });
-        b.default_step.dependOn(&bin.step);
-    } else {
-        b.installArtifact(exe);
+        const check = b.step("check", "Check if jsonls compiles");
+        check.dependOn(&exe_check.step);
     }
 
     // Run step
