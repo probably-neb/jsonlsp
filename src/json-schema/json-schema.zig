@@ -818,6 +818,30 @@ fn float_as_int(float: f64) ?i64 {
     return @intFromFloat(float);
 }
 
+test ValueHash {
+    const H = ValueHash;
+    const util = struct {
+        fn parse(json: str8) *std.json.Value {
+            const parsed = std.json.parseFromSlice(std.json.Value, std.heap.page_allocator, json, .{
+                .allocate = .alloc_if_needed,
+                .parse_numbers = true,
+                .ignore_unknown_fields = false,
+                .duplicate_field_behavior = .use_last,
+                .max_value_len = 1024,
+            }) catch std.debug.panic("failed to parse json", .{});
+            const value_ptr = std.heap.page_allocator.create(std.json.Value) catch unreachable;
+            value_ptr.* = parsed.value;
+            return value_ptr;
+        }
+    };
+    {
+        const a: H = .hash_value(util.parse("[ 0 ]"));
+        const b: H = .hash_value(util.parse("[ 0 ]"));
+        try std.testing.expectEqual(a, b);
+    }
+    try std.testing.expectEqual(util.parse("0.0").float, 0.0);
+}
+
 test "boolean schema - true schema accepts everything" {
     const schema_str = "true";
     const schema = try parse(schema_str);

@@ -1,113 +1,117 @@
 const std = @import("std");
 const JSONSchema = @import("json-schema");
 
+fn check_valid(schema_str: []const u8, case: []const u8, is_valid: bool) !void {
+    const schema = JSONSchema.parse(schema_str) catch |err| std.debug.panic("Failed to parse JSON schema: {}\n", .{err});
+    if (schema.is_valid(case) == is_valid) return;
+    std.debug.print("\nReason:\nExpected Schema:\n{s}\nTo {s} Case:\n{s}\nBut it was {s}!\n", .{
+        schema_str,
+        if (is_valid) "ACCEPT" else "REJECT",
+        case,
+        if (is_valid) "REJECTED" else "ACCEPTED",
+    });
+    return error.FailedTest;
+}
 test "unevaluatedItems.unevaluatedItems-true.with-no-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "unevaluatedItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-true.with-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "unevaluatedItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-false.with-no-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-false.with-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-as-schema.with-no-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "unevaluatedItems": {
         \\         "type": "string"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-as-schema.with-valid-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "unevaluatedItems": {
         \\         "type": "string"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-as-schema.with-invalid-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "unevaluatedItems": {
         \\         "type": "string"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     42
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-uniform-items.unevaluatedItems-doesn't-apply" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": {
@@ -115,18 +119,17 @@ test "unevaluatedItems.unevaluatedItems-with-uniform-items.unevaluatedItems-does
         \\     },
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     "bar"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-tuple.with-no-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -136,17 +139,16 @@ test "unevaluatedItems.unevaluatedItems-with-tuple.with-no-unevaluated-items" {
         \\     ],
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-tuple.with-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -156,18 +158,17 @@ test "unevaluatedItems.unevaluatedItems-with-tuple.with-unevaluated-items" {
         \\     ],
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     "bar"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-items-and-additionalItems.unevaluatedItems-doesn't-apply" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -178,18 +179,17 @@ test "unevaluatedItems.unevaluatedItems-with-items-and-additionalItems.unevaluat
         \\     "additionalItems": true,
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     42
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-ignored-additionalItems.invalid-under-unevaluatedItems" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "additionalItems": {
@@ -199,18 +199,17 @@ test "unevaluatedItems.unevaluatedItems-with-ignored-additionalItems.invalid-und
         \\         "type": "string"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-ignored-additionalItems.all-valid-under-unevaluatedItems" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "additionalItems": {
@@ -220,19 +219,18 @@ test "unevaluatedItems.unevaluatedItems-with-ignored-additionalItems.all-valid-u
         \\         "type": "string"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     "bar",
         \\     "baz"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-ignored-applicator-additionalItems.invalid-under-unevaluatedItems" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -246,18 +244,17 @@ test "unevaluatedItems.unevaluatedItems-with-ignored-applicator-additionalItems.
         \\         "type": "string"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-ignored-applicator-additionalItems.all-valid-under-unevaluatedItems" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -271,19 +268,18 @@ test "unevaluatedItems.unevaluatedItems-with-ignored-applicator-additionalItems.
         \\         "type": "string"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     "bar",
         \\     "baz"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-nested-tuple.with-no-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -303,18 +299,17 @@ test "unevaluatedItems.unevaluatedItems-with-nested-tuple.with-no-unevaluated-it
         \\     ],
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     42
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-nested-tuple.with-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -334,19 +329,18 @@ test "unevaluatedItems.unevaluatedItems-with-nested-tuple.with-unevaluated-items
         \\     ],
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     42,
         \\     true
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-nested-items.with-only-(valid)-additional-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "unevaluatedItems": {
@@ -361,18 +355,17 @@ test "unevaluatedItems.unevaluatedItems-with-nested-items.with-only-(valid)-addi
         \\         true
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     true,
         \\     false
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-nested-items.with-no-additional-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "unevaluatedItems": {
@@ -387,18 +380,17 @@ test "unevaluatedItems.unevaluatedItems-with-nested-items.with-no-additional-ite
         \\         true
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "yes",
         \\     "no"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-nested-items.with-invalid-additional-item" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "unevaluatedItems": {
@@ -413,18 +405,17 @@ test "unevaluatedItems.unevaluatedItems-with-nested-items.with-invalid-additiona
         \\         true
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "yes",
         \\     false
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-nested-items-and-additionalItems.with-no-additional-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -439,17 +430,16 @@ test "unevaluatedItems.unevaluatedItems-with-nested-items-and-additionalItems.wi
         \\     ],
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-nested-items-and-additionalItems.with-additional-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -464,19 +454,18 @@ test "unevaluatedItems.unevaluatedItems-with-nested-items-and-additionalItems.wi
         \\     ],
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     42,
         \\     true
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-nested-unevaluatedItems.with-no-additional-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -493,17 +482,16 @@ test "unevaluatedItems.unevaluatedItems-with-nested-unevaluatedItems.with-no-add
         \\     ],
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-nested-unevaluatedItems.with-additional-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -520,19 +508,18 @@ test "unevaluatedItems.unevaluatedItems-with-nested-unevaluatedItems.with-additi
         \\     ],
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     42,
         \\     true
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-anyOf.when-one-schema-matches-and-has-no-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -561,18 +548,17 @@ test "unevaluatedItems.unevaluatedItems-with-anyOf.when-one-schema-matches-and-h
         \\     ],
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     "bar"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-anyOf.when-one-schema-matches-and-has-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -601,19 +587,18 @@ test "unevaluatedItems.unevaluatedItems-with-anyOf.when-one-schema-matches-and-h
         \\     ],
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     "bar",
         \\     42
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-anyOf.when-two-schemas-match-and-has-no-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -642,19 +627,18 @@ test "unevaluatedItems.unevaluatedItems-with-anyOf.when-two-schemas-match-and-ha
         \\     ],
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     "bar",
         \\     "baz"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-anyOf.when-two-schemas-match-and-has-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -683,20 +667,19 @@ test "unevaluatedItems.unevaluatedItems-with-anyOf.when-two-schemas-match-and-ha
         \\     ],
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     "bar",
         \\     "baz",
         \\     42
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-oneOf.with-no-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -724,18 +707,17 @@ test "unevaluatedItems.unevaluatedItems-with-oneOf.with-no-unevaluated-items" {
         \\     ],
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     "bar"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-oneOf.with-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -763,19 +745,18 @@ test "unevaluatedItems.unevaluatedItems-with-oneOf.with-unevaluated-items" {
         \\     ],
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     "bar",
         \\     42
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-not.with-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -795,18 +776,17 @@ test "unevaluatedItems.unevaluatedItems-with-not.with-unevaluated-items" {
         \\     },
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     "bar"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-if/then/else.when-if-matches-and-it-has-no-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -843,19 +823,18 @@ test "unevaluatedItems.unevaluatedItems-with-if/then/else.when-if-matches-and-it
         \\     },
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     "bar",
         \\     "then"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-if/then/else.when-if-matches-and-it-has-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -892,20 +871,19 @@ test "unevaluatedItems.unevaluatedItems-with-if/then/else.when-if-matches-and-it
         \\     },
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     "bar",
         \\     "then",
         \\     "else"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-if/then/else.when-if-doesn't-match-and-it-has-no-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -942,20 +920,19 @@ test "unevaluatedItems.unevaluatedItems-with-if/then/else.when-if-doesn't-match-
         \\     },
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     42,
         \\     42,
         \\     "else"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-if/then/else.when-if-doesn't-match-and-it-has-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -992,9 +969,7 @@ test "unevaluatedItems.unevaluatedItems-with-if/then/else.when-if-doesn't-match-
         \\     },
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     42,
@@ -1002,11 +977,12 @@ test "unevaluatedItems.unevaluatedItems-with-if/then/else.when-if-doesn't-match-
         \\     "else",
         \\     42
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-boolean-schemas.with-no-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -1014,15 +990,14 @@ test "unevaluatedItems.unevaluatedItems-with-boolean-schemas.with-no-unevaluated
         \\     ],
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-boolean-schemas.with-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -1030,17 +1005,16 @@ test "unevaluatedItems.unevaluatedItems-with-boolean-schemas.with-unevaluated-it
         \\     ],
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-$ref.with-no-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "#/$defs/bar",
@@ -1061,18 +1035,17 @@ test "unevaluatedItems.unevaluatedItems-with-$ref.with-no-unevaluated-items" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     "bar"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-$ref.with-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "#/$defs/bar",
@@ -1093,19 +1066,18 @@ test "unevaluatedItems.unevaluatedItems-with-$ref.with-unevaluated-items" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     "bar",
         \\     "baz"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-before-$ref.with-no-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "unevaluatedItems": false,
@@ -1126,18 +1098,17 @@ test "unevaluatedItems.unevaluatedItems-before-$ref.with-no-unevaluated-items" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     "bar"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-before-$ref.with-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "unevaluatedItems": false,
@@ -1158,19 +1129,18 @@ test "unevaluatedItems.unevaluatedItems-before-$ref.with-unevaluated-items" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     "bar",
         \\     "baz"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-$recursiveRef.with-no-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "https://example.com/unevaluated-items-with-recursive-ref/extended-tree",
@@ -1201,9 +1171,7 @@ test "unevaluatedItems.unevaluatedItems-with-$recursiveRef.with-no-unevaluated-i
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     [
@@ -1213,11 +1181,12 @@ test "unevaluatedItems.unevaluatedItems-with-$recursiveRef.with-no-unevaluated-i
         \\     ],
         \\     "a"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-$recursiveRef.with-unevaluated-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "https://example.com/unevaluated-items-with-recursive-ref/extended-tree",
@@ -1248,9 +1217,7 @@ test "unevaluatedItems.unevaluatedItems-with-$recursiveRef.with-unevaluated-item
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     [
@@ -1261,11 +1228,12 @@ test "unevaluatedItems.unevaluatedItems-with-$recursiveRef.with-unevaluated-item
         \\     ],
         \\     "a"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-can't-see-inside-cousins.always-fails" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -1279,17 +1247,16 @@ test "unevaluatedItems.unevaluatedItems-can't-see-inside-cousins.always-fails" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedItems.item-is-evaluated-in-an-uncle-schema-to-unevaluatedItems.no-extra-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -1317,19 +1284,18 @@ test "unevaluatedItems.item-is-evaluated-in-an-uncle-schema-to-unevaluatedItems.
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": [
         \\         "test"
         \\     ]
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.item-is-evaluated-in-an-uncle-schema-to-unevaluatedItems.uncle-keyword-evaluation-is-not-significant" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -1357,115 +1323,107 @@ test "unevaluatedItems.item-is-evaluated-in-an-uncle-schema-to-unevaluatedItems.
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": [
         \\         "test",
         \\         "test"
         \\     ]
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedItems.non-array-instances-are-valid.ignores-booleans" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ true
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.non-array-instances-are-valid.ignores-integers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ 123
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.non-array-instances-are-valid.ignores-floats" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.non-array-instances-are-valid.ignores-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.non-array-instances-are-valid.ignores-strings" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.non-array-instances-are-valid.ignores-null" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-with-null-instance-elements.allows-null-elements" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "unevaluatedItems": {
         \\         "type": "null"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     null
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-can-see-annotations-from-if-without-then-and-else.valid-in-case-if-is-evaluated" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "if": {
@@ -1477,17 +1435,16 @@ test "unevaluatedItems.unevaluatedItems-can-see-annotations-from-if-without-then
         \\     },
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "a"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedItems.unevaluatedItems-can-see-annotations-from-if-without-then-and-else.invalid-in-case-if-is-evaluated" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "if": {
@@ -1499,212 +1456,196 @@ test "unevaluatedItems.unevaluatedItems-can-see-annotations-from-if-without-then
         \\     },
         \\     "unevaluatedItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "b"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "maxLength.maxLength-validation.shorter-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maxLength": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ "f"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maxLength.maxLength-validation.exact-length-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maxLength": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ "fo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maxLength.maxLength-validation.too-long-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maxLength": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "maxLength.maxLength-validation.ignores-non-strings" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maxLength": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ 100
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maxLength.maxLength-validation.two-graphemes-is-long-enough" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maxLength": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ "💩💩"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maxLength.maxLength-validation-with-a-decimal.shorter-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maxLength": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ "f"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maxLength.maxLength-validation-with-a-decimal.too-long-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maxLength": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "refRemote.remote-ref.remote-ref-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "http://localhost:1234/draft2019-09/integer.json"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "refRemote.remote-ref.remote-ref-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "http://localhost:1234/draft2019-09/integer.json"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "a"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "refRemote.fragment-within-remote-ref.remote-fragment-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "http://localhost:1234/draft2019-09/subSchemas.json#/$defs/integer"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "refRemote.fragment-within-remote-ref.remote-fragment-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "http://localhost:1234/draft2019-09/subSchemas.json#/$defs/integer"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "a"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "refRemote.anchor-within-remote-ref.remote-anchor-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "http://localhost:1234/draft2019-09/locationIndependentIdentifier.json#foo"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "refRemote.anchor-within-remote-ref.remote-anchor-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "http://localhost:1234/draft2019-09/locationIndependentIdentifier.json#foo"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "a"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "refRemote.ref-within-remote-ref.ref-within-ref-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "http://localhost:1234/draft2019-09/subSchemas.json#/$defs/refToInteger"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "refRemote.ref-within-remote-ref.ref-within-ref-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "http://localhost:1234/draft2019-09/subSchemas.json#/$defs/refToInteger"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "a"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "refRemote.base-URI-change.base-URI-change-ref-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:1234/draft2019-09/",
@@ -1715,19 +1656,18 @@ test "refRemote.base-URI-change.base-URI-change-ref-valid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     [
         \\         1
         \\     ]
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "refRemote.base-URI-change.base-URI-change-ref-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:1234/draft2019-09/",
@@ -1738,19 +1678,18 @@ test "refRemote.base-URI-change.base-URI-change-ref-invalid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     [
         \\         "a"
         \\     ]
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "refRemote.base-URI-change---change-folder.number-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:1234/draft2019-09/scope_change_defs1.json",
@@ -1770,19 +1709,18 @@ test "refRemote.base-URI-change---change-folder.number-is-valid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "list": [
         \\         1
         \\     ]
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "refRemote.base-URI-change---change-folder.string-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:1234/draft2019-09/scope_change_defs1.json",
@@ -1802,19 +1740,18 @@ test "refRemote.base-URI-change---change-folder.string-is-invalid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "list": [
         \\         "a"
         \\     ]
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "refRemote.base-URI-change---change-folder-in-subschema.number-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:1234/draft2019-09/scope_change_defs2.json",
@@ -1838,19 +1775,18 @@ test "refRemote.base-URI-change---change-folder-in-subschema.number-is-valid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "list": [
         \\         1
         \\     ]
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "refRemote.base-URI-change---change-folder-in-subschema.string-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:1234/draft2019-09/scope_change_defs2.json",
@@ -1874,19 +1810,18 @@ test "refRemote.base-URI-change---change-folder-in-subschema.string-is-invalid" 
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "list": [
         \\         "a"
         \\     ]
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "refRemote.root-ref-in-remote-ref.string-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:1234/draft2019-09/object",
@@ -1897,17 +1832,16 @@ test "refRemote.root-ref-in-remote-ref.string-is-valid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "name": "foo"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "refRemote.root-ref-in-remote-ref.null-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:1234/draft2019-09/object",
@@ -1918,17 +1852,16 @@ test "refRemote.root-ref-in-remote-ref.null-is-valid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "name": null
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "refRemote.root-ref-in-remote-ref.object-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:1234/draft2019-09/object",
@@ -1939,77 +1872,72 @@ test "refRemote.root-ref-in-remote-ref.object-is-invalid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "name": {
         \\         "name": null
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "refRemote.remote-ref-with-ref-to-defs.invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:1234/draft2019-09/schema-remote-ref-ref-defs1.json",
         \\     "$ref": "ref-and-defs.json"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "refRemote.remote-ref-with-ref-to-defs.valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:1234/draft2019-09/schema-remote-ref-ref-defs1.json",
         \\     "$ref": "ref-and-defs.json"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": "a"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "refRemote.Location-independent-identifier-in-remote-ref.integer-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "http://localhost:1234/draft2019-09/locationIndependentIdentifier.json#/$defs/refToInteger"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "refRemote.Location-independent-identifier-in-remote-ref.string-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "http://localhost:1234/draft2019-09/locationIndependentIdentifier.json#/$defs/refToInteger"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "refRemote.retrieved-nested-refs-resolve-relative-to-their-URI-not-$id.number-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:1234/draft2019-09/some-id",
@@ -2019,19 +1947,18 @@ test "refRemote.retrieved-nested-refs-resolve-relative-to-their-URI-not-$id.numb
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "name": {
         \\         "foo": 1
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "refRemote.retrieved-nested-refs-resolve-relative-to-their-URI-not-$id.string-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:1234/draft2019-09/some-id",
@@ -2041,213 +1968,198 @@ test "refRemote.retrieved-nested-refs-resolve-relative-to-their-URI-not-$id.stri
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "name": {
         \\         "foo": "a"
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "refRemote.remote-HTTP-ref-with-different-$id.number-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "http://localhost:1234/different-id-ref-string.json"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "refRemote.remote-HTTP-ref-with-different-$id.string-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "http://localhost:1234/different-id-ref-string.json"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "refRemote.remote-HTTP-ref-with-different-URN-$id.number-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "http://localhost:1234/urn-ref-string.json"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "refRemote.remote-HTTP-ref-with-different-URN-$id.string-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "http://localhost:1234/urn-ref-string.json"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "refRemote.remote-HTTP-ref-with-nested-absolute-ref.number-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "http://localhost:1234/nested-absolute-ref-to-string.json"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "refRemote.remote-HTTP-ref-with-nested-absolute-ref.string-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "http://localhost:1234/nested-absolute-ref-to-string.json"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "refRemote.$ref-to-$ref-finds-detached-$anchor.number-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "http://localhost:1234/draft2019-09/detached-ref.json#/$defs/foo"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "refRemote.$ref-to-$ref-finds-detached-$anchor.non-number-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "http://localhost:1234/draft2019-09/detached-ref.json#/$defs/foo"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "a"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "if-then-else.ignore-if-without-then-or-else.valid-when-valid-against-lone-if" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "if": {
         \\         "const": 0
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 0
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "if-then-else.ignore-if-without-then-or-else.valid-when-invalid-against-lone-if" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "if": {
         \\         "const": 0
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "hello"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "if-then-else.ignore-then-without-if.valid-when-valid-against-lone-then" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "then": {
         \\         "const": 0
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 0
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "if-then-else.ignore-then-without-if.valid-when-invalid-against-lone-then" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "then": {
         \\         "const": 0
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "hello"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "if-then-else.ignore-else-without-if.valid-when-valid-against-lone-else" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "else": {
         \\         "const": 0
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 0
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "if-then-else.ignore-else-without-if.valid-when-invalid-against-lone-else" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "else": {
         \\         "const": 0
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "hello"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "if-then-else.if-and-then-without-else.valid-through-then" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "if": {
@@ -2257,15 +2169,14 @@ test "if-then-else.if-and-then-without-else.valid-through-then" {
         \\         "minimum": -10
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ -1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "if-then-else.if-and-then-without-else.invalid-through-then" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "if": {
@@ -2275,15 +2186,14 @@ test "if-then-else.if-and-then-without-else.invalid-through-then" {
         \\         "minimum": -10
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ -100
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "if-then-else.if-and-then-without-else.valid-when-if-test-fails" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "if": {
@@ -2293,15 +2203,14 @@ test "if-then-else.if-and-then-without-else.valid-when-if-test-fails" {
         \\         "minimum": -10
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 3
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "if-then-else.if-and-else-without-then.valid-when-if-test-passes" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "if": {
@@ -2311,15 +2220,14 @@ test "if-then-else.if-and-else-without-then.valid-when-if-test-passes" {
         \\         "multipleOf": 2
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ -1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "if-then-else.if-and-else-without-then.valid-through-else" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "if": {
@@ -2329,15 +2237,14 @@ test "if-then-else.if-and-else-without-then.valid-through-else" {
         \\         "multipleOf": 2
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 4
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "if-then-else.if-and-else-without-then.invalid-through-else" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "if": {
@@ -2347,15 +2254,14 @@ test "if-then-else.if-and-else-without-then.invalid-through-else" {
         \\         "multipleOf": 2
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 3
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "if-then-else.validate-against-correct-branch,-then-vs-else.valid-through-then" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "if": {
@@ -2368,15 +2274,14 @@ test "if-then-else.validate-against-correct-branch,-then-vs-else.valid-through-t
         \\         "multipleOf": 2
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ -1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "if-then-else.validate-against-correct-branch,-then-vs-else.invalid-through-then" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "if": {
@@ -2389,15 +2294,14 @@ test "if-then-else.validate-against-correct-branch,-then-vs-else.invalid-through
         \\         "multipleOf": 2
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ -100
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "if-then-else.validate-against-correct-branch,-then-vs-else.valid-through-else" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "if": {
@@ -2410,15 +2314,14 @@ test "if-then-else.validate-against-correct-branch,-then-vs-else.valid-through-e
         \\         "multipleOf": 2
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 4
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "if-then-else.validate-against-correct-branch,-then-vs-else.invalid-through-else" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "if": {
@@ -2431,15 +2334,14 @@ test "if-then-else.validate-against-correct-branch,-then-vs-else.invalid-through
         \\         "multipleOf": 2
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 3
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "if-then-else.non-interference-across-combined-schemas.valid,-but-would-have-been-invalid-through-then" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -2460,15 +2362,14 @@ test "if-then-else.non-interference-across-combined-schemas.valid,-but-would-hav
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ -100
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "if-then-else.non-interference-across-combined-schemas.valid,-but-would-have-been-invalid-through-else" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -2489,15 +2390,14 @@ test "if-then-else.non-interference-across-combined-schemas.valid,-but-would-hav
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 3
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "if-then-else.if-with-boolean-schema-true.boolean-schema-true-in-if-always-chooses-the-then-path-(valid)" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "if": true,
@@ -2508,15 +2408,14 @@ test "if-then-else.if-with-boolean-schema-true.boolean-schema-true-in-if-always-
         \\         "const": "else"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "then"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "if-then-else.if-with-boolean-schema-true.boolean-schema-true-in-if-always-chooses-the-then-path-(invalid)" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "if": true,
@@ -2527,15 +2426,14 @@ test "if-then-else.if-with-boolean-schema-true.boolean-schema-true-in-if-always-
         \\         "const": "else"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "else"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "if-then-else.if-with-boolean-schema-false.boolean-schema-false-in-if-always-chooses-the-else-path-(invalid)" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "if": false,
@@ -2546,15 +2444,14 @@ test "if-then-else.if-with-boolean-schema-false.boolean-schema-false-in-if-alway
         \\         "const": "else"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "then"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "if-then-else.if-with-boolean-schema-false.boolean-schema-false-in-if-always-chooses-the-else-path-(valid)" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "if": false,
@@ -2565,15 +2462,14 @@ test "if-then-else.if-with-boolean-schema-false.boolean-schema-false-in-if-alway
         \\         "const": "else"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "else"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "if-then-else.if-appears-at-the-end-when-serialized-(keyword-processing-sequence).yes-redirects-to-then-and-passes" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "then": {
@@ -2586,15 +2482,14 @@ test "if-then-else.if-appears-at-the-end-when-serialized-(keyword-processing-seq
         \\         "maxLength": 4
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "yes"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "if-then-else.if-appears-at-the-end-when-serialized-(keyword-processing-sequence).other-redirects-to-else-and-passes" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "then": {
@@ -2607,15 +2502,14 @@ test "if-then-else.if-appears-at-the-end-when-serialized-(keyword-processing-seq
         \\         "maxLength": 4
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "other"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "if-then-else.if-appears-at-the-end-when-serialized-(keyword-processing-sequence).no-redirects-to-then-and-fails" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "then": {
@@ -2628,15 +2522,14 @@ test "if-then-else.if-appears-at-the-end-when-serialized-(keyword-processing-seq
         \\         "maxLength": 4
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "no"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "if-then-else.if-appears-at-the-end-when-serialized-(keyword-processing-sequence).invalid-redirects-to-else-and-fails" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "then": {
@@ -2649,15 +2542,14 @@ test "if-then-else.if-appears-at-the-end-when-serialized-(keyword-processing-seq
         \\         "maxLength": 4
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "invalid"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "infinite-loop-detection.evaluating-the-same-schema-location-against-the-same-data-location-twice-is-not-a-sign-of-an-infinite-loop.passing-case" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -2680,17 +2572,16 @@ test "infinite-loop-detection.evaluating-the-same-schema-location-against-the-sa
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "infinite-loop-detection.evaluating-the-same-schema-location-against-the-same-data-location-twice-is-not-a-sign-of-an-infinite-loop.failing-case" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -2713,17 +2604,16 @@ test "infinite-loop-detection.evaluating-the-same-schema-location-against-the-sa
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "a string"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "dependentRequired.single-dependency.neither" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentRequired": {
@@ -2732,15 +2622,14 @@ test "dependentRequired.single-dependency.neither" {
         \\         ]
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "dependentRequired.single-dependency.nondependant" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentRequired": {
@@ -2749,17 +2638,16 @@ test "dependentRequired.single-dependency.nondependant" {
         \\         ]
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "dependentRequired.single-dependency.with-dependency" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentRequired": {
@@ -2768,18 +2656,17 @@ test "dependentRequired.single-dependency.with-dependency" {
         \\         ]
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "dependentRequired.single-dependency.missing-dependency" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentRequired": {
@@ -2788,17 +2675,16 @@ test "dependentRequired.single-dependency.missing-dependency" {
         \\         ]
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "dependentRequired.single-dependency.ignores-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentRequired": {
@@ -2807,17 +2693,16 @@ test "dependentRequired.single-dependency.ignores-arrays" {
         \\         ]
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "bar"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "dependentRequired.single-dependency.ignores-strings" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentRequired": {
@@ -2826,15 +2711,14 @@ test "dependentRequired.single-dependency.ignores-strings" {
         \\         ]
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foobar"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "dependentRequired.single-dependency.ignores-other-non-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentRequired": {
@@ -2843,62 +2727,58 @@ test "dependentRequired.single-dependency.ignores-other-non-objects" {
         \\         ]
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "dependentRequired.empty-dependents.empty-object" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentRequired": {
         \\         "bar": []
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "dependentRequired.empty-dependents.object-with-one-property" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentRequired": {
         \\         "bar": []
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "dependentRequired.empty-dependents.non-object-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentRequired": {
         \\         "bar": []
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "dependentRequired.multiple-dependents-required.neither" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentRequired": {
@@ -2908,15 +2788,14 @@ test "dependentRequired.multiple-dependents-required.neither" {
         \\         ]
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "dependentRequired.multiple-dependents-required.nondependants" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentRequired": {
@@ -2926,18 +2805,17 @@ test "dependentRequired.multiple-dependents-required.nondependants" {
         \\         ]
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "dependentRequired.multiple-dependents-required.with-dependencies" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentRequired": {
@@ -2947,19 +2825,18 @@ test "dependentRequired.multiple-dependents-required.with-dependencies" {
         \\         ]
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "bar": 2,
         \\     "quux": 3
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "dependentRequired.multiple-dependents-required.missing-dependency" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentRequired": {
@@ -2969,18 +2846,17 @@ test "dependentRequired.multiple-dependents-required.missing-dependency" {
         \\         ]
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "quux": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "dependentRequired.multiple-dependents-required.missing-other-dependency" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentRequired": {
@@ -2990,18 +2866,17 @@ test "dependentRequired.multiple-dependents-required.missing-other-dependency" {
         \\         ]
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": 1,
         \\     "quux": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "dependentRequired.multiple-dependents-required.missing-both-dependencies" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentRequired": {
@@ -3011,17 +2886,16 @@ test "dependentRequired.multiple-dependents-required.missing-both-dependencies" 
         \\         ]
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "quux": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "dependentRequired.dependencies-with-escaped-characters.CRLF" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentRequired": {
@@ -3033,18 +2907,17 @@ test "dependentRequired.dependencies-with-escaped-characters.CRLF" {
         \\         ]
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo\nbar": 1,
         \\     "foo\rbar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "dependentRequired.dependencies-with-escaped-characters.quoted-quotes" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentRequired": {
@@ -3056,18 +2929,17 @@ test "dependentRequired.dependencies-with-escaped-characters.quoted-quotes" {
         \\         ]
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo'bar": 1,
         \\     "foo\"bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "dependentRequired.dependencies-with-escaped-characters.CRLF-missing-dependent" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentRequired": {
@@ -3079,18 +2951,17 @@ test "dependentRequired.dependencies-with-escaped-characters.CRLF-missing-depend
         \\         ]
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo\nbar": 1,
         \\     "foo": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "dependentRequired.dependencies-with-escaped-characters.quoted-quotes-missing-dependent" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentRequired": {
@@ -3102,17 +2973,16 @@ test "dependentRequired.dependencies-with-escaped-characters.quoted-quotes-missi
         \\         ]
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo\"bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "vocabulary.schema-that-uses-custom-metaschema-with-with-no-validation-vocabulary.applicator-vocabulary-still-works" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$id": "https://schema/using/no/validation",
         \\     "$schema": "http://localhost:1234/draft2019-09/metaschema-no-validation.json",
@@ -3123,17 +2993,16 @@ test "vocabulary.schema-that-uses-custom-metaschema-with-with-no-validation-voca
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "badProperty": "this property should not exist"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "vocabulary.schema-that-uses-custom-metaschema-with-with-no-validation-vocabulary.no-validation:-valid-number" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$id": "https://schema/using/no/validation",
         \\     "$schema": "http://localhost:1234/draft2019-09/metaschema-no-validation.json",
@@ -3144,17 +3013,16 @@ test "vocabulary.schema-that-uses-custom-metaschema-with-with-no-validation-voca
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "numberProperty": 20
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "vocabulary.schema-that-uses-custom-metaschema-with-with-no-validation-vocabulary.no-validation:-invalid-number,-but-it-still-validates" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$id": "https://schema/using/no/validation",
         \\     "$schema": "http://localhost:1234/draft2019-09/metaschema-no-validation.json",
@@ -3165,43 +3033,40 @@ test "vocabulary.schema-that-uses-custom-metaschema-with-with-no-validation-voca
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "numberProperty": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "vocabulary.ignore-unrecognized-optional-vocabulary.string-value" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "http://localhost:1234/draft2019-09/metaschema-optional-vocabulary.json",
         \\     "type": "number"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foobar"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "vocabulary.ignore-unrecognized-optional-vocabulary.number-value" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "http://localhost:1234/draft2019-09/metaschema-optional-vocabulary.json",
         \\     "type": "number"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 20
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.root-pointer-ref.match" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -3211,17 +3076,16 @@ test "ref.root-pointer-ref.match" {
         \\     },
         \\     "additionalProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": false
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.root-pointer-ref.recursive-match" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -3231,19 +3095,18 @@ test "ref.root-pointer-ref.recursive-match" {
         \\     },
         \\     "additionalProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": {
         \\         "foo": false
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.root-pointer-ref.mismatch" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -3253,17 +3116,16 @@ test "ref.root-pointer-ref.mismatch" {
         \\     },
         \\     "additionalProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": false
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.root-pointer-ref.recursive-mismatch" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -3273,19 +3135,18 @@ test "ref.root-pointer-ref.recursive-mismatch" {
         \\     },
         \\     "additionalProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": {
         \\         "bar": false
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.relative-pointer-ref-to-object.match" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -3297,17 +3158,16 @@ test "ref.relative-pointer-ref-to-object.match" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": 3
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.relative-pointer-ref-to-object.mismatch" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -3319,17 +3179,16 @@ test "ref.relative-pointer-ref-to-object.mismatch" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": true
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.relative-pointer-ref-to-array.match-array" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -3341,18 +3200,17 @@ test "ref.relative-pointer-ref-to-array.match-array" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.relative-pointer-ref-to-array.mismatch-array" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -3364,18 +3222,17 @@ test "ref.relative-pointer-ref-to-array.mismatch-array" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     "foo"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.escaped-pointer-ref.slash-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -3401,17 +3258,16 @@ test "ref.escaped-pointer-ref.slash-invalid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "slash": "aoeu"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.escaped-pointer-ref.tilde-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -3437,17 +3293,16 @@ test "ref.escaped-pointer-ref.tilde-invalid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "tilde": "aoeu"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.escaped-pointer-ref.percent-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -3473,17 +3328,16 @@ test "ref.escaped-pointer-ref.percent-invalid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "percent": "aoeu"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.escaped-pointer-ref.slash-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -3509,17 +3363,16 @@ test "ref.escaped-pointer-ref.slash-valid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "slash": 123
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.escaped-pointer-ref.tilde-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -3545,17 +3398,16 @@ test "ref.escaped-pointer-ref.tilde-valid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "tilde": 123
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.escaped-pointer-ref.percent-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -3581,17 +3433,16 @@ test "ref.escaped-pointer-ref.percent-valid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "percent": 123
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.nested-refs.nested-ref-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -3607,15 +3458,14 @@ test "ref.nested-refs.nested-ref-valid" {
         \\     },
         \\     "$ref": "#/$defs/c"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 5
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.nested-refs.nested-ref-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -3631,15 +3481,14 @@ test "ref.nested-refs.nested-ref-invalid" {
         \\     },
         \\     "$ref": "#/$defs/c"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "a"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.ref-applies-alongside-sibling-keywords.ref-valid,-maxItems-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -3654,17 +3503,16 @@ test "ref.ref-applies-alongside-sibling-keywords.ref-valid,-maxItems-valid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": []
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.ref-applies-alongside-sibling-keywords.ref-valid,-maxItems-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -3679,9 +3527,7 @@ test "ref.ref-applies-alongside-sibling-keywords.ref-valid,-maxItems-invalid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": [
         \\         1,
@@ -3689,11 +3535,12 @@ test "ref.ref-applies-alongside-sibling-keywords.ref-valid,-maxItems-invalid" {
         \\         3
         \\     ]
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.ref-applies-alongside-sibling-keywords.ref-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -3708,47 +3555,44 @@ test "ref.ref-applies-alongside-sibling-keywords.ref-invalid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "string"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.remote-ref,-containing-refs-itself.remote-ref-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "https://json-schema.org/draft/2019-09/schema"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "minLength": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.remote-ref,-containing-refs-itself.remote-ref-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "https://json-schema.org/draft/2019-09/schema"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "minLength": -1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.property-named-$ref-that-is-not-a-reference.property-named-$ref-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -3757,17 +3601,16 @@ test "ref.property-named-$ref-that-is-not-a-reference.property-named-$ref-valid"
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "$ref": "a"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.property-named-$ref-that-is-not-a-reference.property-named-$ref-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -3776,17 +3619,16 @@ test "ref.property-named-$ref-that-is-not-a-reference.property-named-$ref-invali
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "$ref": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.property-named-$ref,-containing-an-actual-$ref.property-named-$ref-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -3800,17 +3642,16 @@ test "ref.property-named-$ref,-containing-an-actual-$ref.property-named-$ref-val
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "$ref": "a"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.property-named-$ref,-containing-an-actual-$ref.property-named-$ref-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -3824,17 +3665,16 @@ test "ref.property-named-$ref,-containing-an-actual-$ref.property-named-$ref-inv
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "$ref": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.$ref-to-boolean-schema-true.any-value-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "#/$defs/bool",
@@ -3842,15 +3682,14 @@ test "ref.$ref-to-boolean-schema-true.any-value-is-valid" {
         \\         "bool": true
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.$ref-to-boolean-schema-false.any-value-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "#/$defs/bool",
@@ -3858,15 +3697,14 @@ test "ref.$ref-to-boolean-schema-false.any-value-is-invalid" {
         \\         "bool": false
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.Recursive-references-between-schemas.valid-tree" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:1234/draft2019-09/tree",
@@ -3906,9 +3744,7 @@ test "ref.Recursive-references-between-schemas.valid-tree" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "meta": "root",
         \\     "nodes": [
@@ -3942,11 +3778,12 @@ test "ref.Recursive-references-between-schemas.valid-tree" {
         \\         }
         \\     ]
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.Recursive-references-between-schemas.invalid-tree" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:1234/draft2019-09/tree",
@@ -3986,9 +3823,7 @@ test "ref.Recursive-references-between-schemas.invalid-tree" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "meta": "root",
         \\     "nodes": [
@@ -4022,11 +3857,12 @@ test "ref.Recursive-references-between-schemas.invalid-tree" {
         \\         }
         \\     ]
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.refs-with-quote.object-with-numbers-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -4040,17 +3876,16 @@ test "ref.refs-with-quote.object-with-numbers-is-valid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo\"bar": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.refs-with-quote.object-with-strings-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -4064,17 +3899,16 @@ test "ref.refs-with-quote.object-with-strings-is-invalid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo\"bar": "1"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.ref-creates-new-scope-when-adjacent-to-keywords.referenced-subschema-doesn't-see-annotations-from-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -4089,17 +3923,16 @@ test "ref.ref-creates-new-scope-when-adjacent-to-keywords.referenced-subschema-d
         \\     },
         \\     "$ref": "#/$defs/A"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "prop1": "match"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.naive-replacement-of-$ref-with-its-destination-is-not-correct.do-not-evaluate-the-$ref-inside-the-enum,-matching-any-string" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -4113,15 +3946,14 @@ test "ref.naive-replacement-of-$ref-with-its-destination-is-not-correct.do-not-e
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "this is a string"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.naive-replacement-of-$ref-with-its-destination-is-not-correct.do-not-evaluate-the-$ref-inside-the-enum,-definition-exact-match" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -4135,17 +3967,16 @@ test "ref.naive-replacement-of-$ref-with-its-destination-is-not-correct.do-not-e
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "type": "string"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.naive-replacement-of-$ref-with-its-destination-is-not-correct.match-the-enum-exactly" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -4159,17 +3990,16 @@ test "ref.naive-replacement-of-$ref-with-its-destination-is-not-correct.match-th
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "$ref": "#/$defs/a_string"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.refs-with-relative-uris-and-defs.invalid-on-inner-field" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://example.com/schema-relative-uri-defs1.json",
@@ -4190,20 +4020,19 @@ test "ref.refs-with-relative-uris-and-defs.invalid-on-inner-field" {
         \\     },
         \\     "$ref": "schema-relative-uri-defs2.json"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": {
         \\         "bar": 1
         \\     },
         \\     "bar": "a"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.refs-with-relative-uris-and-defs.invalid-on-outer-field" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://example.com/schema-relative-uri-defs1.json",
@@ -4224,20 +4053,19 @@ test "ref.refs-with-relative-uris-and-defs.invalid-on-outer-field" {
         \\     },
         \\     "$ref": "schema-relative-uri-defs2.json"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": {
         \\         "bar": "a"
         \\     },
         \\     "bar": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.refs-with-relative-uris-and-defs.valid-on-both-fields" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://example.com/schema-relative-uri-defs1.json",
@@ -4258,20 +4086,19 @@ test "ref.refs-with-relative-uris-and-defs.valid-on-both-fields" {
         \\     },
         \\     "$ref": "schema-relative-uri-defs2.json"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": {
         \\         "bar": "a"
         \\     },
         \\     "bar": "a"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.relative-refs-with-absolute-uris-and-defs.invalid-on-inner-field" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://example.com/schema-refs-absolute-uris-defs1.json",
@@ -4292,20 +4119,19 @@ test "ref.relative-refs-with-absolute-uris-and-defs.invalid-on-inner-field" {
         \\     },
         \\     "$ref": "schema-refs-absolute-uris-defs2.json"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": {
         \\         "bar": 1
         \\     },
         \\     "bar": "a"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.relative-refs-with-absolute-uris-and-defs.invalid-on-outer-field" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://example.com/schema-refs-absolute-uris-defs1.json",
@@ -4326,20 +4152,19 @@ test "ref.relative-refs-with-absolute-uris-and-defs.invalid-on-outer-field" {
         \\     },
         \\     "$ref": "schema-refs-absolute-uris-defs2.json"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": {
         \\         "bar": "a"
         \\     },
         \\     "bar": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.relative-refs-with-absolute-uris-and-defs.valid-on-both-fields" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://example.com/schema-refs-absolute-uris-defs1.json",
@@ -4360,20 +4185,19 @@ test "ref.relative-refs-with-absolute-uris-and-defs.valid-on-both-fields" {
         \\     },
         \\     "$ref": "schema-refs-absolute-uris-defs2.json"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": {
         \\         "bar": "a"
         \\     },
         \\     "bar": "a"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.$id-must-be-resolved-against-nearest-parent,-not-just-immediate-parent.number-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://example.com/a.json",
@@ -4396,15 +4220,14 @@ test "ref.$id-must-be-resolved-against-nearest-parent,-not-just-immediate-parent
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.$id-must-be-resolved-against-nearest-parent,-not-just-immediate-parent.non-number-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://example.com/a.json",
@@ -4427,15 +4250,14 @@ test "ref.$id-must-be-resolved-against-nearest-parent,-not-just-immediate-parent
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "a"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.order-of-evaluation:-$id-and-$ref.data-is-valid-against-first-definition" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$comment": "$id must be evaluated before $ref to get the proper $ref destination",
@@ -4454,15 +4276,14 @@ test "ref.order-of-evaluation:-$id-and-$ref.data-is-valid-against-first-definiti
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 5
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.order-of-evaluation:-$id-and-$ref.data-is-invalid-against-first-definition" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$comment": "$id must be evaluated before $ref to get the proper $ref destination",
@@ -4481,15 +4302,14 @@ test "ref.order-of-evaluation:-$id-and-$ref.data-is-invalid-against-first-defini
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 50
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.order-of-evaluation:-$id-and-$anchor-and-$ref.data-is-valid-against-first-definition" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$comment": "$id must be evaluated before $ref to get the proper $ref destination",
@@ -4509,15 +4329,14 @@ test "ref.order-of-evaluation:-$id-and-$anchor-and-$ref.data-is-valid-against-fi
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 5
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.order-of-evaluation:-$id-and-$anchor-and-$ref.data-is-invalid-against-first-definition" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$comment": "$id must be evaluated before $ref to get the proper $ref destination",
@@ -4537,15 +4356,14 @@ test "ref.order-of-evaluation:-$id-and-$anchor-and-$ref.data-is-invalid-against-
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 50
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.simple-URN-base-URI-with-$ref-via-the-URN.valid-under-the-URN-IDed-schema" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$comment": "URIs do not have to have HTTP(s) schemes",
@@ -4557,17 +4375,16 @@ test "ref.simple-URN-base-URI-with-$ref-via-the-URN.valid-under-the-URN-IDed-sch
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 37
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.simple-URN-base-URI-with-$ref-via-the-URN.invalid-under-the-URN-IDed-schema" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$comment": "URIs do not have to have HTTP(s) schemes",
@@ -4579,17 +4396,16 @@ test "ref.simple-URN-base-URI-with-$ref-via-the-URN.invalid-under-the-URN-IDed-s
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 12
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.simple-URN-base-URI-with-JSON-pointer.a-string-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$comment": "URIs do not have to have HTTP(s) schemes",
@@ -4605,17 +4421,16 @@ test "ref.simple-URN-base-URI-with-JSON-pointer.a-string-is-valid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.simple-URN-base-URI-with-JSON-pointer.a-non-string-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$comment": "URIs do not have to have HTTP(s) schemes",
@@ -4631,17 +4446,16 @@ test "ref.simple-URN-base-URI-with-JSON-pointer.a-non-string-is-invalid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 12
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.URN-base-URI-with-NSS.a-string-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$comment": "RFC 8141 §2.2",
@@ -4657,17 +4471,16 @@ test "ref.URN-base-URI-with-NSS.a-string-is-valid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.URN-base-URI-with-NSS.a-non-string-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$comment": "RFC 8141 §2.2",
@@ -4683,17 +4496,16 @@ test "ref.URN-base-URI-with-NSS.a-non-string-is-invalid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 12
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.URN-base-URI-with-r-component.a-string-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$comment": "RFC 8141 §2.3.1",
@@ -4709,17 +4521,16 @@ test "ref.URN-base-URI-with-r-component.a-string-is-valid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.URN-base-URI-with-r-component.a-non-string-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$comment": "RFC 8141 §2.3.1",
@@ -4735,17 +4546,16 @@ test "ref.URN-base-URI-with-r-component.a-non-string-is-invalid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 12
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.URN-base-URI-with-q-component.a-string-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$comment": "RFC 8141 §2.3.2",
@@ -4761,17 +4571,16 @@ test "ref.URN-base-URI-with-q-component.a-string-is-valid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.URN-base-URI-with-q-component.a-non-string-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$comment": "RFC 8141 §2.3.2",
@@ -4787,17 +4596,16 @@ test "ref.URN-base-URI-with-q-component.a-non-string-is-invalid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 12
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.URN-base-URI-with-URN-and-JSON-pointer-ref.a-string-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "urn:uuid:deadbeef-1234-0000-0000-4321feebdaed",
@@ -4812,17 +4620,16 @@ test "ref.URN-base-URI-with-URN-and-JSON-pointer-ref.a-string-is-valid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.URN-base-URI-with-URN-and-JSON-pointer-ref.a-non-string-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "urn:uuid:deadbeef-1234-0000-0000-4321feebdaed",
@@ -4837,17 +4644,16 @@ test "ref.URN-base-URI-with-URN-and-JSON-pointer-ref.a-non-string-is-invalid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 12
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.URN-base-URI-with-URN-and-anchor-ref.a-string-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "urn:uuid:deadbeef-1234-ff00-00ff-4321feebdaed",
@@ -4863,17 +4669,16 @@ test "ref.URN-base-URI-with-URN-and-anchor-ref.a-string-is-valid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.URN-base-URI-with-URN-and-anchor-ref.a-non-string-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "urn:uuid:deadbeef-1234-ff00-00ff-4321feebdaed",
@@ -4889,17 +4694,16 @@ test "ref.URN-base-URI-with-URN-and-anchor-ref.a-non-string-is-invalid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 12
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.URN-ref-with-nested-pointer-ref.a-string-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "urn:uuid:deadbeef-4321-ffff-ffff-1234feebdaed",
@@ -4915,15 +4719,14 @@ test "ref.URN-ref-with-nested-pointer-ref.a-string-is-valid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "bar"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.URN-ref-with-nested-pointer-ref.a-non-string-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "urn:uuid:deadbeef-4321-ffff-ffff-1234feebdaed",
@@ -4939,15 +4742,14 @@ test "ref.URN-ref-with-nested-pointer-ref.a-non-string-is-invalid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.ref-to-if.a-non-integer-is-invalid-due-to-the-$ref" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "http://example.com/ref/if",
@@ -4956,15 +4758,14 @@ test "ref.ref-to-if.a-non-integer-is-invalid-due-to-the-$ref" {
         \\         "type": "integer"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.ref-to-if.an-integer-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "http://example.com/ref/if",
@@ -4973,15 +4774,14 @@ test "ref.ref-to-if.an-integer-is-valid" {
         \\         "type": "integer"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.ref-to-then.a-non-integer-is-invalid-due-to-the-$ref" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "http://example.com/ref/then",
@@ -4990,15 +4790,14 @@ test "ref.ref-to-then.a-non-integer-is-invalid-due-to-the-$ref" {
         \\         "type": "integer"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.ref-to-then.an-integer-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "http://example.com/ref/then",
@@ -5007,15 +4806,14 @@ test "ref.ref-to-then.an-integer-is-valid" {
         \\         "type": "integer"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.ref-to-else.a-non-integer-is-invalid-due-to-the-$ref" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "http://example.com/ref/else",
@@ -5024,15 +4822,14 @@ test "ref.ref-to-else.a-non-integer-is-invalid-due-to-the-$ref" {
         \\         "type": "integer"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.ref-to-else.an-integer-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "http://example.com/ref/else",
@@ -5041,15 +4838,14 @@ test "ref.ref-to-else.an-integer-is-valid" {
         \\         "type": "integer"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.ref-with-absolute-path-reference.a-string-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://example.com/ref/absref.json",
@@ -5065,15 +4861,14 @@ test "ref.ref-with-absolute-path-reference.a-string-is-valid" {
         \\     },
         \\     "$ref": "/absref/foobar.json"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.ref-with-absolute-path-reference.an-integer-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://example.com/ref/absref.json",
@@ -5089,15 +4884,14 @@ test "ref.ref-with-absolute-path-reference.an-integer-is-invalid" {
         \\     },
         \\     "$ref": "/absref/foobar.json"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.$id-with-file-URI-still-resolves-pointers---*nix.number-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "file:///folder/file.json",
@@ -5108,15 +4902,14 @@ test "ref.$id-with-file-URI-still-resolves-pointers---*nix.number-is-valid" {
         \\     },
         \\     "$ref": "#/$defs/foo"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.$id-with-file-URI-still-resolves-pointers---*nix.non-number-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "file:///folder/file.json",
@@ -5127,15 +4920,14 @@ test "ref.$id-with-file-URI-still-resolves-pointers---*nix.non-number-is-invalid
         \\     },
         \\     "$ref": "#/$defs/foo"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "a"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.$id-with-file-URI-still-resolves-pointers---windows.number-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "file:///c:/folder/file.json",
@@ -5146,15 +4938,14 @@ test "ref.$id-with-file-URI-still-resolves-pointers---windows.number-is-valid" {
         \\     },
         \\     "$ref": "#/$defs/foo"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.$id-with-file-URI-still-resolves-pointers---windows.non-number-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "file:///c:/folder/file.json",
@@ -5165,15 +4956,14 @@ test "ref.$id-with-file-URI-still-resolves-pointers---windows.non-number-is-inva
         \\     },
         \\     "$ref": "#/$defs/foo"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "a"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.empty-tokens-in-$ref-json-pointer.number-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -5191,15 +4981,14 @@ test "ref.empty-tokens-in-$ref-json-pointer.number-is-valid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.empty-tokens-in-$ref-json-pointer.non-number-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -5217,15 +5006,14 @@ test "ref.empty-tokens-in-$ref-json-pointer.non-number-is-invalid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "a"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "ref.$ref-with-$recursiveAnchor.extra-items-allowed-for-inner-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "https://example.com/schemas/unevaluated-items-are-disallowed",
@@ -5249,9 +5037,7 @@ test "ref.$ref-with-$recursiveAnchor.extra-items-allowed-for-inner-arrays" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     [
@@ -5260,11 +5046,12 @@ test "ref.$ref-with-$recursiveAnchor.extra-items-allowed-for-inner-arrays" {
         \\         8
         \\     ]
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "ref.$ref-with-$recursiveAnchor.extra-items-disallowed-for-root" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "https://example.com/schemas/unevaluated-items-are-disallowed",
@@ -5288,9 +5075,7 @@ test "ref.$ref-with-$recursiveAnchor.extra-items-disallowed-for-root" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     [
@@ -5300,246 +5085,233 @@ test "ref.$ref-with-$recursiveAnchor.extra-items-disallowed-for-root" {
         \\     ],
         \\     8
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "contains.contains-keyword-validation.array-with-item-matching-schema-(5)-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
         \\         "minimum": 5
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     3,
         \\     4,
         \\     5
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "contains.contains-keyword-validation.array-with-item-matching-schema-(6)-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
         \\         "minimum": 5
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     3,
         \\     4,
         \\     6
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "contains.contains-keyword-validation.array-with-two-items-matching-schema-(5,-6)-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
         \\         "minimum": 5
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     3,
         \\     4,
         \\     5,
         \\     6
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "contains.contains-keyword-validation.array-without-items-matching-schema-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
         \\         "minimum": 5
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     2,
         \\     3,
         \\     4
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "contains.contains-keyword-validation.empty-array-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
         \\         "minimum": 5
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "contains.contains-keyword-validation.not-array-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
         \\         "minimum": 5
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "contains.contains-keyword-with-const-keyword.array-with-item-5-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
         \\         "const": 5
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     3,
         \\     4,
         \\     5
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "contains.contains-keyword-with-const-keyword.array-with-two-items-5-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
         \\         "const": 5
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     3,
         \\     4,
         \\     5,
         \\     5
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "contains.contains-keyword-with-const-keyword.array-without-item-5-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
         \\         "const": 5
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2,
         \\     3,
         \\     4
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "contains.contains-keyword-with-boolean-schema-true.any-non-empty-array-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "contains.contains-keyword-with-boolean-schema-true.empty-array-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "contains.contains-keyword-with-boolean-schema-false.any-non-empty-array-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "contains.contains-keyword-with-boolean-schema-false.empty-array-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "contains.contains-keyword-with-boolean-schema-false.non-arrays-are-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ "contains does not apply to strings"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "contains.items-+-contains.matches-items,-does-not-match-contains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": {
@@ -5549,19 +5321,18 @@ test "contains.items-+-contains.matches-items,-does-not-match-contains" {
         \\         "multipleOf": 3
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     2,
         \\     4,
         \\     8
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "contains.items-+-contains.does-not-match-items,-matches-contains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": {
@@ -5571,19 +5342,18 @@ test "contains.items-+-contains.does-not-match-items,-matches-contains" {
         \\         "multipleOf": 3
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     3,
         \\     6,
         \\     9
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "contains.items-+-contains.matches-both-items-and-contains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": {
@@ -5593,18 +5363,17 @@ test "contains.items-+-contains.matches-both-items-and-contains" {
         \\         "multipleOf": 3
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     6,
         \\     12
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "contains.items-+-contains.matches-neither-items-nor-contains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": {
@@ -5614,18 +5383,17 @@ test "contains.items-+-contains.matches-neither-items-nor-contains" {
         \\         "multipleOf": 3
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     5
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "contains.contains-with-false-if-subschema.any-non-empty-array-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -5633,17 +5401,16 @@ test "contains.contains-with-false-if-subschema.any-non-empty-array-is-valid" {
         \\         "else": true
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "contains.contains-with-false-if-subschema.empty-array-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -5651,32 +5418,30 @@ test "contains.contains-with-false-if-subschema.empty-array-is-invalid" {
         \\         "else": true
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "contains.contains-with-null-instance-elements.allows-null-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
         \\         "type": "null"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     null
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "additionalProperties.additionalProperties-being-false-does-not-allow-other-properties.no-additional-properties-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -5688,17 +5453,16 @@ test "additionalProperties.additionalProperties-being-false-does-not-allow-other
         \\     },
         \\     "additionalProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "additionalProperties.additionalProperties-being-false-does-not-allow-other-properties.an-additional-property-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -5710,19 +5474,18 @@ test "additionalProperties.additionalProperties-being-false-does-not-allow-other
         \\     },
         \\     "additionalProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "bar": 2,
         \\     "quux": "boom"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "additionalProperties.additionalProperties-being-false-does-not-allow-other-properties.ignores-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -5734,19 +5497,18 @@ test "additionalProperties.additionalProperties-being-false-does-not-allow-other
         \\     },
         \\     "additionalProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2,
         \\     3
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "additionalProperties.additionalProperties-being-false-does-not-allow-other-properties.ignores-strings" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -5758,15 +5520,14 @@ test "additionalProperties.additionalProperties-being-false-does-not-allow-other
         \\     },
         \\     "additionalProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foobarbaz"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "additionalProperties.additionalProperties-being-false-does-not-allow-other-properties.ignores-other-non-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -5778,15 +5539,14 @@ test "additionalProperties.additionalProperties-being-false-does-not-allow-other
         \\     },
         \\     "additionalProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "additionalProperties.additionalProperties-being-false-does-not-allow-other-properties.patternProperties-are-not-additional-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -5798,18 +5558,17 @@ test "additionalProperties.additionalProperties-being-false-does-not-allow-other
         \\     },
         \\     "additionalProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "vroom": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "additionalProperties.non-ASCII-pattern-with-additionalProperties.matching-the-pattern-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "patternProperties": {
@@ -5817,17 +5576,16 @@ test "additionalProperties.non-ASCII-pattern-with-additionalProperties.matching-
         \\     },
         \\     "additionalProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "ármányos": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "additionalProperties.non-ASCII-pattern-with-additionalProperties.not-matching-the-pattern-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "patternProperties": {
@@ -5835,17 +5593,16 @@ test "additionalProperties.non-ASCII-pattern-with-additionalProperties.not-match
         \\     },
         \\     "additionalProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "élmény": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "additionalProperties.additionalProperties-with-schema.no-additional-properties-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -5856,17 +5613,16 @@ test "additionalProperties.additionalProperties-with-schema.no-additional-proper
         \\         "type": "boolean"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "additionalProperties.additionalProperties-with-schema.an-additional-valid-property-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -5877,19 +5633,18 @@ test "additionalProperties.additionalProperties-with-schema.an-additional-valid-
         \\         "type": "boolean"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "bar": 2,
         \\     "quux": true
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "additionalProperties.additionalProperties-with-schema.an-additional-invalid-property-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -5900,53 +5655,50 @@ test "additionalProperties.additionalProperties-with-schema.an-additional-invali
         \\         "type": "boolean"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "bar": 2,
         \\     "quux": 12
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "additionalProperties.additionalProperties-can-exist-by-itself.an-additional-valid-property-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "additionalProperties": {
         \\         "type": "boolean"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": true
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "additionalProperties.additionalProperties-can-exist-by-itself.an-additional-invalid-property-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "additionalProperties": {
         \\         "type": "boolean"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "additionalProperties.additionalProperties-are-allowed-by-default.additional-properties-are-allowed" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -5954,19 +5706,18 @@ test "additionalProperties.additionalProperties-are-allowed-by-default.additiona
         \\         "bar": {}
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "bar": 2,
         \\     "quux": true
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "additionalProperties.additionalProperties-does-not-look-in-applicators.properties-defined-in-allOf-are-not-examined" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -5980,35 +5731,33 @@ test "additionalProperties.additionalProperties-does-not-look-in-applicators.pro
         \\         "type": "boolean"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "bar": true
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "additionalProperties.additionalProperties-with-null-valued-instance-properties.allows-null-values" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "additionalProperties": {
         \\         "type": "null"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": null
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "additionalProperties.additionalProperties-with-propertyNames.Valid-against-both-keywords" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "propertyNames": {
@@ -6018,17 +5767,16 @@ test "additionalProperties.additionalProperties-with-propertyNames.Valid-against
         \\         "type": "number"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "apple": 4
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "additionalProperties.additionalProperties-with-propertyNames.Valid-against-propertyNames,-but-not-additionalProperties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "propertyNames": {
@@ -6038,18 +5786,17 @@ test "additionalProperties.additionalProperties-with-propertyNames.Valid-against
         \\         "type": "number"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "fig": 2,
         \\     "pear": "available"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "additionalProperties.dependentSchemas-with-additionalProperties.additionalProperties-doesn't-consider-dependentSchemas" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -6065,17 +5812,16 @@ test "additionalProperties.dependentSchemas-with-additionalProperties.additional
         \\     },
         \\     "additionalProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": ""
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "additionalProperties.dependentSchemas-with-additionalProperties.additionalProperties-can't-see-bar" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -6091,17 +5837,16 @@ test "additionalProperties.dependentSchemas-with-additionalProperties.additional
         \\     },
         \\     "additionalProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": ""
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "additionalProperties.dependentSchemas-with-additionalProperties.additionalProperties-can't-see-bar-even-when-foo2-is-present" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -6117,1530 +5862,1413 @@ test "additionalProperties.dependentSchemas-with-additionalProperties.additional
         \\     },
         \\     "additionalProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo2": "",
         \\     "bar": ""
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "format.email-format.all-string-formats-ignore-integers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "email"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.email-format.all-string-formats-ignore-floats" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "email"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 13.7
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.email-format.all-string-formats-ignore-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "email"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.email-format.all-string-formats-ignore-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "email"
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.email-format.all-string-formats-ignore-booleans" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "email"
         \\ }
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.email-format.all-string-formats-ignore-nulls" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "email"
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.idn-email-format.all-string-formats-ignore-integers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "idn-email"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.idn-email-format.all-string-formats-ignore-floats" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "idn-email"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 13.7
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.idn-email-format.all-string-formats-ignore-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "idn-email"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.idn-email-format.all-string-formats-ignore-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "idn-email"
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.idn-email-format.all-string-formats-ignore-booleans" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "idn-email"
         \\ }
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.idn-email-format.all-string-formats-ignore-nulls" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "idn-email"
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.regex-format.all-string-formats-ignore-integers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "regex"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.regex-format.all-string-formats-ignore-floats" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "regex"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 13.7
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.regex-format.all-string-formats-ignore-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "regex"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.regex-format.all-string-formats-ignore-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "regex"
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.regex-format.all-string-formats-ignore-booleans" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "regex"
         \\ }
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.regex-format.all-string-formats-ignore-nulls" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "regex"
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.ipv4-format.all-string-formats-ignore-integers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "ipv4"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.ipv4-format.all-string-formats-ignore-floats" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "ipv4"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 13.7
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.ipv4-format.all-string-formats-ignore-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "ipv4"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.ipv4-format.all-string-formats-ignore-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "ipv4"
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.ipv4-format.all-string-formats-ignore-booleans" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "ipv4"
         \\ }
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.ipv4-format.all-string-formats-ignore-nulls" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "ipv4"
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.ipv6-format.all-string-formats-ignore-integers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "ipv6"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.ipv6-format.all-string-formats-ignore-floats" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "ipv6"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 13.7
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.ipv6-format.all-string-formats-ignore-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "ipv6"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.ipv6-format.all-string-formats-ignore-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "ipv6"
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.ipv6-format.all-string-formats-ignore-booleans" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "ipv6"
         \\ }
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.ipv6-format.all-string-formats-ignore-nulls" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "ipv6"
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.idn-hostname-format.all-string-formats-ignore-integers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "idn-hostname"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.idn-hostname-format.all-string-formats-ignore-floats" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "idn-hostname"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 13.7
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.idn-hostname-format.all-string-formats-ignore-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "idn-hostname"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.idn-hostname-format.all-string-formats-ignore-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "idn-hostname"
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.idn-hostname-format.all-string-formats-ignore-booleans" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "idn-hostname"
         \\ }
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.idn-hostname-format.all-string-formats-ignore-nulls" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "idn-hostname"
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.hostname-format.all-string-formats-ignore-integers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "hostname"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.hostname-format.all-string-formats-ignore-floats" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "hostname"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 13.7
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.hostname-format.all-string-formats-ignore-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "hostname"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.hostname-format.all-string-formats-ignore-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "hostname"
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.hostname-format.all-string-formats-ignore-booleans" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "hostname"
         \\ }
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.hostname-format.all-string-formats-ignore-nulls" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "hostname"
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.date-format.all-string-formats-ignore-integers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "date"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.date-format.all-string-formats-ignore-floats" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "date"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 13.7
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.date-format.all-string-formats-ignore-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "date"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.date-format.all-string-formats-ignore-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "date"
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.date-format.all-string-formats-ignore-booleans" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "date"
         \\ }
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.date-format.all-string-formats-ignore-nulls" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "date"
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.date-time-format.all-string-formats-ignore-integers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "date-time"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.date-time-format.all-string-formats-ignore-floats" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "date-time"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 13.7
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.date-time-format.all-string-formats-ignore-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "date-time"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.date-time-format.all-string-formats-ignore-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "date-time"
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.date-time-format.all-string-formats-ignore-booleans" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "date-time"
         \\ }
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.date-time-format.all-string-formats-ignore-nulls" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "date-time"
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.time-format.all-string-formats-ignore-integers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "time"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.time-format.all-string-formats-ignore-floats" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "time"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 13.7
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.time-format.all-string-formats-ignore-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "time"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.time-format.all-string-formats-ignore-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "time"
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.time-format.all-string-formats-ignore-booleans" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "time"
         \\ }
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.time-format.all-string-formats-ignore-nulls" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "time"
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.json-pointer-format.all-string-formats-ignore-integers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "json-pointer"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.json-pointer-format.all-string-formats-ignore-floats" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "json-pointer"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 13.7
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.json-pointer-format.all-string-formats-ignore-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "json-pointer"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.json-pointer-format.all-string-formats-ignore-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "json-pointer"
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.json-pointer-format.all-string-formats-ignore-booleans" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "json-pointer"
         \\ }
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.json-pointer-format.all-string-formats-ignore-nulls" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "json-pointer"
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.relative-json-pointer-format.all-string-formats-ignore-integers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "relative-json-pointer"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.relative-json-pointer-format.all-string-formats-ignore-floats" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "relative-json-pointer"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 13.7
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.relative-json-pointer-format.all-string-formats-ignore-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "relative-json-pointer"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.relative-json-pointer-format.all-string-formats-ignore-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "relative-json-pointer"
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.relative-json-pointer-format.all-string-formats-ignore-booleans" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "relative-json-pointer"
         \\ }
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.relative-json-pointer-format.all-string-formats-ignore-nulls" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "relative-json-pointer"
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.iri-format.all-string-formats-ignore-integers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "iri"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.iri-format.all-string-formats-ignore-floats" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "iri"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 13.7
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.iri-format.all-string-formats-ignore-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "iri"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.iri-format.all-string-formats-ignore-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "iri"
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.iri-format.all-string-formats-ignore-booleans" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "iri"
         \\ }
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.iri-format.all-string-formats-ignore-nulls" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "iri"
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.iri-reference-format.all-string-formats-ignore-integers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "iri-reference"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.iri-reference-format.all-string-formats-ignore-floats" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "iri-reference"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 13.7
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.iri-reference-format.all-string-formats-ignore-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "iri-reference"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.iri-reference-format.all-string-formats-ignore-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "iri-reference"
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.iri-reference-format.all-string-formats-ignore-booleans" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "iri-reference"
         \\ }
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.iri-reference-format.all-string-formats-ignore-nulls" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "iri-reference"
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.uri-format.all-string-formats-ignore-integers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "uri"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.uri-format.all-string-formats-ignore-floats" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "uri"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 13.7
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.uri-format.all-string-formats-ignore-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "uri"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.uri-format.all-string-formats-ignore-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "uri"
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.uri-format.all-string-formats-ignore-booleans" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "uri"
         \\ }
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.uri-format.all-string-formats-ignore-nulls" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "uri"
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.uri-reference-format.all-string-formats-ignore-integers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "uri-reference"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.uri-reference-format.all-string-formats-ignore-floats" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "uri-reference"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 13.7
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.uri-reference-format.all-string-formats-ignore-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "uri-reference"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.uri-reference-format.all-string-formats-ignore-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "uri-reference"
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.uri-reference-format.all-string-formats-ignore-booleans" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "uri-reference"
         \\ }
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.uri-reference-format.all-string-formats-ignore-nulls" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "uri-reference"
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.uri-template-format.all-string-formats-ignore-integers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "uri-template"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.uri-template-format.all-string-formats-ignore-floats" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "uri-template"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 13.7
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.uri-template-format.all-string-formats-ignore-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "uri-template"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.uri-template-format.all-string-formats-ignore-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "uri-template"
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.uri-template-format.all-string-formats-ignore-booleans" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "uri-template"
         \\ }
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.uri-template-format.all-string-formats-ignore-nulls" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "uri-template"
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.uuid-format.all-string-formats-ignore-integers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "uuid"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.uuid-format.all-string-formats-ignore-floats" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "uuid"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 13.7
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.uuid-format.all-string-formats-ignore-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "uuid"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.uuid-format.all-string-formats-ignore-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "uuid"
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.uuid-format.all-string-formats-ignore-booleans" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "uuid"
         \\ }
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.uuid-format.all-string-formats-ignore-nulls" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "uuid"
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.duration-format.all-string-formats-ignore-integers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "duration"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.duration-format.all-string-formats-ignore-floats" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "duration"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 13.7
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.duration-format.all-string-formats-ignore-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "duration"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.duration-format.all-string-formats-ignore-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "duration"
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.duration-format.all-string-formats-ignore-booleans" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "duration"
         \\ }
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "format.duration-format.all-string-formats-ignore-nulls" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "format": "duration"
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "not.not.allowed" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": {
         \\         "type": "integer"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "not.not.disallowed" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": {
         \\         "type": "integer"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "not.not-multiple-types.valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": {
@@ -7650,15 +7278,14 @@ test "not.not-multiple-types.valid" {
         \\         ]
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "not.not-multiple-types.mismatch" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": {
@@ -7668,15 +7295,14 @@ test "not.not-multiple-types.mismatch" {
         \\         ]
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "not.not-multiple-types.other-mismatch" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": {
@@ -7686,15 +7312,14 @@ test "not.not-multiple-types.other-mismatch" {
         \\         ]
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ true
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "not.not-more-complex-schema.match" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": {
@@ -7706,15 +7331,14 @@ test "not.not-more-complex-schema.match" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "not.not-more-complex-schema.other-match" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": {
@@ -7726,17 +7350,16 @@ test "not.not-more-complex-schema.other-match" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "not.not-more-complex-schema.mismatch" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": {
@@ -7748,17 +7371,16 @@ test "not.not-more-complex-schema.mismatch" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "not.forbidden-property.property-present" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -7767,18 +7389,17 @@ test "not.forbidden-property.property-present" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "not.forbidden-property.property-absent" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -7787,396 +7408,367 @@ test "not.forbidden-property.property-absent" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": 1,
         \\     "baz": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "not.forbid-everything-with-empty-schema.number-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": {}
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "not.forbid-everything-with-empty-schema.string-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": {}
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "not.forbid-everything-with-empty-schema.boolean-true-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": {}
         \\ }
-    );
-
-    const case =
+    ,
         \\ true
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "not.forbid-everything-with-empty-schema.boolean-false-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": {}
         \\ }
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "not.forbid-everything-with-empty-schema.null-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": {}
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "not.forbid-everything-with-empty-schema.object-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": {}
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "not.forbid-everything-with-empty-schema.empty-object-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": {}
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "not.forbid-everything-with-empty-schema.array-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": {}
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "not.forbid-everything-with-empty-schema.empty-array-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": {}
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "not.forbid-everything-with-boolean-schema-true.number-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "not.forbid-everything-with-boolean-schema-true.string-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "not.forbid-everything-with-boolean-schema-true.boolean-true-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ true
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "not.forbid-everything-with-boolean-schema-true.boolean-false-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "not.forbid-everything-with-boolean-schema-true.null-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "not.forbid-everything-with-boolean-schema-true.object-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "not.forbid-everything-with-boolean-schema-true.empty-object-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "not.forbid-everything-with-boolean-schema-true.array-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "not.forbid-everything-with-boolean-schema-true.empty-array-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "not.allow-everything-with-boolean-schema-false.number-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "not.allow-everything-with-boolean-schema-false.string-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "not.allow-everything-with-boolean-schema-false.boolean-true-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ true
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "not.allow-everything-with-boolean-schema-false.boolean-false-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "not.allow-everything-with-boolean-schema-false.null-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "not.allow-everything-with-boolean-schema-false.object-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "not.allow-everything-with-boolean-schema-false.empty-object-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "not.allow-everything-with-boolean-schema-false.array-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "not.allow-everything-with-boolean-schema-false.empty-array-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "not.double-negation.any-value-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": {
         \\         "not": {}
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "not.collect-annotations-inside-a-'not',-even-if-collection-is-disabled.unevaluated-property" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": {
@@ -8192,17 +7784,16 @@ test "not.collect-annotations-inside-a-'not',-even-if-collection-is-disabled.une
         \\         "unevaluatedProperties": false
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "not.collect-annotations-inside-a-'not',-even-if-collection-is-disabled.annotations-are-still-collected-inside-a-'not'" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "not": {
@@ -8218,298 +7809,276 @@ test "not.collect-annotations-inside-a-'not',-even-if-collection-is-disabled.ann
         \\         "unevaluatedProperties": false
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "maximum.maximum-validation.below-the-maximum-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maximum": 3
         \\ }
-    );
-
-    const case =
+    ,
         \\ 2.6
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maximum.maximum-validation.boundary-point-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maximum": 3
         \\ }
-    );
-
-    const case =
+    ,
         \\ 3
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maximum.maximum-validation.above-the-maximum-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maximum": 3
         \\ }
-    );
-
-    const case =
+    ,
         \\ 3.5
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "maximum.maximum-validation.ignores-non-numbers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maximum": 3
         \\ }
-    );
-
-    const case =
+    ,
         \\ "x"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maximum.maximum-validation-with-unsigned-integer.below-the-maximum-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maximum": 300
         \\ }
-    );
-
-    const case =
+    ,
         \\ 299.97
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maximum.maximum-validation-with-unsigned-integer.boundary-point-integer-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maximum": 300
         \\ }
-    );
-
-    const case =
+    ,
         \\ 300
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maximum.maximum-validation-with-unsigned-integer.boundary-point-float-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maximum": 300
         \\ }
-    );
-
-    const case =
+    ,
         \\ 300
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maximum.maximum-validation-with-unsigned-integer.above-the-maximum-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maximum": 300
         \\ }
-    );
-
-    const case =
+    ,
         \\ 300.5
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "minItems.minItems-validation.longer-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minItems": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minItems.minItems-validation.exact-length-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minItems": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minItems.minItems-validation.too-short-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minItems": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "minItems.minItems-validation.ignores-non-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minItems": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ ""
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minItems.minItems-validation-with-a-decimal.longer-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minItems": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minItems.minItems-validation-with-a-decimal.too-short-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minItems": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "minLength.minLength-validation.longer-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minLength": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minLength.minLength-validation.exact-length-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minLength": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ "fo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minLength.minLength-validation.too-short-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minLength": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ "f"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "minLength.minLength-validation.ignores-non-strings" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minLength": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minLength.minLength-validation.one-grapheme-is-not-long-enough" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minLength": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ "💩"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "minLength.minLength-validation-with-a-decimal.longer-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minLength": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minLength.minLength-validation-with-a-decimal.too-short-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minLength": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ "f"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "patternProperties.patternProperties-validates-properties-matching-a-regex.a-single-valid-match-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "patternProperties": {
@@ -8518,17 +8087,16 @@ test "patternProperties.patternProperties-validates-properties-matching-a-regex.
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "patternProperties.patternProperties-validates-properties-matching-a-regex.multiple-valid-matches-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "patternProperties": {
@@ -8537,18 +8105,17 @@ test "patternProperties.patternProperties-validates-properties-matching-a-regex.
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "foooooo": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "patternProperties.patternProperties-validates-properties-matching-a-regex.a-single-invalid-match-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "patternProperties": {
@@ -8557,18 +8124,17 @@ test "patternProperties.patternProperties-validates-properties-matching-a-regex.
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "bar",
         \\     "fooooo": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "patternProperties.patternProperties-validates-properties-matching-a-regex.multiple-invalid-matches-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "patternProperties": {
@@ -8577,18 +8143,17 @@ test "patternProperties.patternProperties-validates-properties-matching-a-regex.
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "bar",
         \\     "foooooo": "baz"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "patternProperties.patternProperties-validates-properties-matching-a-regex.ignores-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "patternProperties": {
@@ -8597,17 +8162,16 @@ test "patternProperties.patternProperties-validates-properties-matching-a-regex.
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "patternProperties.patternProperties-validates-properties-matching-a-regex.ignores-strings" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "patternProperties": {
@@ -8616,15 +8180,14 @@ test "patternProperties.patternProperties-validates-properties-matching-a-regex.
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "patternProperties.patternProperties-validates-properties-matching-a-regex.ignores-other-non-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "patternProperties": {
@@ -8633,15 +8196,14 @@ test "patternProperties.patternProperties-validates-properties-matching-a-regex.
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "patternProperties.multiple-simultaneous-patternProperties-are-validated.a-single-valid-match-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "patternProperties": {
@@ -8653,17 +8215,16 @@ test "patternProperties.multiple-simultaneous-patternProperties-are-validated.a-
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "a": 21
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "patternProperties.multiple-simultaneous-patternProperties-are-validated.a-simultaneous-match-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "patternProperties": {
@@ -8675,17 +8236,16 @@ test "patternProperties.multiple-simultaneous-patternProperties-are-validated.a-
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "aaaa": 18
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "patternProperties.multiple-simultaneous-patternProperties-are-validated.multiple-matches-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "patternProperties": {
@@ -8697,18 +8257,17 @@ test "patternProperties.multiple-simultaneous-patternProperties-are-validated.mu
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "a": 21,
         \\     "aaaa": 18
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "patternProperties.multiple-simultaneous-patternProperties-are-validated.an-invalid-due-to-one-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "patternProperties": {
@@ -8720,17 +8279,16 @@ test "patternProperties.multiple-simultaneous-patternProperties-are-validated.an
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "a": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "patternProperties.multiple-simultaneous-patternProperties-are-validated.an-invalid-due-to-the-other-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "patternProperties": {
@@ -8742,17 +8300,16 @@ test "patternProperties.multiple-simultaneous-patternProperties-are-validated.an
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "aaaa": 31
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "patternProperties.multiple-simultaneous-patternProperties-are-validated.an-invalid-due-to-both-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "patternProperties": {
@@ -8764,18 +8321,17 @@ test "patternProperties.multiple-simultaneous-patternProperties-are-validated.an
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "aaa": "foo",
         \\     "aaaa": 31
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "patternProperties.regexes-are-not-anchored-by-default-and-are-case-sensitive.non-recognized-members-are-ignored" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "patternProperties": {
@@ -8787,17 +8343,16 @@ test "patternProperties.regexes-are-not-anchored-by-default-and-are-case-sensiti
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "answer 1": "42"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "patternProperties.regexes-are-not-anchored-by-default-and-are-case-sensitive.recognized-members-are-accounted-for" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "patternProperties": {
@@ -8809,17 +8364,16 @@ test "patternProperties.regexes-are-not-anchored-by-default-and-are-case-sensiti
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "a31b": null
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "patternProperties.regexes-are-not-anchored-by-default-and-are-case-sensitive.regexes-are-case-sensitive" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "patternProperties": {
@@ -8831,17 +8385,16 @@ test "patternProperties.regexes-are-not-anchored-by-default-and-are-case-sensiti
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "a_x_3": 3
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "patternProperties.regexes-are-not-anchored-by-default-and-are-case-sensitive.regexes-are-case-sensitive,-2" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "patternProperties": {
@@ -8853,17 +8406,16 @@ test "patternProperties.regexes-are-not-anchored-by-default-and-are-case-sensiti
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "a_X_3": 3
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "patternProperties.patternProperties-with-boolean-schemas.object-with-property-matching-schema-true-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "patternProperties": {
@@ -8871,17 +8423,16 @@ test "patternProperties.patternProperties-with-boolean-schemas.object-with-prope
         \\         "b.*": false
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "patternProperties.patternProperties-with-boolean-schemas.object-with-property-matching-schema-false-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "patternProperties": {
@@ -8889,17 +8440,16 @@ test "patternProperties.patternProperties-with-boolean-schemas.object-with-prope
         \\         "b.*": false
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "patternProperties.patternProperties-with-boolean-schemas.object-with-both-properties-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "patternProperties": {
@@ -8907,18 +8457,17 @@ test "patternProperties.patternProperties-with-boolean-schemas.object-with-both-
         \\         "b.*": false
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "patternProperties.patternProperties-with-boolean-schemas.object-with-a-property-matching-both-true-and-false-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "patternProperties": {
@@ -8926,17 +8475,16 @@ test "patternProperties.patternProperties-with-boolean-schemas.object-with-a-pro
         \\         "b.*": false
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foobar": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "patternProperties.patternProperties-with-boolean-schemas.empty-object-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "patternProperties": {
@@ -8944,15 +8492,14 @@ test "patternProperties.patternProperties-with-boolean-schemas.empty-object-is-v
         \\         "b.*": false
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "patternProperties.patternProperties-with-null-valued-instance-properties.allows-null-values" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "patternProperties": {
@@ -8961,17 +8508,16 @@ test "patternProperties.patternProperties-with-null-valued-instance-properties.a
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foobar": null
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "dependentSchemas.single-dependency.valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentSchemas": {
@@ -8987,18 +8533,17 @@ test "dependentSchemas.single-dependency.valid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "dependentSchemas.single-dependency.no-dependency" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentSchemas": {
@@ -9014,17 +8559,16 @@ test "dependentSchemas.single-dependency.no-dependency" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "quux"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "dependentSchemas.single-dependency.wrong-type" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentSchemas": {
@@ -9040,18 +8584,17 @@ test "dependentSchemas.single-dependency.wrong-type" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "quux",
         \\     "bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "dependentSchemas.single-dependency.wrong-type-other" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentSchemas": {
@@ -9067,18 +8610,17 @@ test "dependentSchemas.single-dependency.wrong-type-other" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 2,
         \\     "bar": "quux"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "dependentSchemas.single-dependency.wrong-type-both" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentSchemas": {
@@ -9094,18 +8636,17 @@ test "dependentSchemas.single-dependency.wrong-type-both" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "quux",
         \\     "bar": "quux"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "dependentSchemas.single-dependency.ignores-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentSchemas": {
@@ -9121,17 +8662,16 @@ test "dependentSchemas.single-dependency.ignores-arrays" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "bar"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "dependentSchemas.single-dependency.ignores-strings" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentSchemas": {
@@ -9147,15 +8687,14 @@ test "dependentSchemas.single-dependency.ignores-strings" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foobar"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "dependentSchemas.single-dependency.ignores-other-non-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentSchemas": {
@@ -9171,15 +8710,14 @@ test "dependentSchemas.single-dependency.ignores-other-non-objects" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "dependentSchemas.boolean-subschemas.object-with-property-having-schema-true-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentSchemas": {
@@ -9187,17 +8725,16 @@ test "dependentSchemas.boolean-subschemas.object-with-property-having-schema-tru
         \\         "bar": false
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "dependentSchemas.boolean-subschemas.object-with-property-having-schema-false-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentSchemas": {
@@ -9205,17 +8742,16 @@ test "dependentSchemas.boolean-subschemas.object-with-property-having-schema-fal
         \\         "bar": false
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "dependentSchemas.boolean-subschemas.object-with-both-properties-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentSchemas": {
@@ -9223,18 +8759,17 @@ test "dependentSchemas.boolean-subschemas.object-with-both-properties-is-invalid
         \\         "bar": false
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "dependentSchemas.boolean-subschemas.empty-object-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentSchemas": {
@@ -9242,15 +8777,14 @@ test "dependentSchemas.boolean-subschemas.empty-object-is-valid" {
         \\         "bar": false
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "dependentSchemas.dependencies-with-escaped-characters.quoted-tab" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentSchemas": {
@@ -9264,20 +8798,19 @@ test "dependentSchemas.dependencies-with-escaped-characters.quoted-tab" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo\tbar": 1,
         \\     "a": 2,
         \\     "b": 3,
         \\     "c": 4
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "dependentSchemas.dependencies-with-escaped-characters.quoted-quote" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentSchemas": {
@@ -9291,19 +8824,18 @@ test "dependentSchemas.dependencies-with-escaped-characters.quoted-quote" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo'bar": {
         \\         "foo\"bar": 1
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "dependentSchemas.dependencies-with-escaped-characters.quoted-tab-invalid-under-dependent-schema" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentSchemas": {
@@ -9317,18 +8849,17 @@ test "dependentSchemas.dependencies-with-escaped-characters.quoted-tab-invalid-u
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo\tbar": 1,
         \\     "a": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "dependentSchemas.dependencies-with-escaped-characters.quoted-quote-invalid-under-dependent-schema" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "dependentSchemas": {
@@ -9342,17 +8873,16 @@ test "dependentSchemas.dependencies-with-escaped-characters.quoted-quote-invalid
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo'bar": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "dependentSchemas.dependent-subschema-incompatible-with-root.matches-root" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -9367,17 +8897,16 @@ test "dependentSchemas.dependent-subschema-incompatible-with-root.matches-root" 
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "dependentSchemas.dependent-subschema-incompatible-with-root.matches-dependency" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -9392,17 +8921,16 @@ test "dependentSchemas.dependent-subschema-incompatible-with-root.matches-depend
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "dependentSchemas.dependent-subschema-incompatible-with-root.matches-both" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -9417,18 +8945,17 @@ test "dependentSchemas.dependent-subschema-incompatible-with-root.matches-both" 
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "dependentSchemas.dependent-subschema-incompatible-with-root.no-dependency" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -9443,1141 +8970,1050 @@ test "dependentSchemas.dependent-subschema-incompatible-with-root.no-dependency"
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "baz": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "boolean_schema.boolean-schema-'true'.number-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ true
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "boolean_schema.boolean-schema-'true'.string-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ true
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "boolean_schema.boolean-schema-'true'.boolean-true-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ true
+    ,
+        \\ true
+    ,
+        true,
     );
-
-    const case =
-        \\ true
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
 }
 test "boolean_schema.boolean-schema-'true'.boolean-false-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ true
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "boolean_schema.boolean-schema-'true'.null-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ true
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "boolean_schema.boolean-schema-'true'.object-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ true
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "boolean_schema.boolean-schema-'true'.empty-object-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ true
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "boolean_schema.boolean-schema-'true'.array-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ true
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "boolean_schema.boolean-schema-'true'.empty-array-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ true
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "boolean_schema.boolean-schema-'false'.number-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ false
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "boolean_schema.boolean-schema-'false'.string-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ false
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "boolean_schema.boolean-schema-'false'.boolean-true-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ false
-    );
-
-    const case =
+    ,
         \\ true
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "boolean_schema.boolean-schema-'false'.boolean-false-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ false
+    ,
+        \\ false
+    ,
+        false,
     );
-
-    const case =
-        \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
 }
 test "boolean_schema.boolean-schema-'false'.null-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ false
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "boolean_schema.boolean-schema-'false'.object-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ false
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "boolean_schema.boolean-schema-'false'.empty-object-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ false
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "boolean_schema.boolean-schema-'false'.array-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ false
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "boolean_schema.boolean-schema-'false'.empty-array-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ false
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "minimum.minimum-validation.above-the-minimum-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minimum": 1.1
         \\ }
-    );
-
-    const case =
+    ,
         \\ 2.6
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minimum.minimum-validation.boundary-point-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minimum": 1.1
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1.1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minimum.minimum-validation.below-the-minimum-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minimum": 1.1
         \\ }
-    );
-
-    const case =
+    ,
         \\ 0.6
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "minimum.minimum-validation.ignores-non-numbers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minimum": 1.1
         \\ }
-    );
-
-    const case =
+    ,
         \\ "x"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minimum.minimum-validation-with-signed-integer.negative-above-the-minimum-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minimum": -2
         \\ }
-    );
-
-    const case =
+    ,
         \\ -1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minimum.minimum-validation-with-signed-integer.positive-above-the-minimum-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minimum": -2
         \\ }
-    );
-
-    const case =
+    ,
         \\ 0
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minimum.minimum-validation-with-signed-integer.boundary-point-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minimum": -2
         \\ }
-    );
-
-    const case =
+    ,
         \\ -2
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minimum.minimum-validation-with-signed-integer.boundary-point-with-float-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minimum": -2
         \\ }
-    );
-
-    const case =
+    ,
         \\ -2
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minimum.minimum-validation-with-signed-integer.float-below-the-minimum-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minimum": -2
         \\ }
-    );
-
-    const case =
+    ,
         \\ -2.0001
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "minimum.minimum-validation-with-signed-integer.int-below-the-minimum-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minimum": -2
         \\ }
-    );
-
-    const case =
+    ,
         \\ -3
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "minimum.minimum-validation-with-signed-integer.ignores-non-numbers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minimum": -2
         \\ }
-    );
-
-    const case =
+    ,
         \\ "x"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "type.integer-type-matches-integers.an-integer-is-an-integer" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "integer"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "type.integer-type-matches-integers.a-float-with-zero-fractional-part-is-an-integer" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "integer"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "type.integer-type-matches-integers.a-float-is-not-an-integer" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "integer"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1.1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.integer-type-matches-integers.a-string-is-not-an-integer" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "integer"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.integer-type-matches-integers.a-string-is-still-not-an-integer,-even-if-it-looks-like-one" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "integer"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "1"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.integer-type-matches-integers.an-object-is-not-an-integer" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "integer"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.integer-type-matches-integers.an-array-is-not-an-integer" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "integer"
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.integer-type-matches-integers.a-boolean-is-not-an-integer" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "integer"
         \\ }
-    );
-
-    const case =
+    ,
         \\ true
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.integer-type-matches-integers.null-is-not-an-integer" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "integer"
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.number-type-matches-numbers.an-integer-is-a-number" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "number"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "type.number-type-matches-numbers.a-float-with-zero-fractional-part-is-a-number-(and-an-integer)" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "number"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "type.number-type-matches-numbers.a-float-is-a-number" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "number"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1.1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "type.number-type-matches-numbers.a-string-is-not-a-number" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "number"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.number-type-matches-numbers.a-string-is-still-not-a-number,-even-if-it-looks-like-one" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "number"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "1"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.number-type-matches-numbers.an-object-is-not-a-number" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "number"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.number-type-matches-numbers.an-array-is-not-a-number" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "number"
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.number-type-matches-numbers.a-boolean-is-not-a-number" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "number"
         \\ }
-    );
-
-    const case =
+    ,
         \\ true
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.number-type-matches-numbers.null-is-not-a-number" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "number"
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.string-type-matches-strings.1-is-not-a-string" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "string"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.string-type-matches-strings.a-float-is-not-a-string" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "string"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1.1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.string-type-matches-strings.a-string-is-a-string" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "string"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "type.string-type-matches-strings.a-string-is-still-a-string,-even-if-it-looks-like-a-number" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "string"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "1"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "type.string-type-matches-strings.an-empty-string-is-still-a-string" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "string"
         \\ }
-    );
-
-    const case =
+    ,
         \\ ""
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "type.string-type-matches-strings.an-object-is-not-a-string" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "string"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.string-type-matches-strings.an-array-is-not-a-string" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "string"
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.string-type-matches-strings.a-boolean-is-not-a-string" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "string"
         \\ }
-    );
-
-    const case =
+    ,
         \\ true
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.string-type-matches-strings.null-is-not-a-string" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "string"
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.object-type-matches-objects.an-integer-is-not-an-object" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.object-type-matches-objects.a-float-is-not-an-object" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1.1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.object-type-matches-objects.a-string-is-not-an-object" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.object-type-matches-objects.an-object-is-an-object" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "type.object-type-matches-objects.an-array-is-not-an-object" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object"
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.object-type-matches-objects.a-boolean-is-not-an-object" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object"
         \\ }
-    );
-
-    const case =
+    ,
         \\ true
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.object-type-matches-objects.null-is-not-an-object" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object"
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.array-type-matches-arrays.an-integer-is-not-an-array" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "array"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.array-type-matches-arrays.a-float-is-not-an-array" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "array"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1.1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.array-type-matches-arrays.a-string-is-not-an-array" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "array"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.array-type-matches-arrays.an-object-is-not-an-array" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "array"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.array-type-matches-arrays.an-array-is-an-array" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "array"
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "type.array-type-matches-arrays.a-boolean-is-not-an-array" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "array"
         \\ }
-    );
-
-    const case =
+    ,
         \\ true
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.array-type-matches-arrays.null-is-not-an-array" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "array"
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.boolean-type-matches-booleans.an-integer-is-not-a-boolean" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "boolean"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.boolean-type-matches-booleans.zero-is-not-a-boolean" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "boolean"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 0
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.boolean-type-matches-booleans.a-float-is-not-a-boolean" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "boolean"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1.1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.boolean-type-matches-booleans.a-string-is-not-a-boolean" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "boolean"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.boolean-type-matches-booleans.an-empty-string-is-not-a-boolean" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "boolean"
         \\ }
-    );
-
-    const case =
+    ,
         \\ ""
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.boolean-type-matches-booleans.an-object-is-not-a-boolean" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "boolean"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.boolean-type-matches-booleans.an-array-is-not-a-boolean" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "boolean"
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.boolean-type-matches-booleans.true-is-a-boolean" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "boolean"
         \\ }
-    );
-
-    const case =
+    ,
         \\ true
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "type.boolean-type-matches-booleans.false-is-a-boolean" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "boolean"
         \\ }
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "type.boolean-type-matches-booleans.null-is-not-a-boolean" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "boolean"
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.null-type-matches-only-the-null-object.an-integer-is-not-null" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "null"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.null-type-matches-only-the-null-object.a-float-is-not-null" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "null"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1.1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.null-type-matches-only-the-null-object.zero-is-not-null" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "null"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 0
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.null-type-matches-only-the-null-object.a-string-is-not-null" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "null"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.null-type-matches-only-the-null-object.an-empty-string-is-not-null" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "null"
         \\ }
-    );
-
-    const case =
+    ,
         \\ ""
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.null-type-matches-only-the-null-object.an-object-is-not-null" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "null"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.null-type-matches-only-the-null-object.an-array-is-not-null" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "null"
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.null-type-matches-only-the-null-object.true-is-not-null" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "null"
         \\ }
-    );
-
-    const case =
+    ,
         \\ true
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.null-type-matches-only-the-null-object.false-is-not-null" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "null"
         \\ }
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.null-type-matches-only-the-null-object.null-is-null" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "null"
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "type.multiple-types-can-be-specified-in-an-array.an-integer-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": [
@@ -10585,15 +10021,14 @@ test "type.multiple-types-can-be-specified-in-an-array.an-integer-is-valid" {
         \\         "string"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "type.multiple-types-can-be-specified-in-an-array.a-string-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": [
@@ -10601,15 +10036,14 @@ test "type.multiple-types-can-be-specified-in-an-array.a-string-is-valid" {
         \\         "string"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "type.multiple-types-can-be-specified-in-an-array.a-float-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": [
@@ -10617,15 +10051,14 @@ test "type.multiple-types-can-be-specified-in-an-array.a-float-is-invalid" {
         \\         "string"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1.1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.multiple-types-can-be-specified-in-an-array.an-object-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": [
@@ -10633,15 +10066,14 @@ test "type.multiple-types-can-be-specified-in-an-array.an-object-is-invalid" {
         \\         "string"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.multiple-types-can-be-specified-in-an-array.an-array-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": [
@@ -10649,15 +10081,14 @@ test "type.multiple-types-can-be-specified-in-an-array.an-array-is-invalid" {
         \\         "string"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.multiple-types-can-be-specified-in-an-array.a-boolean-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": [
@@ -10665,15 +10096,14 @@ test "type.multiple-types-can-be-specified-in-an-array.a-boolean-is-invalid" {
         \\         "string"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ true
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.multiple-types-can-be-specified-in-an-array.null-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": [
@@ -10681,45 +10111,42 @@ test "type.multiple-types-can-be-specified-in-an-array.null-is-invalid" {
         \\         "string"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.type-as-array-with-one-item.string-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": [
         \\         "string"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "type.type-as-array-with-one-item.number-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": [
         \\         "string"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 123
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.type:-array-or-object.array-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": [
@@ -10727,19 +10154,18 @@ test "type.type:-array-or-object.array-is-valid" {
         \\         "object"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2,
         \\     3
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "type.type:-array-or-object.object-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": [
@@ -10747,17 +10173,16 @@ test "type.type:-array-or-object.object-is-valid" {
         \\         "object"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 123
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "type.type:-array-or-object.number-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": [
@@ -10765,15 +10190,14 @@ test "type.type:-array-or-object.number-is-invalid" {
         \\         "object"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 123
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.type:-array-or-object.string-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": [
@@ -10781,15 +10205,14 @@ test "type.type:-array-or-object.string-is-invalid" {
         \\         "object"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.type:-array-or-object.null-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": [
@@ -10797,15 +10220,14 @@ test "type.type:-array-or-object.null-is-invalid" {
         \\         "object"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.type:-array,-object-or-null.array-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": [
@@ -10814,19 +10236,18 @@ test "type.type:-array,-object-or-null.array-is-valid" {
         \\         "null"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2,
         \\     3
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "type.type:-array,-object-or-null.object-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": [
@@ -10835,17 +10256,16 @@ test "type.type:-array,-object-or-null.object-is-valid" {
         \\         "null"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 123
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "type.type:-array,-object-or-null.null-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": [
@@ -10854,15 +10274,14 @@ test "type.type:-array,-object-or-null.null-is-valid" {
         \\         "null"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "type.type:-array,-object-or-null.number-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": [
@@ -10871,15 +10290,14 @@ test "type.type:-array,-object-or-null.number-is-invalid" {
         \\         "null"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 123
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "type.type:-array,-object-or-null.string-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": [
@@ -10888,43 +10306,40 @@ test "type.type:-array,-object-or-null.string-is-invalid" {
         \\         "null"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "minContains.minContains-without-contains-is-ignored.one-item-valid-against-lone-minContains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minContains": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minContains.minContains-without-contains-is-ignored.zero-items-still-valid-against-lone-minContains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minContains": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minContains.minContains=1-with-contains.empty-data" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -10932,15 +10347,14 @@ test "minContains.minContains=1-with-contains.empty-data" {
         \\     },
         \\     "minContains": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "minContains.minContains=1-with-contains.no-elements-match" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -10948,17 +10362,16 @@ test "minContains.minContains=1-with-contains.no-elements-match" {
         \\     },
         \\     "minContains": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     2
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "minContains.minContains=1-with-contains.single-element-matches,-valid-minContains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -10966,17 +10379,16 @@ test "minContains.minContains=1-with-contains.single-element-matches,-valid-minC
         \\     },
         \\     "minContains": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minContains.minContains=1-with-contains.some-elements-match,-valid-minContains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -10984,18 +10396,17 @@ test "minContains.minContains=1-with-contains.some-elements-match,-valid-minCont
         \\     },
         \\     "minContains": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minContains.minContains=1-with-contains.all-elements-match,-valid-minContains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -11003,18 +10414,17 @@ test "minContains.minContains=1-with-contains.all-elements-match,-valid-minConta
         \\     },
         \\     "minContains": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minContains.minContains=2-with-contains.empty-data" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -11022,15 +10432,14 @@ test "minContains.minContains=2-with-contains.empty-data" {
         \\     },
         \\     "minContains": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "minContains.minContains=2-with-contains.all-elements-match,-invalid-minContains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -11038,17 +10447,16 @@ test "minContains.minContains=2-with-contains.all-elements-match,-invalid-minCon
         \\     },
         \\     "minContains": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "minContains.minContains=2-with-contains.some-elements-match,-invalid-minContains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -11056,18 +10464,17 @@ test "minContains.minContains=2-with-contains.some-elements-match,-invalid-minCo
         \\     },
         \\     "minContains": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "minContains.minContains=2-with-contains.all-elements-match,-valid-minContains-(exactly-as-needed)" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -11075,18 +10482,17 @@ test "minContains.minContains=2-with-contains.all-elements-match,-valid-minConta
         \\     },
         \\     "minContains": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minContains.minContains=2-with-contains.all-elements-match,-valid-minContains-(more-than-needed)" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -11094,19 +10500,18 @@ test "minContains.minContains=2-with-contains.all-elements-match,-valid-minConta
         \\     },
         \\     "minContains": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     1,
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minContains.minContains=2-with-contains.some-elements-match,-valid-minContains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -11114,19 +10519,18 @@ test "minContains.minContains=2-with-contains.some-elements-match,-valid-minCont
         \\     },
         \\     "minContains": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2,
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minContains.minContains=2-with-contains-with-a-decimal-value.one-element-matches,-invalid-minContains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -11134,17 +10538,16 @@ test "minContains.minContains=2-with-contains-with-a-decimal-value.one-element-m
         \\     },
         \\     "minContains": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "minContains.minContains=2-with-contains-with-a-decimal-value.both-elements-match,-valid-minContains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -11152,18 +10555,17 @@ test "minContains.minContains=2-with-contains-with-a-decimal-value.both-elements
         \\     },
         \\     "minContains": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minContains.maxContains-=-minContains.empty-data" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -11172,15 +10574,14 @@ test "minContains.maxContains-=-minContains.empty-data" {
         \\     "maxContains": 2,
         \\     "minContains": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "minContains.maxContains-=-minContains.all-elements-match,-invalid-minContains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -11189,17 +10590,16 @@ test "minContains.maxContains-=-minContains.all-elements-match,-invalid-minConta
         \\     "maxContains": 2,
         \\     "minContains": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "minContains.maxContains-=-minContains.all-elements-match,-invalid-maxContains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -11208,19 +10608,18 @@ test "minContains.maxContains-=-minContains.all-elements-match,-invalid-maxConta
         \\     "maxContains": 2,
         \\     "minContains": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     1,
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "minContains.maxContains-=-minContains.all-elements-match,-valid-maxContains-and-minContains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -11229,18 +10628,17 @@ test "minContains.maxContains-=-minContains.all-elements-match,-valid-maxContain
         \\     "maxContains": 2,
         \\     "minContains": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minContains.maxContains-<-minContains.empty-data" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -11249,15 +10647,14 @@ test "minContains.maxContains-<-minContains.empty-data" {
         \\     "maxContains": 1,
         \\     "minContains": 3
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "minContains.maxContains-<-minContains.invalid-minContains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -11266,17 +10663,16 @@ test "minContains.maxContains-<-minContains.invalid-minContains" {
         \\     "maxContains": 1,
         \\     "minContains": 3
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "minContains.maxContains-<-minContains.invalid-maxContains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -11285,19 +10681,18 @@ test "minContains.maxContains-<-minContains.invalid-maxContains" {
         \\     "maxContains": 1,
         \\     "minContains": 3
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     1,
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "minContains.maxContains-<-minContains.invalid-maxContains-and-minContains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -11306,18 +10701,17 @@ test "minContains.maxContains-<-minContains.invalid-maxContains-and-minContains"
         \\     "maxContains": 1,
         \\     "minContains": 3
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "minContains.minContains-=-0-with-no-maxContains.empty-data" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -11325,15 +10719,14 @@ test "minContains.minContains-=-0-with-no-maxContains.empty-data" {
         \\     },
         \\     "minContains": 0
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minContains.minContains-=-0-with-no-maxContains.minContains-=-0-makes-contains-always-pass" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -11341,17 +10734,16 @@ test "minContains.minContains-=-0-with-no-maxContains.minContains-=-0-makes-cont
         \\     },
         \\     "minContains": 0
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     2
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minContains.minContains-=-0-with-maxContains.empty-data" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -11360,15 +10752,14 @@ test "minContains.minContains-=-0-with-maxContains.empty-data" {
         \\     "minContains": 0,
         \\     "maxContains": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minContains.minContains-=-0-with-maxContains.not-more-than-maxContains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -11377,17 +10768,16 @@ test "minContains.minContains-=-0-with-maxContains.not-more-than-maxContains" {
         \\     "minContains": 0,
         \\     "maxContains": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minContains.minContains-=-0-with-maxContains.too-many" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -11396,18 +10786,17 @@ test "minContains.minContains-=-0-with-maxContains.too-many" {
         \\     "minContains": 0,
         \\     "maxContains": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "properties.object-properties-validation.both-properties-present-and-valid-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -11419,18 +10808,17 @@ test "properties.object-properties-validation.both-properties-present-and-valid-
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "bar": "baz"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "properties.object-properties-validation.one-property-invalid-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -11442,18 +10830,17 @@ test "properties.object-properties-validation.one-property-invalid-is-invalid" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "bar": {}
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "properties.object-properties-validation.both-properties-invalid-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -11465,18 +10852,17 @@ test "properties.object-properties-validation.both-properties-invalid-is-invalid
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": [],
         \\     "bar": {}
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "properties.object-properties-validation.doesn't-invalidate-other-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -11488,17 +10874,16 @@ test "properties.object-properties-validation.doesn't-invalidate-other-propertie
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "quux": []
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "properties.object-properties-validation.ignores-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -11510,15 +10895,14 @@ test "properties.object-properties-validation.ignores-arrays" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "properties.object-properties-validation.ignores-other-non-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -11530,15 +10914,14 @@ test "properties.object-properties-validation.ignores-other-non-objects" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "properties.properties,-patternProperties,-additionalProperties-interaction.property-validates-property" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -11559,20 +10942,19 @@ test "properties.properties,-patternProperties,-additionalProperties-interaction
         \\         "type": "integer"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": [
         \\         1,
         \\         2
         \\     ]
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "properties.properties,-patternProperties,-additionalProperties-interaction.property-invalidates-property" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -11593,9 +10975,7 @@ test "properties.properties,-patternProperties,-additionalProperties-interaction
         \\         "type": "integer"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": [
         \\         1,
@@ -11604,11 +10984,12 @@ test "properties.properties,-patternProperties,-additionalProperties-interaction
         \\         4
         \\     ]
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "properties.properties,-patternProperties,-additionalProperties-interaction.patternProperty-invalidates-property" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -11629,17 +11010,16 @@ test "properties.properties,-patternProperties,-additionalProperties-interaction
         \\         "type": "integer"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": []
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "properties.properties,-patternProperties,-additionalProperties-interaction.patternProperty-validates-nonproperty" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -11660,20 +11040,19 @@ test "properties.properties,-patternProperties,-additionalProperties-interaction
         \\         "type": "integer"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "fxo": [
         \\         1,
         \\         2
         \\     ]
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "properties.properties,-patternProperties,-additionalProperties-interaction.patternProperty-invalidates-nonproperty" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -11694,17 +11073,16 @@ test "properties.properties,-patternProperties,-additionalProperties-interaction
         \\         "type": "integer"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "fxo": []
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "properties.properties,-patternProperties,-additionalProperties-interaction.additionalProperty-ignores-property" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -11725,17 +11103,16 @@ test "properties.properties,-patternProperties,-additionalProperties-interaction
         \\         "type": "integer"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": []
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "properties.properties,-patternProperties,-additionalProperties-interaction.additionalProperty-validates-others" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -11756,17 +11133,16 @@ test "properties.properties,-patternProperties,-additionalProperties-interaction
         \\         "type": "integer"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "quux": 3
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "properties.properties,-patternProperties,-additionalProperties-interaction.additionalProperty-invalidates-others" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -11787,17 +11163,16 @@ test "properties.properties,-patternProperties,-additionalProperties-interaction
         \\         "type": "integer"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "quux": "foo"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "properties.properties-with-boolean-schema.no-property-present-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -11805,15 +11180,14 @@ test "properties.properties-with-boolean-schema.no-property-present-is-valid" {
         \\         "bar": false
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "properties.properties-with-boolean-schema.only-'true'-property-present-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -11821,17 +11195,16 @@ test "properties.properties-with-boolean-schema.only-'true'-property-present-is-
         \\         "bar": false
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "properties.properties-with-boolean-schema.only-'false'-property-present-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -11839,17 +11212,16 @@ test "properties.properties-with-boolean-schema.only-'false'-property-present-is
         \\         "bar": false
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "properties.properties-with-boolean-schema.both-properties-present-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -11857,18 +11229,17 @@ test "properties.properties-with-boolean-schema.both-properties-present-is-inval
         \\         "bar": false
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "properties.properties-with-escaped-characters.object-with-all-numbers-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -11892,9 +11263,7 @@ test "properties.properties-with-escaped-characters.object-with-all-numbers-is-v
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo\nbar": 1,
         \\     "foo\"bar": 1,
@@ -11903,11 +11272,12 @@ test "properties.properties-with-escaped-characters.object-with-all-numbers-is-v
         \\     "foo\tbar": 1,
         \\     "foo\fbar": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "properties.properties-with-escaped-characters.object-with-strings-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -11931,9 +11301,7 @@ test "properties.properties-with-escaped-characters.object-with-strings-is-inval
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo\nbar": "1",
         \\     "foo\"bar": "1",
@@ -11942,11 +11310,12 @@ test "properties.properties-with-escaped-characters.object-with-strings-is-inval
         \\     "foo\tbar": "1",
         \\     "foo\fbar": "1"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "properties.properties-with-null-valued-instance-properties.allows-null-values" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -11955,17 +11324,16 @@ test "properties.properties-with-null-valued-instance-properties.allows-null-val
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": null
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "properties.properties-whose-names-are-Javascript-object-property-names.ignores-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -11984,15 +11352,14 @@ test "properties.properties-whose-names-are-Javascript-object-property-names.ign
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "properties.properties-whose-names-are-Javascript-object-property-names.ignores-other-non-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -12011,15 +11378,14 @@ test "properties.properties-whose-names-are-Javascript-object-property-names.ign
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "properties.properties-whose-names-are-Javascript-object-property-names.none-of-the-properties-mentioned" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -12038,15 +11404,14 @@ test "properties.properties-whose-names-are-Javascript-object-property-names.non
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "properties.properties-whose-names-are-Javascript-object-property-names.__proto__-not-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -12065,17 +11430,16 @@ test "properties.properties-whose-names-are-Javascript-object-property-names.__p
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "__proto__": "foo"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "properties.properties-whose-names-are-Javascript-object-property-names.toString-not-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -12094,19 +11458,18 @@ test "properties.properties-whose-names-are-Javascript-object-property-names.toS
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "toString": {
         \\         "length": 37
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "properties.properties-whose-names-are-Javascript-object-property-names.constructor-not-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -12125,19 +11488,18 @@ test "properties.properties-whose-names-are-Javascript-object-property-names.con
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "constructor": {
         \\         "length": 37
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "properties.properties-whose-names-are-Javascript-object-property-names.all-present-and-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -12156,9 +11518,7 @@ test "properties.properties-whose-names-are-Javascript-object-property-names.all
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "__proto__": 12,
         \\     "toString": {
@@ -12166,83 +11526,80 @@ test "properties.properties-whose-names-are-Javascript-object-property-names.all
         \\     },
         \\     "constructor": 37
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "items.a-schema-given-for-items.valid-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": {
         \\         "type": "integer"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2,
         \\     3
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "items.a-schema-given-for-items.wrong-type-of-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": {
         \\         "type": "integer"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     "x"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "items.a-schema-given-for-items.ignores-non-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": {
         \\         "type": "integer"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "items.a-schema-given-for-items.JavaScript-pseudo-array-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": {
         \\         "type": "integer"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "0": "invalid",
         \\     "length": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "items.an-array-of-schemas-for-items.correct-types" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -12254,18 +11611,17 @@ test "items.an-array-of-schemas-for-items.correct-types" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     "foo"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "items.an-array-of-schemas-for-items.wrong-types" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -12277,18 +11633,17 @@ test "items.an-array-of-schemas-for-items.wrong-types" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "items.an-array-of-schemas-for-items.incomplete-array-of-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -12300,17 +11655,16 @@ test "items.an-array-of-schemas-for-items.incomplete-array-of-items" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "items.an-array-of-schemas-for-items.array-with-additional-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -12322,19 +11676,18 @@ test "items.an-array-of-schemas-for-items.array-with-additional-items" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     "foo",
         \\     true
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "items.an-array-of-schemas-for-items.empty-array" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -12346,15 +11699,14 @@ test "items.an-array-of-schemas-for-items.empty-array" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "items.an-array-of-schemas-for-items.JavaScript-pseudo-array-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -12366,79 +11718,74 @@ test "items.an-array-of-schemas-for-items.JavaScript-pseudo-array-is-valid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "0": "invalid",
         \\     "1": "valid",
         \\     "length": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "items.items-with-boolean-schema-(true).any-array-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     "foo",
         \\     true
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "items.items-with-boolean-schema-(true).empty-array-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "items.items-with-boolean-schema-(false).any-non-empty-array-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     "foo",
         \\     true
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "items.items-with-boolean-schema-(false).empty-array-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "items.items-with-boolean-schemas.array-with-one-item-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -12446,17 +11793,16 @@ test "items.items-with-boolean-schemas.array-with-one-item-is-valid" {
         \\         false
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "items.items-with-boolean-schemas.array-with-two-items-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -12464,18 +11810,17 @@ test "items.items-with-boolean-schemas.array-with-two-items-is-invalid" {
         \\         false
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     "foo"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "items.items-with-boolean-schemas.empty-array-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -12483,15 +11828,14 @@ test "items.items-with-boolean-schemas.empty-array-is-valid" {
         \\         false
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "items.items-and-subitems.valid-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -12528,9 +11872,7 @@ test "items.items-and-subitems.valid-items" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     [
         \\         {
@@ -12557,11 +11899,12 @@ test "items.items-and-subitems.valid-items" {
         \\         }
         \\     ]
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "items.items-and-subitems.too-many-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -12598,9 +11941,7 @@ test "items.items-and-subitems.too-many-items" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     [
         \\         {
@@ -12635,11 +11976,12 @@ test "items.items-and-subitems.too-many-items" {
         \\         }
         \\     ]
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "items.items-and-subitems.too-many-sub-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -12676,9 +12018,7 @@ test "items.items-and-subitems.too-many-sub-items" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     [
         \\         {
@@ -12708,11 +12048,12 @@ test "items.items-and-subitems.too-many-sub-items" {
         \\         }
         \\     ]
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "items.items-and-subitems.wrong-item" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -12749,9 +12090,7 @@ test "items.items-and-subitems.wrong-item" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     {
         \\         "foo": null
@@ -12773,11 +12112,12 @@ test "items.items-and-subitems.wrong-item" {
         \\         }
         \\     ]
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "items.items-and-subitems.wrong-sub-item" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -12814,9 +12154,7 @@ test "items.items-and-subitems.wrong-sub-item" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     [
         \\         {},
@@ -12841,11 +12179,12 @@ test "items.items-and-subitems.wrong-sub-item" {
         \\         }
         \\     ]
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "items.items-and-subitems.fewer-items-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -12882,9 +12221,7 @@ test "items.items-and-subitems.fewer-items-is-valid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     [
         \\         {
@@ -12897,11 +12234,12 @@ test "items.items-and-subitems.fewer-items-is-valid" {
         \\         }
         \\     ]
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "items.nested-items.valid-nested-array" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "array",
@@ -12918,9 +12256,7 @@ test "items.nested-items.valid-nested-array" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     [
         \\         [
@@ -12951,11 +12287,12 @@ test "items.nested-items.valid-nested-array" {
         \\         ]
         \\     ]
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "items.nested-items.nested-array-with-invalid-type" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "array",
@@ -12972,9 +12309,7 @@ test "items.nested-items.nested-array-with-invalid-type" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     [
         \\         [
@@ -13005,11 +12340,12 @@ test "items.nested-items.nested-array-with-invalid-type" {
         \\         ]
         \\     ]
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "items.nested-items.not-deep-enough" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "array",
@@ -13026,9 +12362,7 @@ test "items.nested-items.not-deep-enough" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     [
         \\         [
@@ -13053,28 +12387,28 @@ test "items.nested-items.not-deep-enough" {
         \\         ]
         \\     ]
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "items.single-form-items-with-null-instance-elements.allows-null-elements" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": {
         \\         "type": "null"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     null
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "items.array-form-items-with-null-instance-elements.allows-null-elements" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -13083,17 +12417,16 @@ test "items.array-form-items-with-null-instance-elements.allows-null-elements" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     null
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "oneOf.oneOf.first-oneOf-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "oneOf": [
@@ -13105,15 +12438,14 @@ test "oneOf.oneOf.first-oneOf-valid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "oneOf.oneOf.second-oneOf-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "oneOf": [
@@ -13125,15 +12457,14 @@ test "oneOf.oneOf.second-oneOf-valid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 2.5
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "oneOf.oneOf.both-oneOf-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "oneOf": [
@@ -13145,15 +12476,14 @@ test "oneOf.oneOf.both-oneOf-valid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 3
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "oneOf.oneOf.neither-oneOf-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "oneOf": [
@@ -13165,15 +12495,14 @@ test "oneOf.oneOf.neither-oneOf-valid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1.5
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "oneOf.oneOf-with-base-schema.mismatch-base-schema" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "string",
@@ -13186,15 +12515,14 @@ test "oneOf.oneOf-with-base-schema.mismatch-base-schema" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 3
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "oneOf.oneOf-with-base-schema.one-oneOf-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "string",
@@ -13207,15 +12535,14 @@ test "oneOf.oneOf-with-base-schema.one-oneOf-valid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foobar"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "oneOf.oneOf-with-base-schema.both-oneOf-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "string",
@@ -13228,15 +12555,14 @@ test "oneOf.oneOf-with-base-schema.both-oneOf-valid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "oneOf.oneOf-with-boolean-schemas,-all-true.any-value-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "oneOf": [
@@ -13245,15 +12571,14 @@ test "oneOf.oneOf-with-boolean-schemas,-all-true.any-value-is-invalid" {
         \\         true
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "oneOf.oneOf-with-boolean-schemas,-one-true.any-value-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "oneOf": [
@@ -13262,15 +12587,14 @@ test "oneOf.oneOf-with-boolean-schemas,-one-true.any-value-is-valid" {
         \\         false
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "oneOf.oneOf-with-boolean-schemas,-more-than-one-true.any-value-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "oneOf": [
@@ -13279,15 +12603,14 @@ test "oneOf.oneOf-with-boolean-schemas,-more-than-one-true.any-value-is-invalid"
         \\         false
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "oneOf.oneOf-with-boolean-schemas,-all-false.any-value-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "oneOf": [
@@ -13296,15 +12619,14 @@ test "oneOf.oneOf-with-boolean-schemas,-all-false.any-value-is-invalid" {
         \\         false
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "oneOf.oneOf-complex-types.first-oneOf-valid-(complex)" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "oneOf": [
@@ -13330,17 +12652,16 @@ test "oneOf.oneOf-complex-types.first-oneOf-valid-(complex)" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "oneOf.oneOf-complex-types.second-oneOf-valid-(complex)" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "oneOf": [
@@ -13366,17 +12687,16 @@ test "oneOf.oneOf-complex-types.second-oneOf-valid-(complex)" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "baz"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "oneOf.oneOf-complex-types.both-oneOf-valid-(complex)" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "oneOf": [
@@ -13402,18 +12722,17 @@ test "oneOf.oneOf-complex-types.both-oneOf-valid-(complex)" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "baz",
         \\     "bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "oneOf.oneOf-complex-types.neither-oneOf-valid-(complex)" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "oneOf": [
@@ -13439,18 +12758,17 @@ test "oneOf.oneOf-complex-types.neither-oneOf-valid-(complex)" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 2,
         \\     "bar": "quux"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "oneOf.oneOf-with-empty-schema.one-valid---valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "oneOf": [
@@ -13460,15 +12778,14 @@ test "oneOf.oneOf-with-empty-schema.one-valid---valid" {
         \\         {}
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "oneOf.oneOf-with-empty-schema.both-valid---invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "oneOf": [
@@ -13478,15 +12795,14 @@ test "oneOf.oneOf-with-empty-schema.both-valid---invalid" {
         \\         {}
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 123
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "oneOf.oneOf-with-required.both-invalid---invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -13505,17 +12821,16 @@ test "oneOf.oneOf-with-required.both-invalid---invalid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "oneOf.oneOf-with-required.first-valid---valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -13534,18 +12849,17 @@ test "oneOf.oneOf-with-required.first-valid---valid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "oneOf.oneOf-with-required.second-valid---valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -13564,18 +12878,17 @@ test "oneOf.oneOf-with-required.second-valid---valid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "baz": 3
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "oneOf.oneOf-with-required.both-valid---invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -13594,19 +12907,18 @@ test "oneOf.oneOf-with-required.both-valid---invalid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "bar": 2,
         \\     "baz": 3
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "oneOf.oneOf-with-missing-optional-property.first-oneOf-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "oneOf": [
@@ -13629,17 +12941,16 @@ test "oneOf.oneOf-with-missing-optional-property.first-oneOf-valid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": 8
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "oneOf.oneOf-with-missing-optional-property.second-oneOf-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "oneOf": [
@@ -13662,17 +12973,16 @@ test "oneOf.oneOf-with-missing-optional-property.second-oneOf-valid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "oneOf.oneOf-with-missing-optional-property.both-oneOf-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "oneOf": [
@@ -13695,18 +13005,17 @@ test "oneOf.oneOf-with-missing-optional-property.both-oneOf-valid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": 8
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "oneOf.oneOf-with-missing-optional-property.neither-oneOf-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "oneOf": [
@@ -13729,17 +13038,16 @@ test "oneOf.oneOf-with-missing-optional-property.neither-oneOf-valid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "baz": "quux"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "oneOf.nested-oneOf,-to-check-validation-semantics.null-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "oneOf": [
@@ -13752,15 +13060,14 @@ test "oneOf.nested-oneOf,-to-check-validation-semantics.null-is-valid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "oneOf.nested-oneOf,-to-check-validation-semantics.anything-non-null-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "oneOf": [
@@ -13773,456 +13080,425 @@ test "oneOf.nested-oneOf,-to-check-validation-semantics.anything-non-null-is-inv
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 123
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "exclusiveMinimum.exclusiveMinimum-validation.above-the-exclusiveMinimum-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "exclusiveMinimum": 1.1
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1.2
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "exclusiveMinimum.exclusiveMinimum-validation.boundary-point-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "exclusiveMinimum": 1.1
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1.1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "exclusiveMinimum.exclusiveMinimum-validation.below-the-exclusiveMinimum-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "exclusiveMinimum": 1.1
         \\ }
-    );
-
-    const case =
+    ,
         \\ 0.6
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "exclusiveMinimum.exclusiveMinimum-validation.ignores-non-numbers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "exclusiveMinimum": 1.1
         \\ }
-    );
-
-    const case =
+    ,
         \\ "x"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "multipleOf.by-int.int-by-int" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "multipleOf": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ 10
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "multipleOf.by-int.int-by-int-fail" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "multipleOf": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ 7
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "multipleOf.by-int.ignores-non-numbers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "multipleOf": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "multipleOf.by-number.zero-is-multiple-of-anything" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "multipleOf": 1.5
         \\ }
-    );
-
-    const case =
+    ,
         \\ 0
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "multipleOf.by-number.4.5-is-multiple-of-1.5" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "multipleOf": 1.5
         \\ }
-    );
-
-    const case =
+    ,
         \\ 4.5
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "multipleOf.by-number.35-is-not-multiple-of-1.5" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "multipleOf": 1.5
         \\ }
-    );
-
-    const case =
+    ,
         \\ 35
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "multipleOf.by-small-number.0.0075-is-multiple-of-0.0001" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "multipleOf": 0.0001
         \\ }
-    );
-
-    const case =
+    ,
         \\ 0.0075
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "multipleOf.by-small-number.0.00751-is-not-multiple-of-0.0001" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "multipleOf": 0.0001
         \\ }
-    );
-
-    const case =
+    ,
         \\ 0.00751
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "multipleOf.float-division-=-inf.always-invalid,-but-naive-implementations-may-raise-an-overflow-error" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "integer",
         \\     "multipleOf": 0.123456789
         \\ }
-    );
-
-    const case =
+    ,
         \\ 100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "multipleOf.small-multiple-of-large-integer.any-integer-is-a-multiple-of-1e-8" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "integer",
         \\     "multipleOf": 0.00000001
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12391239123
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "propertyNames.propertyNames-validation.all-property-names-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "propertyNames": {
         \\         "maxLength": 3
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "f": {},
         \\     "foo": {}
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "propertyNames.propertyNames-validation.some-property-names-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "propertyNames": {
         \\         "maxLength": 3
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": {},
         \\     "foobar": {}
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "propertyNames.propertyNames-validation.object-without-properties-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "propertyNames": {
         \\         "maxLength": 3
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "propertyNames.propertyNames-validation.ignores-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "propertyNames": {
         \\         "maxLength": 3
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2,
         \\     3,
         \\     4
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "propertyNames.propertyNames-validation.ignores-strings" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "propertyNames": {
         \\         "maxLength": 3
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foobar"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "propertyNames.propertyNames-validation.ignores-other-non-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "propertyNames": {
         \\         "maxLength": 3
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "propertyNames.propertyNames-validation-with-pattern.matching-property-names-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "propertyNames": {
         \\         "pattern": "^a+$"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "a": {},
         \\     "aa": {},
         \\     "aaa": {}
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "propertyNames.propertyNames-validation-with-pattern.non-matching-property-name-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "propertyNames": {
         \\         "pattern": "^a+$"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "aaA": {}
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "propertyNames.propertyNames-validation-with-pattern.object-without-properties-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "propertyNames": {
         \\         "pattern": "^a+$"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "propertyNames.propertyNames-with-boolean-schema-true.object-with-any-properties-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "propertyNames": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "propertyNames.propertyNames-with-boolean-schema-true.empty-object-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "propertyNames": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "propertyNames.propertyNames-with-boolean-schema-false.object-with-any-properties-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "propertyNames": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "propertyNames.propertyNames-with-boolean-schema-false.empty-object-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "propertyNames": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "propertyNames.propertyNames-with-const.object-with-property-foo-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "propertyNames": {
         \\         "const": "foo"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "propertyNames.propertyNames-with-const.object-with-any-other-property-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "propertyNames": {
         \\         "const": "foo"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "propertyNames.propertyNames-with-const.empty-object-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "propertyNames": {
         \\         "const": "foo"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "propertyNames.propertyNames-with-enum.object-with-property-foo-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "propertyNames": {
@@ -14232,17 +13508,16 @@ test "propertyNames.propertyNames-with-enum.object-with-property-foo-is-valid" {
         \\         ]
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "propertyNames.propertyNames-with-enum.object-with-property-foo-and-bar-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "propertyNames": {
@@ -14252,18 +13527,17 @@ test "propertyNames.propertyNames-with-enum.object-with-property-foo-and-bar-is-
         \\         ]
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "bar": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "propertyNames.propertyNames-with-enum.object-with-any-other-property-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "propertyNames": {
@@ -14273,17 +13547,16 @@ test "propertyNames.propertyNames-with-enum.object-with-any-other-property-is-in
         \\         ]
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "baz": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "propertyNames.propertyNames-with-enum.empty-object-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "propertyNames": {
@@ -14293,15 +13566,14 @@ test "propertyNames.propertyNames-with-enum.empty-object-is-valid" {
         \\         ]
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "recursiveRef.$recursiveRef-without-$recursiveAnchor-works-like-$ref.match" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -14311,17 +13583,16 @@ test "recursiveRef.$recursiveRef-without-$recursiveAnchor-works-like-$ref.match"
         \\     },
         \\     "additionalProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": false
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "recursiveRef.$recursiveRef-without-$recursiveAnchor-works-like-$ref.recursive-match" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -14331,19 +13602,18 @@ test "recursiveRef.$recursiveRef-without-$recursiveAnchor-works-like-$ref.recurs
         \\     },
         \\     "additionalProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": {
         \\         "foo": false
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "recursiveRef.$recursiveRef-without-$recursiveAnchor-works-like-$ref.mismatch" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -14353,17 +13623,16 @@ test "recursiveRef.$recursiveRef-without-$recursiveAnchor-works-like-$ref.mismat
         \\     },
         \\     "additionalProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": false
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "recursiveRef.$recursiveRef-without-$recursiveAnchor-works-like-$ref.recursive-mismatch" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -14373,19 +13642,18 @@ test "recursiveRef.$recursiveRef-without-$recursiveAnchor-works-like-$ref.recurs
         \\     },
         \\     "additionalProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": {
         \\         "bar": false
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "recursiveRef.$recursiveRef-without-using-nesting.integer-matches-at-the-outer-level" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:4242/draft2019-09/recursiveRef2/schema.json",
@@ -14415,15 +13683,14 @@ test "recursiveRef.$recursiveRef-without-using-nesting.integer-matches-at-the-ou
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "recursiveRef.$recursiveRef-without-using-nesting.single-level-match" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:4242/draft2019-09/recursiveRef2/schema.json",
@@ -14453,17 +13720,16 @@ test "recursiveRef.$recursiveRef-without-using-nesting.single-level-match" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "hi"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "recursiveRef.$recursiveRef-without-using-nesting.integer-does-not-match-as-a-property-value" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:4242/draft2019-09/recursiveRef2/schema.json",
@@ -14493,17 +13759,16 @@ test "recursiveRef.$recursiveRef-without-using-nesting.integer-does-not-match-as
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "recursiveRef.$recursiveRef-without-using-nesting.two-levels,-properties-match-with-inner-definition" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:4242/draft2019-09/recursiveRef2/schema.json",
@@ -14533,19 +13798,18 @@ test "recursiveRef.$recursiveRef-without-using-nesting.two-levels,-properties-ma
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": {
         \\         "bar": "hi"
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "recursiveRef.$recursiveRef-without-using-nesting.two-levels,-no-match" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:4242/draft2019-09/recursiveRef2/schema.json",
@@ -14575,19 +13839,18 @@ test "recursiveRef.$recursiveRef-without-using-nesting.two-levels,-no-match" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": {
         \\         "bar": 1
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "recursiveRef.$recursiveRef-with-nesting.integer-matches-at-the-outer-level" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:4242/draft2019-09/recursiveRef3/schema.json",
@@ -14618,15 +13881,14 @@ test "recursiveRef.$recursiveRef-with-nesting.integer-matches-at-the-outer-level
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "recursiveRef.$recursiveRef-with-nesting.single-level-match" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:4242/draft2019-09/recursiveRef3/schema.json",
@@ -14657,17 +13919,16 @@ test "recursiveRef.$recursiveRef-with-nesting.single-level-match" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "hi"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "recursiveRef.$recursiveRef-with-nesting.integer-now-matches-as-a-property-value" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:4242/draft2019-09/recursiveRef3/schema.json",
@@ -14698,17 +13959,16 @@ test "recursiveRef.$recursiveRef-with-nesting.integer-now-matches-as-a-property-
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "recursiveRef.$recursiveRef-with-nesting.two-levels,-properties-match-with-inner-definition" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:4242/draft2019-09/recursiveRef3/schema.json",
@@ -14739,19 +13999,18 @@ test "recursiveRef.$recursiveRef-with-nesting.two-levels,-properties-match-with-
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": {
         \\         "bar": "hi"
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "recursiveRef.$recursiveRef-with-nesting.two-levels,-properties-match-with-$recursiveRef" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:4242/draft2019-09/recursiveRef3/schema.json",
@@ -14782,19 +14041,18 @@ test "recursiveRef.$recursiveRef-with-nesting.two-levels,-properties-match-with-
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": {
         \\         "bar": 1
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "recursiveRef.$recursiveRef-with-$recursiveAnchor:-false-works-like-$ref.integer-matches-at-the-outer-level" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:4242/draft2019-09/recursiveRef4/schema.json",
@@ -14825,15 +14083,14 @@ test "recursiveRef.$recursiveRef-with-$recursiveAnchor:-false-works-like-$ref.in
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "recursiveRef.$recursiveRef-with-$recursiveAnchor:-false-works-like-$ref.single-level-match" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:4242/draft2019-09/recursiveRef4/schema.json",
@@ -14864,17 +14121,16 @@ test "recursiveRef.$recursiveRef-with-$recursiveAnchor:-false-works-like-$ref.si
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "hi"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "recursiveRef.$recursiveRef-with-$recursiveAnchor:-false-works-like-$ref.integer-does-not-match-as-a-property-value" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:4242/draft2019-09/recursiveRef4/schema.json",
@@ -14905,17 +14161,16 @@ test "recursiveRef.$recursiveRef-with-$recursiveAnchor:-false-works-like-$ref.in
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "recursiveRef.$recursiveRef-with-$recursiveAnchor:-false-works-like-$ref.two-levels,-properties-match-with-inner-definition" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:4242/draft2019-09/recursiveRef4/schema.json",
@@ -14946,19 +14201,18 @@ test "recursiveRef.$recursiveRef-with-$recursiveAnchor:-false-works-like-$ref.tw
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": {
         \\         "bar": "hi"
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "recursiveRef.$recursiveRef-with-$recursiveAnchor:-false-works-like-$ref.two-levels,-integer-does-not-match-as-a-property-value" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:4242/draft2019-09/recursiveRef4/schema.json",
@@ -14989,19 +14243,18 @@ test "recursiveRef.$recursiveRef-with-$recursiveAnchor:-false-works-like-$ref.tw
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": {
         \\         "bar": 1
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "recursiveRef.$recursiveRef-with-no-$recursiveAnchor-works-like-$ref.integer-matches-at-the-outer-level" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:4242/draft2019-09/recursiveRef5/schema.json",
@@ -15031,15 +14284,14 @@ test "recursiveRef.$recursiveRef-with-no-$recursiveAnchor-works-like-$ref.intege
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "recursiveRef.$recursiveRef-with-no-$recursiveAnchor-works-like-$ref.single-level-match" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:4242/draft2019-09/recursiveRef5/schema.json",
@@ -15069,17 +14321,16 @@ test "recursiveRef.$recursiveRef-with-no-$recursiveAnchor-works-like-$ref.single
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "hi"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "recursiveRef.$recursiveRef-with-no-$recursiveAnchor-works-like-$ref.integer-does-not-match-as-a-property-value" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:4242/draft2019-09/recursiveRef5/schema.json",
@@ -15109,17 +14360,16 @@ test "recursiveRef.$recursiveRef-with-no-$recursiveAnchor-works-like-$ref.intege
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "recursiveRef.$recursiveRef-with-no-$recursiveAnchor-works-like-$ref.two-levels,-properties-match-with-inner-definition" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:4242/draft2019-09/recursiveRef5/schema.json",
@@ -15149,19 +14399,18 @@ test "recursiveRef.$recursiveRef-with-no-$recursiveAnchor-works-like-$ref.two-le
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": {
         \\         "bar": "hi"
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "recursiveRef.$recursiveRef-with-no-$recursiveAnchor-works-like-$ref.two-levels,-integer-does-not-match-as-a-property-value" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:4242/draft2019-09/recursiveRef5/schema.json",
@@ -15191,19 +14440,18 @@ test "recursiveRef.$recursiveRef-with-no-$recursiveAnchor-works-like-$ref.two-le
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": {
         \\         "bar": 1
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "recursiveRef.$recursiveRef-with-no-$recursiveAnchor-in-the-initial-target-schema-resource.leaf-node-does-not-match;-no-recursion" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:4242/draft2019-09/recursiveRef6/base.json",
@@ -15232,17 +14480,16 @@ test "recursiveRef.$recursiveRef-with-no-$recursiveAnchor-in-the-initial-target-
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": true
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "recursiveRef.$recursiveRef-with-no-$recursiveAnchor-in-the-initial-target-schema-resource.leaf-node-matches:-recursion-uses-the-inner-schema" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:4242/draft2019-09/recursiveRef6/base.json",
@@ -15271,19 +14518,18 @@ test "recursiveRef.$recursiveRef-with-no-$recursiveAnchor-in-the-initial-target-
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": {
         \\         "bar": 1
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "recursiveRef.$recursiveRef-with-no-$recursiveAnchor-in-the-initial-target-schema-resource.leaf-node-does-not-match:-recursion-uses-the-inner-schema" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:4242/draft2019-09/recursiveRef6/base.json",
@@ -15312,19 +14558,18 @@ test "recursiveRef.$recursiveRef-with-no-$recursiveAnchor-in-the-initial-target-
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": {
         \\         "bar": true
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "recursiveRef.$recursiveRef-with-no-$recursiveAnchor-in-the-outer-schema-resource.leaf-node-does-not-match;-no-recursion" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:4242/draft2019-09/recursiveRef7/base.json",
@@ -15352,17 +14597,16 @@ test "recursiveRef.$recursiveRef-with-no-$recursiveAnchor-in-the-outer-schema-re
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": true
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "recursiveRef.$recursiveRef-with-no-$recursiveAnchor-in-the-outer-schema-resource.leaf-node-matches:-recursion-only-uses-inner-schema" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:4242/draft2019-09/recursiveRef7/base.json",
@@ -15390,19 +14634,18 @@ test "recursiveRef.$recursiveRef-with-no-$recursiveAnchor-in-the-outer-schema-re
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": {
         \\         "bar": 1
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "recursiveRef.$recursiveRef-with-no-$recursiveAnchor-in-the-outer-schema-resource.leaf-node-does-not-match:-recursion-only-uses-inner-schema" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:4242/draft2019-09/recursiveRef7/base.json",
@@ -15430,19 +14673,18 @@ test "recursiveRef.$recursiveRef-with-no-$recursiveAnchor-in-the-outer-schema-re
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": {
         \\         "bar": true
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "recursiveRef.multiple-dynamic-paths-to-the-$recursiveRef-keyword.recurse-to-anyLeafNode---floats-are-allowed" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "https://example.com/recursiveRef8_main.json",
@@ -15478,17 +14720,16 @@ test "recursiveRef.multiple-dynamic-paths-to-the-$recursiveRef-keyword.recurse-t
         \\         "$ref": "recursiveRef8_inner.json"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "alpha": 1.1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "recursiveRef.multiple-dynamic-paths-to-the-$recursiveRef-keyword.recurse-to-integerNode---floats-are-not-allowed" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "https://example.com/recursiveRef8_main.json",
@@ -15524,17 +14765,16 @@ test "recursiveRef.multiple-dynamic-paths-to-the-$recursiveRef-keyword.recurse-t
         \\         "$ref": "recursiveRef8_inner.json"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "november": 1.1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "recursiveRef.dynamic-$recursiveRef-destination-(not-predictable-at-schema-compile-time).numeric-node" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "https://example.com/main.json",
@@ -15570,17 +14810,16 @@ test "recursiveRef.dynamic-$recursiveRef-destination-(not-predictable-at-schema-
         \\         "$ref": "main.json#/$defs/inner"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "alpha": 1.1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "recursiveRef.dynamic-$recursiveRef-destination-(not-predictable-at-schema-compile-time).integer-node" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "https://example.com/main.json",
@@ -15616,56 +14855,52 @@ test "recursiveRef.dynamic-$recursiveRef-destination-(not-predictable-at-schema-
         \\         "$ref": "main.json#/$defs/inner"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "november": 1.1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.const-validation.same-value-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ 2
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "const.const-validation.another-value-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ 5
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.const-validation.another-type-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ "a"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.const-with-object.same-object-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": {
@@ -15673,18 +14908,17 @@ test "const.const-with-object.same-object-is-valid" {
         \\         "baz": "bax"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "bar",
         \\     "baz": "bax"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "const.const-with-object.same-object-with-different-property-order-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": {
@@ -15692,18 +14926,17 @@ test "const.const-with-object.same-object-with-different-property-order-is-valid
         \\         "baz": "bax"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "baz": "bax",
         \\     "foo": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "const.const-with-object.another-object-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": {
@@ -15711,17 +14944,16 @@ test "const.const-with-object.another-object-is-invalid" {
         \\         "baz": "bax"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.const-with-object.another-type-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": {
@@ -15729,18 +14961,17 @@ test "const.const-with-object.another-type-is-invalid" {
         \\         "baz": "bax"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.const-with-array.same-array-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": [
@@ -15749,19 +14980,18 @@ test "const.const-with-array.same-array-is-valid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     {
         \\         "foo": "bar"
         \\     }
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "const.const-with-array.another-array-item-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": [
@@ -15770,17 +15000,16 @@ test "const.const-with-array.another-array-item-is-invalid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     2
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.const-with-array.array-with-additional-items-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": [
@@ -15789,587 +15018,546 @@ test "const.const-with-array.array-with-additional-items-is-invalid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2,
         \\     3
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.const-with-null.null-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": null
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "const.const-with-null.not-null-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": null
         \\ }
-    );
-
-    const case =
+    ,
         \\ 0
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.const-with-false-does-not-match-0.false-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "const.const-with-false-does-not-match-0.integer-zero-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ 0
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.const-with-false-does-not-match-0.float-zero-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ 0
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.const-with-true-does-not-match-1.true-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ true
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "const.const-with-true-does-not-match-1.integer-one-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.const-with-true-does-not-match-1.float-one-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.const-with-[false]-does-not-match-[0].[false]-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": [
         \\         false
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     false
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "const.const-with-[false]-does-not-match-[0].[0]-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": [
         \\         false
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     0
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.const-with-[false]-does-not-match-[0].[0.0]-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": [
         \\         false
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     0
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.const-with-[true]-does-not-match-[1].[true]-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": [
         \\         true
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     true
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "const.const-with-[true]-does-not-match-[1].[1]-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": [
         \\         true
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.const-with-[true]-does-not-match-[1].[1.0]-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": [
         \\         true
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.const-with-{'a':-false}-does-not-match-{'a':-0}.{'a':-false}-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": {
         \\         "a": false
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "a": false
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "const.const-with-{'a':-false}-does-not-match-{'a':-0}.{'a':-0}-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": {
         \\         "a": false
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "a": 0
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.const-with-{'a':-false}-does-not-match-{'a':-0}.{'a':-0.0}-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": {
         \\         "a": false
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "a": 0
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.const-with-{'a':-true}-does-not-match-{'a':-1}.{'a':-true}-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": {
         \\         "a": true
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "a": true
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "const.const-with-{'a':-true}-does-not-match-{'a':-1}.{'a':-1}-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": {
         \\         "a": true
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "a": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.const-with-{'a':-true}-does-not-match-{'a':-1}.{'a':-1.0}-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": {
         \\         "a": true
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "a": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.const-with-0-does-not-match-other-zero-like-types.false-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": 0
         \\ }
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.const-with-0-does-not-match-other-zero-like-types.integer-zero-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": 0
         \\ }
-    );
-
-    const case =
+    ,
         \\ 0
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "const.const-with-0-does-not-match-other-zero-like-types.float-zero-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": 0
         \\ }
-    );
-
-    const case =
+    ,
         \\ 0
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "const.const-with-0-does-not-match-other-zero-like-types.empty-object-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": 0
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.const-with-0-does-not-match-other-zero-like-types.empty-array-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": 0
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.const-with-0-does-not-match-other-zero-like-types.empty-string-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": 0
         \\ }
-    );
-
-    const case =
+    ,
         \\ ""
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.const-with-1-does-not-match-true.true-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ true
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.const-with-1-does-not-match-true.integer-one-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "const.const-with-1-does-not-match-true.float-one-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "const.const-with--2.0-matches-integer-and-float-types.integer--2-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": -2
         \\ }
-    );
-
-    const case =
+    ,
         \\ -2
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "const.const-with--2.0-matches-integer-and-float-types.integer-2-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": -2
         \\ }
-    );
-
-    const case =
+    ,
         \\ 2
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.const-with--2.0-matches-integer-and-float-types.float--2.0-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": -2
         \\ }
-    );
-
-    const case =
+    ,
         \\ -2
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "const.const-with--2.0-matches-integer-and-float-types.float-2.0-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": -2
         \\ }
-    );
-
-    const case =
+    ,
         \\ 2
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.const-with--2.0-matches-integer-and-float-types.float--2.00001-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": -2
         \\ }
-    );
-
-    const case =
+    ,
         \\ -2.00001
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.float-and-integers-are-equal-up-to-64-bit-representation-limits.integer-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": 9007199254740992
         \\ }
-    );
-
-    const case =
+    ,
         \\ 9007199254740992
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "const.float-and-integers-are-equal-up-to-64-bit-representation-limits.integer-minus-one-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": 9007199254740992
         \\ }
-    );
-
-    const case =
+    ,
         \\ 9007199254740991
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.float-and-integers-are-equal-up-to-64-bit-representation-limits.float-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": 9007199254740992
         \\ }
-    );
-
-    const case =
+    ,
         \\ 9007199254740992
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "const.float-and-integers-are-equal-up-to-64-bit-representation-limits.float-minus-one-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": 9007199254740992
         \\ }
-    );
-
-    const case =
+    ,
         \\ 9007199254740991
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "const.nul-characters-in-strings.match-string-with-nul" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": "hello\u0000there"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "hello\u0000there"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "const.nul-characters-in-strings.do-not-match-string-lacking-nul" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "const": "hello\u0000there"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "hellothere"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "required.required-validation.present-required-property-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -16380,17 +15568,16 @@ test "required.required-validation.present-required-property-is-valid" {
         \\         "foo"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "required.required-validation.non-present-required-property-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -16401,17 +15588,16 @@ test "required.required-validation.non-present-required-property-is-invalid" {
         \\         "foo"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "required.required-validation.ignores-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -16422,15 +15608,14 @@ test "required.required-validation.ignores-arrays" {
         \\         "foo"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "required.required-validation.ignores-strings" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -16441,15 +15626,14 @@ test "required.required-validation.ignores-strings" {
         \\         "foo"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ ""
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "required.required-validation.ignores-other-non-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -16460,30 +15644,28 @@ test "required.required-validation.ignores-other-non-objects" {
         \\         "foo"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "required.required-default-validation.not-required-by-default" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
         \\         "foo": {}
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "required.required-with-empty-array.property-not-required" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -16491,15 +15673,14 @@ test "required.required-with-empty-array.property-not-required" {
         \\     },
         \\     "required": []
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "required.required-with-escaped-characters.object-with-all-properties-present-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "required": [
@@ -16511,9 +15692,7 @@ test "required.required-with-escaped-characters.object-with-all-properties-prese
         \\         "foo\fbar"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo\nbar": 1,
         \\     "foo\"bar": 1,
@@ -16522,11 +15701,12 @@ test "required.required-with-escaped-characters.object-with-all-properties-prese
         \\     "foo\tbar": 1,
         \\     "foo\fbar": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "required.required-with-escaped-characters.object-with-some-properties-missing-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "required": [
@@ -16538,18 +15718,17 @@ test "required.required-with-escaped-characters.object-with-some-properties-miss
         \\         "foo\fbar"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo\nbar": "1",
         \\     "foo\"bar": "1"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "required.required-properties-whose-names-are-Javascript-object-property-names.ignores-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "required": [
@@ -16558,15 +15737,14 @@ test "required.required-properties-whose-names-are-Javascript-object-property-na
         \\         "constructor"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "required.required-properties-whose-names-are-Javascript-object-property-names.ignores-other-non-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "required": [
@@ -16575,15 +15753,14 @@ test "required.required-properties-whose-names-are-Javascript-object-property-na
         \\         "constructor"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "required.required-properties-whose-names-are-Javascript-object-property-names.none-of-the-properties-mentioned" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "required": [
@@ -16592,15 +15769,14 @@ test "required.required-properties-whose-names-are-Javascript-object-property-na
         \\         "constructor"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "required.required-properties-whose-names-are-Javascript-object-property-names.__proto__-present" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "required": [
@@ -16609,17 +15785,16 @@ test "required.required-properties-whose-names-are-Javascript-object-property-na
         \\         "constructor"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "__proto__": "foo"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "required.required-properties-whose-names-are-Javascript-object-property-names.toString-present" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "required": [
@@ -16628,19 +15803,18 @@ test "required.required-properties-whose-names-are-Javascript-object-property-na
         \\         "constructor"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "toString": {
         \\         "length": 37
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "required.required-properties-whose-names-are-Javascript-object-property-names.constructor-present" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "required": [
@@ -16649,19 +15823,18 @@ test "required.required-properties-whose-names-are-Javascript-object-property-na
         \\         "constructor"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "constructor": {
         \\         "length": 37
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "required.required-properties-whose-names-are-Javascript-object-property-names.all-present" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "required": [
@@ -16670,9 +15843,7 @@ test "required.required-properties-whose-names-are-Javascript-object-property-na
         \\         "constructor"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "__proto__": 12,
         \\     "toString": {
@@ -16680,11 +15851,12 @@ test "required.required-properties-whose-names-are-Javascript-object-property-na
         \\     },
         \\     "constructor": 37
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "default.invalid-type-for-default.valid-when-property-is-specified" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -16694,17 +15866,16 @@ test "default.invalid-type-for-default.valid-when-property-is-specified" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 13
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "default.invalid-type-for-default.still-valid-when-the-invalid-default-is-used" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -16714,15 +15885,14 @@ test "default.invalid-type-for-default.still-valid-when-the-invalid-default-is-u
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "default.invalid-string-value-for-default.valid-when-property-is-specified" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -16733,17 +15903,16 @@ test "default.invalid-string-value-for-default.valid-when-property-is-specified"
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": "good"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "default.invalid-string-value-for-default.still-valid-when-the-invalid-default-is-used" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -16754,15 +15923,14 @@ test "default.invalid-string-value-for-default.still-valid-when-the-invalid-defa
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "default.the-default-keyword-does-not-do-anything-if-the-property-is-missing.an-explicit-property-value-is-checked-against-maximum-(passing)" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -16774,17 +15942,16 @@ test "default.the-default-keyword-does-not-do-anything-if-the-property-is-missin
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "alpha": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "default.the-default-keyword-does-not-do-anything-if-the-property-is-missing.an-explicit-property-value-is-checked-against-maximum-(failing)" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -16796,17 +15963,16 @@ test "default.the-default-keyword-does-not-do-anything-if-the-property-is-missin
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "alpha": 5
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "default.the-default-keyword-does-not-do-anything-if-the-property-is-missing.missing-properties-are-not-filled-in-with-the-default" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -16818,154 +15984,143 @@ test "default.the-default-keyword-does-not-do-anything-if-the-property-is-missin
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems-validation.unique-array-of-integers-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems-validation.non-unique-array-of-integers-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "uniqueItems.uniqueItems-validation.non-unique-array-of-more-than-two-integers-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2,
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "uniqueItems.uniqueItems-validation.numbers-are-unique-if-mathematically-unequal" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     1,
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "uniqueItems.uniqueItems-validation.false-is-not-equal-to-zero" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     0,
         \\     false
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems-validation.true-is-not-equal-to-one" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     true
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems-validation.unique-array-of-strings-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     "bar",
         \\     "baz"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems-validation.non-unique-array-of-strings-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     "bar",
         \\     "foo"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "uniqueItems.uniqueItems-validation.unique-array-of-objects-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     {
         \\         "foo": "bar"
@@ -16974,18 +16129,17 @@ test "uniqueItems.uniqueItems-validation.unique-array-of-objects-is-valid" {
         \\         "foo": "baz"
         \\     }
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems-validation.non-unique-array-of-objects-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     {
         \\         "foo": "bar"
@@ -16994,18 +16148,17 @@ test "uniqueItems.uniqueItems-validation.non-unique-array-of-objects-is-invalid"
         \\         "foo": "bar"
         \\     }
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "uniqueItems.uniqueItems-validation.property-order-of-array-of-objects-is-ignored" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     {
         \\         "foo": "bar",
@@ -17016,18 +16169,17 @@ test "uniqueItems.uniqueItems-validation.property-order-of-array-of-objects-is-i
         \\         "foo": "bar"
         \\     }
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "uniqueItems.uniqueItems-validation.unique-array-of-nested-objects-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     {
         \\         "foo": {
@@ -17044,18 +16196,17 @@ test "uniqueItems.uniqueItems-validation.unique-array-of-nested-objects-is-valid
         \\         }
         \\     }
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems-validation.non-unique-array-of-nested-objects-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     {
         \\         "foo": {
@@ -17072,18 +16223,17 @@ test "uniqueItems.uniqueItems-validation.non-unique-array-of-nested-objects-is-i
         \\         }
         \\     }
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "uniqueItems.uniqueItems-validation.unique-array-of-arrays-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     [
         \\         "foo"
@@ -17092,18 +16242,17 @@ test "uniqueItems.uniqueItems-validation.unique-array-of-arrays-is-valid" {
         \\         "bar"
         \\     ]
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems-validation.non-unique-array-of-arrays-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     [
         \\         "foo"
@@ -17112,18 +16261,17 @@ test "uniqueItems.uniqueItems-validation.non-unique-array-of-arrays-is-invalid" 
         \\         "foo"
         \\     ]
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "uniqueItems.uniqueItems-validation.non-unique-array-of-more-than-two-arrays-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     [
         \\         "foo"
@@ -17135,50 +16283,47 @@ test "uniqueItems.uniqueItems-validation.non-unique-array-of-more-than-two-array
         \\         "foo"
         \\     ]
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "uniqueItems.uniqueItems-validation.1-and-true-are-unique" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     true
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems-validation.0-and-false-are-unique" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     0,
         \\     false
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems-validation.[1]-and-[true]-are-unique" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     [
         \\         1
@@ -17187,18 +16332,17 @@ test "uniqueItems.uniqueItems-validation.[1]-and-[true]-are-unique" {
         \\         true
         \\     ]
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems-validation.[0]-and-[false]-are-unique" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     [
         \\         0
@@ -17207,18 +16351,17 @@ test "uniqueItems.uniqueItems-validation.[0]-and-[false]-are-unique" {
         \\         false
         \\     ]
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems-validation.nested-[1]-and-[true]-are-unique" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     [
         \\         [
@@ -17233,18 +16376,17 @@ test "uniqueItems.uniqueItems-validation.nested-[1]-and-[true]-are-unique" {
         \\         "foo"
         \\     ]
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems-validation.nested-[0]-and-[false]-are-unique" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     [
         \\         [
@@ -17259,18 +16401,17 @@ test "uniqueItems.uniqueItems-validation.nested-[0]-and-[false]-are-unique" {
         \\         "foo"
         \\     ]
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems-validation.unique-heterogeneous-types-are-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     {},
         \\     [
@@ -17281,18 +16422,17 @@ test "uniqueItems.uniqueItems-validation.unique-heterogeneous-types-are-valid" {
         \\     1,
         \\     "{}"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems-validation.non-unique-heterogeneous-types-are-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     {},
         \\     [
@@ -17303,18 +16443,17 @@ test "uniqueItems.uniqueItems-validation.non-unique-heterogeneous-types-are-inva
         \\     {},
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "uniqueItems.uniqueItems-validation.different-objects-are-unique" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     {
         \\         "a": 1,
@@ -17325,18 +16464,17 @@ test "uniqueItems.uniqueItems-validation.different-objects-are-unique" {
         \\         "b": 1
         \\     }
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems-validation.objects-are-non-unique-despite-key-order" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     {
         \\         "a": 1,
@@ -17347,18 +16485,17 @@ test "uniqueItems.uniqueItems-validation.objects-are-non-unique-despite-key-orde
         \\         "a": 1
         \\     }
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "uniqueItems.uniqueItems-validation.{'a':-false}-and-{'a':-0}-are-unique" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     {
         \\         "a": false
@@ -17367,18 +16504,17 @@ test "uniqueItems.uniqueItems-validation.{'a':-false}-and-{'a':-0}-are-unique" {
         \\         "a": 0
         \\     }
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems-validation.{'a':-true}-and-{'a':-1}-are-unique" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     {
         \\         "a": true
@@ -17387,11 +16523,12 @@ test "uniqueItems.uniqueItems-validation.{'a':-true}-and-{'a':-1}-are-unique" {
         \\         "a": 1
         \\     }
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems-with-an-array-of-items.[false,-true]-from-items-array-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -17404,18 +16541,17 @@ test "uniqueItems.uniqueItems-with-an-array-of-items.[false,-true]-from-items-ar
         \\     ],
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     false,
         \\     true
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems-with-an-array-of-items.[true,-false]-from-items-array-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -17428,18 +16564,17 @@ test "uniqueItems.uniqueItems-with-an-array-of-items.[true,-false]-from-items-ar
         \\     ],
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     true,
         \\     false
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems-with-an-array-of-items.[false,-false]-from-items-array-is-not-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -17452,18 +16587,17 @@ test "uniqueItems.uniqueItems-with-an-array-of-items.[false,-false]-from-items-a
         \\     ],
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     false,
         \\     false
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "uniqueItems.uniqueItems-with-an-array-of-items.[true,-true]-from-items-array-is-not-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -17476,18 +16610,17 @@ test "uniqueItems.uniqueItems-with-an-array-of-items.[true,-true]-from-items-arr
         \\     ],
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     true,
         \\     true
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "uniqueItems.uniqueItems-with-an-array-of-items.unique-array-extended-from-[false,-true]-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -17500,20 +16633,19 @@ test "uniqueItems.uniqueItems-with-an-array-of-items.unique-array-extended-from-
         \\     ],
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     false,
         \\     true,
         \\     "foo",
         \\     "bar"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems-with-an-array-of-items.unique-array-extended-from-[true,-false]-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -17526,20 +16658,19 @@ test "uniqueItems.uniqueItems-with-an-array-of-items.unique-array-extended-from-
         \\     ],
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     true,
         \\     false,
         \\     "foo",
         \\     "bar"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems-with-an-array-of-items.non-unique-array-extended-from-[false,-true]-is-not-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -17552,20 +16683,19 @@ test "uniqueItems.uniqueItems-with-an-array-of-items.non-unique-array-extended-f
         \\     ],
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     false,
         \\     true,
         \\     "foo",
         \\     "foo"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "uniqueItems.uniqueItems-with-an-array-of-items.non-unique-array-extended-from-[true,-false]-is-not-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -17578,20 +16708,19 @@ test "uniqueItems.uniqueItems-with-an-array-of-items.non-unique-array-extended-f
         \\     ],
         \\     "uniqueItems": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     true,
         \\     false,
         \\     "foo",
         \\     "foo"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "uniqueItems.uniqueItems-with-an-array-of-items-and-additionalItems=false.[false,-true]-from-items-array-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -17605,18 +16734,17 @@ test "uniqueItems.uniqueItems-with-an-array-of-items-and-additionalItems=false.[
         \\     "uniqueItems": true,
         \\     "additionalItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     false,
         \\     true
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems-with-an-array-of-items-and-additionalItems=false.[true,-false]-from-items-array-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -17630,18 +16758,17 @@ test "uniqueItems.uniqueItems-with-an-array-of-items-and-additionalItems=false.[
         \\     "uniqueItems": true,
         \\     "additionalItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     true,
         \\     false
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems-with-an-array-of-items-and-additionalItems=false.[false,-false]-from-items-array-is-not-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -17655,18 +16782,17 @@ test "uniqueItems.uniqueItems-with-an-array-of-items-and-additionalItems=false.[
         \\     "uniqueItems": true,
         \\     "additionalItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     false,
         \\     false
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "uniqueItems.uniqueItems-with-an-array-of-items-and-additionalItems=false.[true,-true]-from-items-array-is-not-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -17680,18 +16806,17 @@ test "uniqueItems.uniqueItems-with-an-array-of-items-and-additionalItems=false.[
         \\     "uniqueItems": true,
         \\     "additionalItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     true,
         \\     true
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "uniqueItems.uniqueItems-with-an-array-of-items-and-additionalItems=false.extra-items-are-invalid-even-if-unique" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -17705,107 +16830,99 @@ test "uniqueItems.uniqueItems-with-an-array-of-items-and-additionalItems=false.e
         \\     "uniqueItems": true,
         \\     "additionalItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     false,
         \\     true,
         \\     null
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "uniqueItems.uniqueItems=false-validation.unique-array-of-integers-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems=false-validation.non-unique-array-of-integers-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems=false-validation.numbers-are-unique-if-mathematically-unequal" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     1,
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems=false-validation.false-is-not-equal-to-zero" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     0,
         \\     false
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems=false-validation.true-is-not-equal-to-one" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     true
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems=false-validation.unique-array-of-objects-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     {
         \\         "foo": "bar"
@@ -17814,18 +16931,17 @@ test "uniqueItems.uniqueItems=false-validation.unique-array-of-objects-is-valid"
         \\         "foo": "baz"
         \\     }
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems=false-validation.non-unique-array-of-objects-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     {
         \\         "foo": "bar"
@@ -17834,18 +16950,17 @@ test "uniqueItems.uniqueItems=false-validation.non-unique-array-of-objects-is-va
         \\         "foo": "bar"
         \\     }
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems=false-validation.unique-array-of-nested-objects-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     {
         \\         "foo": {
@@ -17862,18 +16977,17 @@ test "uniqueItems.uniqueItems=false-validation.unique-array-of-nested-objects-is
         \\         }
         \\     }
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems=false-validation.non-unique-array-of-nested-objects-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     {
         \\         "foo": {
@@ -17890,18 +17004,17 @@ test "uniqueItems.uniqueItems=false-validation.non-unique-array-of-nested-object
         \\         }
         \\     }
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems=false-validation.unique-array-of-arrays-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     [
         \\         "foo"
@@ -17910,18 +17023,17 @@ test "uniqueItems.uniqueItems=false-validation.unique-array-of-arrays-is-valid" 
         \\         "bar"
         \\     ]
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems=false-validation.non-unique-array-of-arrays-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     [
         \\         "foo"
@@ -17930,50 +17042,47 @@ test "uniqueItems.uniqueItems=false-validation.non-unique-array-of-arrays-is-val
         \\         "foo"
         \\     ]
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems=false-validation.1-and-true-are-unique" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     true
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems=false-validation.0-and-false-are-unique" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     0,
         \\     false
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems=false-validation.unique-heterogeneous-types-are-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     {},
         \\     [
@@ -17983,18 +17092,17 @@ test "uniqueItems.uniqueItems=false-validation.unique-heterogeneous-types-are-va
         \\     null,
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems=false-validation.non-unique-heterogeneous-types-are-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "uniqueItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     {},
         \\     [
@@ -18005,11 +17113,12 @@ test "uniqueItems.uniqueItems=false-validation.non-unique-heterogeneous-types-ar
         \\     {},
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems=false-with-an-array-of-items.[false,-true]-from-items-array-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -18022,18 +17131,17 @@ test "uniqueItems.uniqueItems=false-with-an-array-of-items.[false,-true]-from-it
         \\     ],
         \\     "uniqueItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     false,
         \\     true
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems=false-with-an-array-of-items.[true,-false]-from-items-array-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -18046,18 +17154,17 @@ test "uniqueItems.uniqueItems=false-with-an-array-of-items.[true,-false]-from-it
         \\     ],
         \\     "uniqueItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     true,
         \\     false
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems=false-with-an-array-of-items.[false,-false]-from-items-array-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -18070,18 +17177,17 @@ test "uniqueItems.uniqueItems=false-with-an-array-of-items.[false,-false]-from-i
         \\     ],
         \\     "uniqueItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     false,
         \\     false
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems=false-with-an-array-of-items.[true,-true]-from-items-array-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -18094,18 +17200,17 @@ test "uniqueItems.uniqueItems=false-with-an-array-of-items.[true,-true]-from-ite
         \\     ],
         \\     "uniqueItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     true,
         \\     true
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems=false-with-an-array-of-items.unique-array-extended-from-[false,-true]-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -18118,20 +17223,19 @@ test "uniqueItems.uniqueItems=false-with-an-array-of-items.unique-array-extended
         \\     ],
         \\     "uniqueItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     false,
         \\     true,
         \\     "foo",
         \\     "bar"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems=false-with-an-array-of-items.unique-array-extended-from-[true,-false]-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -18144,20 +17248,19 @@ test "uniqueItems.uniqueItems=false-with-an-array-of-items.unique-array-extended
         \\     ],
         \\     "uniqueItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     true,
         \\     false,
         \\     "foo",
         \\     "bar"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems=false-with-an-array-of-items.non-unique-array-extended-from-[false,-true]-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -18170,20 +17273,19 @@ test "uniqueItems.uniqueItems=false-with-an-array-of-items.non-unique-array-exte
         \\     ],
         \\     "uniqueItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     false,
         \\     true,
         \\     "foo",
         \\     "foo"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems=false-with-an-array-of-items.non-unique-array-extended-from-[true,-false]-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -18196,20 +17298,19 @@ test "uniqueItems.uniqueItems=false-with-an-array-of-items.non-unique-array-exte
         \\     ],
         \\     "uniqueItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     true,
         \\     false,
         \\     "foo",
         \\     "foo"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems=false-with-an-array-of-items-and-additionalItems=false.[false,-true]-from-items-array-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -18223,18 +17324,17 @@ test "uniqueItems.uniqueItems=false-with-an-array-of-items-and-additionalItems=f
         \\     "uniqueItems": false,
         \\     "additionalItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     false,
         \\     true
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems=false-with-an-array-of-items-and-additionalItems=false.[true,-false]-from-items-array-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -18248,18 +17348,17 @@ test "uniqueItems.uniqueItems=false-with-an-array-of-items-and-additionalItems=f
         \\     "uniqueItems": false,
         \\     "additionalItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     true,
         \\     false
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems=false-with-an-array-of-items-and-additionalItems=false.[false,-false]-from-items-array-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -18273,18 +17372,17 @@ test "uniqueItems.uniqueItems=false-with-an-array-of-items-and-additionalItems=f
         \\     "uniqueItems": false,
         \\     "additionalItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     false,
         \\     false
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems=false-with-an-array-of-items-and-additionalItems=false.[true,-true]-from-items-array-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -18298,18 +17396,17 @@ test "uniqueItems.uniqueItems=false-with-an-array-of-items-and-additionalItems=f
         \\     "uniqueItems": false,
         \\     "additionalItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     true,
         \\     true
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "uniqueItems.uniqueItems=false-with-an-array-of-items-and-additionalItems=false.extra-items-are-invalid-even-if-unique" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -18323,50 +17420,47 @@ test "uniqueItems.uniqueItems=false-with-an-array-of-items-and-additionalItems=f
         \\     "uniqueItems": false,
         \\     "additionalItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     false,
         \\     true,
         \\     null
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "maxContains.maxContains-without-contains-is-ignored.one-item-valid-against-lone-maxContains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maxContains": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maxContains.maxContains-without-contains-is-ignored.two-items-still-valid-against-lone-maxContains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maxContains": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maxContains.maxContains-with-contains.empty-data" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -18374,15 +17468,14 @@ test "maxContains.maxContains-with-contains.empty-data" {
         \\     },
         \\     "maxContains": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "maxContains.maxContains-with-contains.all-elements-match,-valid-maxContains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -18390,17 +17483,16 @@ test "maxContains.maxContains-with-contains.all-elements-match,-valid-maxContain
         \\     },
         \\     "maxContains": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maxContains.maxContains-with-contains.all-elements-match,-invalid-maxContains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -18408,18 +17500,17 @@ test "maxContains.maxContains-with-contains.all-elements-match,-invalid-maxConta
         \\     },
         \\     "maxContains": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "maxContains.maxContains-with-contains.some-elements-match,-valid-maxContains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -18427,18 +17518,17 @@ test "maxContains.maxContains-with-contains.some-elements-match,-valid-maxContai
         \\     },
         \\     "maxContains": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maxContains.maxContains-with-contains.some-elements-match,-invalid-maxContains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -18446,19 +17536,18 @@ test "maxContains.maxContains-with-contains.some-elements-match,-invalid-maxCont
         \\     },
         \\     "maxContains": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2,
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "maxContains.maxContains-with-contains,-value-with-a-decimal.one-element-matches,-valid-maxContains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -18466,17 +17555,16 @@ test "maxContains.maxContains-with-contains,-value-with-a-decimal.one-element-ma
         \\     },
         \\     "maxContains": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maxContains.maxContains-with-contains,-value-with-a-decimal.too-many-elements-match,-invalid-maxContains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -18484,18 +17572,17 @@ test "maxContains.maxContains-with-contains,-value-with-a-decimal.too-many-eleme
         \\     },
         \\     "maxContains": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "maxContains.minContains-<-maxContains.actual-<-minContains-<-maxContains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -18504,15 +17591,14 @@ test "maxContains.minContains-<-maxContains.actual-<-minContains-<-maxContains" 
         \\     "minContains": 1,
         \\     "maxContains": 3
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "maxContains.minContains-<-maxContains.minContains-<-actual-<-maxContains" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -18521,18 +17607,17 @@ test "maxContains.minContains-<-maxContains.minContains-<-actual-<-maxContains" 
         \\     "minContains": 1,
         \\     "maxContains": 3
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maxContains.minContains-<-maxContains.minContains-<-maxContains-<-actual" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contains": {
@@ -18541,171 +17626,160 @@ test "maxContains.minContains-<-maxContains.minContains-<-maxContains-<-actual" 
         \\     "minContains": 1,
         \\     "maxContains": 3
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     1,
         \\     1,
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "maxProperties.maxProperties-validation.shorter-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maxProperties": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maxProperties.maxProperties-validation.exact-length-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maxProperties": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maxProperties.maxProperties-validation.too-long-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maxProperties": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "bar": 2,
         \\     "baz": 3
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "maxProperties.maxProperties-validation.ignores-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maxProperties": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2,
         \\     3
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maxProperties.maxProperties-validation.ignores-strings" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maxProperties": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foobar"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maxProperties.maxProperties-validation.ignores-other-non-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maxProperties": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maxProperties.maxProperties-validation-with-a-decimal.shorter-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maxProperties": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maxProperties.maxProperties-validation-with-a-decimal.too-long-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maxProperties": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "bar": 2,
         \\     "baz": 3
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "maxProperties.maxProperties-=-0-means-the-object-is-empty.no-properties-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maxProperties": 0
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maxProperties.maxProperties-=-0-means-the-object-is-empty.one-property-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maxProperties": 0
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "allOf.allOf.allOf" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -18731,18 +17805,17 @@ test "allOf.allOf.allOf" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "baz",
         \\     "bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "allOf.allOf.mismatch-second" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -18768,17 +17841,16 @@ test "allOf.allOf.mismatch-second" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "baz"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "allOf.allOf.mismatch-first" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -18804,17 +17876,16 @@ test "allOf.allOf.mismatch-first" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "allOf.allOf.wrong-type" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -18840,18 +17911,17 @@ test "allOf.allOf.wrong-type" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "baz",
         \\     "bar": "quux"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "allOf.allOf-with-base-schema.valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -18885,19 +17955,18 @@ test "allOf.allOf-with-base-schema.valid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "quux",
         \\     "bar": 2,
         \\     "baz": null
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "allOf.allOf-with-base-schema.mismatch-base-schema" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -18931,18 +18000,17 @@ test "allOf.allOf-with-base-schema.mismatch-base-schema" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "quux",
         \\     "baz": null
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "allOf.allOf-with-base-schema.mismatch-first-allOf" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -18976,18 +18044,17 @@ test "allOf.allOf-with-base-schema.mismatch-first-allOf" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": 2,
         \\     "baz": null
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "allOf.allOf-with-base-schema.mismatch-second-allOf" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -19021,18 +18088,17 @@ test "allOf.allOf-with-base-schema.mismatch-second-allOf" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "quux",
         \\     "bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "allOf.allOf-with-base-schema.mismatch-both" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -19066,17 +18132,16 @@ test "allOf.allOf-with-base-schema.mismatch-both" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "allOf.allOf-simple-types.valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -19088,15 +18153,14 @@ test "allOf.allOf-simple-types.valid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 25
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "allOf.allOf-simple-types.mismatch-one" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -19108,15 +18172,14 @@ test "allOf.allOf-simple-types.mismatch-one" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 35
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "allOf.allOf-with-boolean-schemas,-all-true.any-value-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -19124,15 +18187,14 @@ test "allOf.allOf-with-boolean-schemas,-all-true.any-value-is-valid" {
         \\         true
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "allOf.allOf-with-boolean-schemas,-some-false.any-value-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -19140,15 +18202,14 @@ test "allOf.allOf-with-boolean-schemas,-some-false.any-value-is-invalid" {
         \\         false
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "allOf.allOf-with-boolean-schemas,-all-false.any-value-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -19156,30 +18217,28 @@ test "allOf.allOf-with-boolean-schemas,-all-false.any-value-is-invalid" {
         \\         false
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "allOf.allOf-with-one-empty-schema.any-data-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
         \\         {}
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "allOf.allOf-with-two-empty-schemas.any-data-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -19187,15 +18246,14 @@ test "allOf.allOf-with-two-empty-schemas.any-data-is-valid" {
         \\         {}
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "allOf.allOf-with-the-first-empty-schema.number-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -19205,15 +18263,14 @@ test "allOf.allOf-with-the-first-empty-schema.number-is-valid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "allOf.allOf-with-the-first-empty-schema.string-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -19223,15 +18280,14 @@ test "allOf.allOf-with-the-first-empty-schema.string-is-invalid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "allOf.allOf-with-the-last-empty-schema.number-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -19241,15 +18297,14 @@ test "allOf.allOf-with-the-last-empty-schema.number-is-valid" {
         \\         {}
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "allOf.allOf-with-the-last-empty-schema.string-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -19259,15 +18314,14 @@ test "allOf.allOf-with-the-last-empty-schema.string-is-invalid" {
         \\         {}
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "allOf.nested-allOf,-to-check-validation-semantics.null-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -19280,15 +18334,14 @@ test "allOf.nested-allOf,-to-check-validation-semantics.null-is-valid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "allOf.nested-allOf,-to-check-validation-semantics.anything-non-null-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -19301,15 +18354,14 @@ test "allOf.nested-allOf,-to-check-validation-semantics.anything-non-null-is-inv
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 123
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "allOf.allOf-combined-with-anyOf,-oneOf.allOf:-false,-anyOf:-false,-oneOf:-false" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -19328,15 +18380,14 @@ test "allOf.allOf-combined-with-anyOf,-oneOf.allOf:-false,-anyOf:-false,-oneOf:-
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "allOf.allOf-combined-with-anyOf,-oneOf.allOf:-false,-anyOf:-false,-oneOf:-true" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -19355,15 +18406,14 @@ test "allOf.allOf-combined-with-anyOf,-oneOf.allOf:-false,-anyOf:-false,-oneOf:-
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 5
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "allOf.allOf-combined-with-anyOf,-oneOf.allOf:-false,-anyOf:-true,-oneOf:-false" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -19382,15 +18432,14 @@ test "allOf.allOf-combined-with-anyOf,-oneOf.allOf:-false,-anyOf:-true,-oneOf:-f
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 3
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "allOf.allOf-combined-with-anyOf,-oneOf.allOf:-false,-anyOf:-true,-oneOf:-true" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -19409,15 +18458,14 @@ test "allOf.allOf-combined-with-anyOf,-oneOf.allOf:-false,-anyOf:-true,-oneOf:-t
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 15
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "allOf.allOf-combined-with-anyOf,-oneOf.allOf:-true,-anyOf:-false,-oneOf:-false" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -19436,15 +18484,14 @@ test "allOf.allOf-combined-with-anyOf,-oneOf.allOf:-true,-anyOf:-false,-oneOf:-f
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 2
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "allOf.allOf-combined-with-anyOf,-oneOf.allOf:-true,-anyOf:-false,-oneOf:-true" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -19463,15 +18510,14 @@ test "allOf.allOf-combined-with-anyOf,-oneOf.allOf:-true,-anyOf:-false,-oneOf:-t
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 10
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "allOf.allOf-combined-with-anyOf,-oneOf.allOf:-true,-anyOf:-true,-oneOf:-false" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -19490,15 +18536,14 @@ test "allOf.allOf-combined-with-anyOf,-oneOf.allOf:-true,-anyOf:-true,-oneOf:-fa
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 6
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "allOf.allOf-combined-with-anyOf,-oneOf.allOf:-true,-anyOf:-true,-oneOf:-true" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -19517,45 +18562,42 @@ test "allOf.allOf-combined-with-anyOf,-oneOf.allOf:-true,-anyOf:-true,-oneOf:-tr
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 30
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-true.with-no-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
         \\     "unevaluatedProperties": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-true.with-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
         \\     "unevaluatedProperties": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-schema.with-no-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -19564,15 +18606,14 @@ test "unevaluatedProperties.unevaluatedProperties-schema.with-no-unevaluated-pro
         \\         "minLength": 3
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-schema.with-valid-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -19581,17 +18622,16 @@ test "unevaluatedProperties.unevaluatedProperties-schema.with-valid-unevaluated-
         \\         "minLength": 3
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-schema.with-invalid-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -19600,47 +18640,44 @@ test "unevaluatedProperties.unevaluatedProperties-schema.with-invalid-unevaluate
         \\         "minLength": 3
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "fo"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-false.with-no-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-false.with-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-adjacent-properties.with-no-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -19651,17 +18688,16 @@ test "unevaluatedProperties.unevaluatedProperties-with-adjacent-properties.with-
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-adjacent-properties.with-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -19672,18 +18708,17 @@ test "unevaluatedProperties.unevaluatedProperties-with-adjacent-properties.with-
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-adjacent-patternProperties.with-no-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -19694,17 +18729,16 @@ test "unevaluatedProperties.unevaluatedProperties-with-adjacent-patternPropertie
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-adjacent-patternProperties.with-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -19715,18 +18749,17 @@ test "unevaluatedProperties.unevaluatedProperties-with-adjacent-patternPropertie
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-adjacent-additionalProperties.with-no-additional-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -19738,17 +18771,16 @@ test "unevaluatedProperties.unevaluatedProperties-with-adjacent-additionalProper
         \\     "additionalProperties": true,
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-adjacent-additionalProperties.with-additional-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -19760,18 +18792,17 @@ test "unevaluatedProperties.unevaluatedProperties-with-adjacent-additionalProper
         \\     "additionalProperties": true,
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-nested-properties.with-no-additional-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -19791,18 +18822,17 @@ test "unevaluatedProperties.unevaluatedProperties-with-nested-properties.with-no
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-nested-properties.with-additional-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -19822,19 +18852,18 @@ test "unevaluatedProperties.unevaluatedProperties-with-nested-properties.with-ad
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bar",
         \\     "baz": "baz"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-nested-patternProperties.with-no-additional-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -19854,18 +18883,17 @@ test "unevaluatedProperties.unevaluatedProperties-with-nested-patternProperties.
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-nested-patternProperties.with-additional-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -19885,19 +18913,18 @@ test "unevaluatedProperties.unevaluatedProperties-with-nested-patternProperties.
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bar",
         \\     "baz": "baz"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-nested-additionalProperties.with-no-additional-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -19913,17 +18940,16 @@ test "unevaluatedProperties.unevaluatedProperties-with-nested-additionalProperti
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-nested-additionalProperties.with-additional-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -19939,18 +18965,17 @@ test "unevaluatedProperties.unevaluatedProperties-with-nested-additionalProperti
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-nested-unevaluatedProperties.with-no-nested-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -19969,17 +18994,16 @@ test "unevaluatedProperties.unevaluatedProperties-with-nested-unevaluatedPropert
         \\         "maxLength": 2
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-nested-unevaluatedProperties.with-nested-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -19998,18 +19022,17 @@ test "unevaluatedProperties.unevaluatedProperties-with-nested-unevaluatedPropert
         \\         "maxLength": 2
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-anyOf.when-one-matches-and-has-no-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -20052,18 +19075,17 @@ test "unevaluatedProperties.unevaluatedProperties-with-anyOf.when-one-matches-an
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-anyOf.when-one-matches-and-has-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -20106,19 +19128,18 @@ test "unevaluatedProperties.unevaluatedProperties-with-anyOf.when-one-matches-an
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bar",
         \\     "baz": "not-baz"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-anyOf.when-two-match-and-has-no-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -20161,19 +19182,18 @@ test "unevaluatedProperties.unevaluatedProperties-with-anyOf.when-two-match-and-
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bar",
         \\     "baz": "baz"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-anyOf.when-two-match-and-has-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -20216,20 +19236,19 @@ test "unevaluatedProperties.unevaluatedProperties-with-anyOf.when-two-match-and-
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bar",
         \\     "baz": "baz",
         \\     "quux": "not-quux"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-oneOf.with-no-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -20262,18 +19281,17 @@ test "unevaluatedProperties.unevaluatedProperties-with-oneOf.with-no-unevaluated
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-oneOf.with-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -20306,19 +19324,18 @@ test "unevaluatedProperties.unevaluatedProperties-with-oneOf.with-unevaluated-pr
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bar",
         \\     "quux": "quux"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-not.with-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -20341,18 +19358,17 @@ test "unevaluatedProperties.unevaluatedProperties-with-not.with-unevaluated-prop
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-if/then/else.when-if-is-true-and-has-no-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -20388,18 +19404,17 @@ test "unevaluatedProperties.unevaluatedProperties-with-if/then/else.when-if-is-t
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "then",
         \\     "bar": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-if/then/else.when-if-is-true-and-has-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -20435,19 +19450,18 @@ test "unevaluatedProperties.unevaluatedProperties-with-if/then/else.when-if-is-t
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "then",
         \\     "bar": "bar",
         \\     "baz": "baz"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-if/then/else.when-if-is-false-and-has-no-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -20483,17 +19497,16 @@ test "unevaluatedProperties.unevaluatedProperties-with-if/then/else.when-if-is-f
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "baz": "baz"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-if/then/else.when-if-is-false-and-has-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -20529,18 +19542,17 @@ test "unevaluatedProperties.unevaluatedProperties-with-if/then/else.when-if-is-f
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "else",
         \\     "baz": "baz"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-if/then/else,-then-not-defined.when-if-is-true-and-has-no-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -20566,18 +19578,17 @@ test "unevaluatedProperties.unevaluatedProperties-with-if/then/else,-then-not-de
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "then",
         \\     "bar": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-if/then/else,-then-not-defined.when-if-is-true-and-has-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -20603,19 +19614,18 @@ test "unevaluatedProperties.unevaluatedProperties-with-if/then/else,-then-not-de
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "then",
         \\     "bar": "bar",
         \\     "baz": "baz"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-if/then/else,-then-not-defined.when-if-is-false-and-has-no-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -20641,17 +19651,16 @@ test "unevaluatedProperties.unevaluatedProperties-with-if/then/else,-then-not-de
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "baz": "baz"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-if/then/else,-then-not-defined.when-if-is-false-and-has-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -20677,18 +19686,17 @@ test "unevaluatedProperties.unevaluatedProperties-with-if/then/else,-then-not-de
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "else",
         \\     "baz": "baz"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-if/then/else,-else-not-defined.when-if-is-true-and-has-no-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -20714,18 +19722,17 @@ test "unevaluatedProperties.unevaluatedProperties-with-if/then/else,-else-not-de
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "then",
         \\     "bar": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-if/then/else,-else-not-defined.when-if-is-true-and-has-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -20751,19 +19758,18 @@ test "unevaluatedProperties.unevaluatedProperties-with-if/then/else,-else-not-de
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "then",
         \\     "bar": "bar",
         \\     "baz": "baz"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-if/then/else,-else-not-defined.when-if-is-false-and-has-no-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -20789,17 +19795,16 @@ test "unevaluatedProperties.unevaluatedProperties-with-if/then/else,-else-not-de
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "baz": "baz"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-if/then/else,-else-not-defined.when-if-is-false-and-has-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -20825,18 +19830,17 @@ test "unevaluatedProperties.unevaluatedProperties-with-if/then/else,-else-not-de
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "else",
         \\     "baz": "baz"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-dependentSchemas.with-no-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -20859,18 +19863,17 @@ test "unevaluatedProperties.unevaluatedProperties-with-dependentSchemas.with-no-
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-dependentSchemas.with-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -20893,17 +19896,16 @@ test "unevaluatedProperties.unevaluatedProperties-with-dependentSchemas.with-une
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-boolean-schemas.with-no-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -20917,17 +19919,16 @@ test "unevaluatedProperties.unevaluatedProperties-with-boolean-schemas.with-no-u
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-boolean-schemas.with-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -20941,17 +19942,16 @@ test "unevaluatedProperties.unevaluatedProperties-with-boolean-schemas.with-unev
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-$ref.with-no-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -20972,18 +19972,17 @@ test "unevaluatedProperties.unevaluatedProperties-with-$ref.with-no-unevaluated-
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-$ref.with-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21004,19 +20003,18 @@ test "unevaluatedProperties.unevaluatedProperties-with-$ref.with-unevaluated-pro
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bar",
         \\     "baz": "baz"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-before-$ref.with-no-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21037,18 +20035,17 @@ test "unevaluatedProperties.unevaluatedProperties-before-$ref.with-no-unevaluate
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-before-$ref.with-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21069,19 +20066,18 @@ test "unevaluatedProperties.unevaluatedProperties-before-$ref.with-unevaluated-p
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bar",
         \\     "baz": "baz"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-$recursiveRef.with-no-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "https://example.com/unevaluated-properties-with-recursive-ref/extended-tree",
@@ -21111,9 +20107,7 @@ test "unevaluatedProperties.unevaluatedProperties-with-$recursiveRef.with-no-une
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "name": "a",
         \\     "node": 1,
@@ -21122,11 +20116,12 @@ test "unevaluatedProperties.unevaluatedProperties-with-$recursiveRef.with-no-une
         \\         "node": 2
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-$recursiveRef.with-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "https://example.com/unevaluated-properties-with-recursive-ref/extended-tree",
@@ -21156,9 +20151,7 @@ test "unevaluatedProperties.unevaluatedProperties-with-$recursiveRef.with-uneval
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "name": "a",
         \\     "node": 1,
@@ -21167,11 +20160,12 @@ test "unevaluatedProperties.unevaluatedProperties-with-$recursiveRef.with-uneval
         \\         "node": 2
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-can't-see-inside-cousins.always-fails" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -21185,17 +20179,16 @@ test "unevaluatedProperties.unevaluatedProperties-can't-see-inside-cousins.alway
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-can't-see-inside-cousins-(reverse-order).always-fails" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -21209,17 +20202,16 @@ test "unevaluatedProperties.unevaluatedProperties-can't-see-inside-cousins-(reve
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.nested-unevaluatedProperties,-outer-false,-inner-true,-properties-outside.with-no-nested-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21235,17 +20227,16 @@ test "unevaluatedProperties.nested-unevaluatedProperties,-outer-false,-inner-tru
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.nested-unevaluatedProperties,-outer-false,-inner-true,-properties-outside.with-nested-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21261,18 +20252,17 @@ test "unevaluatedProperties.nested-unevaluatedProperties,-outer-false,-inner-tru
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.nested-unevaluatedProperties,-outer-false,-inner-true,-properties-inside.with-no-nested-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21288,17 +20278,16 @@ test "unevaluatedProperties.nested-unevaluatedProperties,-outer-false,-inner-tru
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.nested-unevaluatedProperties,-outer-false,-inner-true,-properties-inside.with-nested-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21314,18 +20303,17 @@ test "unevaluatedProperties.nested-unevaluatedProperties,-outer-false,-inner-tru
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.nested-unevaluatedProperties,-outer-true,-inner-false,-properties-outside.with-no-nested-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21341,17 +20329,16 @@ test "unevaluatedProperties.nested-unevaluatedProperties,-outer-true,-inner-fals
         \\     ],
         \\     "unevaluatedProperties": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.nested-unevaluatedProperties,-outer-true,-inner-false,-properties-outside.with-nested-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21367,18 +20354,17 @@ test "unevaluatedProperties.nested-unevaluatedProperties,-outer-true,-inner-fals
         \\     ],
         \\     "unevaluatedProperties": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.nested-unevaluatedProperties,-outer-true,-inner-false,-properties-inside.with-no-nested-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21394,17 +20380,16 @@ test "unevaluatedProperties.nested-unevaluatedProperties,-outer-true,-inner-fals
         \\     ],
         \\     "unevaluatedProperties": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.nested-unevaluatedProperties,-outer-true,-inner-false,-properties-inside.with-nested-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21420,18 +20405,17 @@ test "unevaluatedProperties.nested-unevaluatedProperties,-outer-true,-inner-fals
         \\     ],
         \\     "unevaluatedProperties": true
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.cousin-unevaluatedProperties,-true-and-false,-true-with-properties.with-no-nested-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21449,17 +20433,16 @@ test "unevaluatedProperties.cousin-unevaluatedProperties,-true-and-false,-true-w
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.cousin-unevaluatedProperties,-true-and-false,-true-with-properties.with-nested-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21477,18 +20460,17 @@ test "unevaluatedProperties.cousin-unevaluatedProperties,-true-and-false,-true-w
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.cousin-unevaluatedProperties,-true-and-false,-false-with-properties.with-no-nested-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21506,17 +20488,16 @@ test "unevaluatedProperties.cousin-unevaluatedProperties,-true-and-false,-false-
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.cousin-unevaluatedProperties,-true-and-false,-false-with-properties.with-nested-unevaluated-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21534,18 +20515,17 @@ test "unevaluatedProperties.cousin-unevaluatedProperties,-true-and-false,-false-
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.property-is-evaluated-in-an-uncle-schema-to-unevaluatedProperties.no-extra-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21574,19 +20554,18 @@ test "unevaluatedProperties.property-is-evaluated-in-an-uncle-schema-to-unevalua
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": {
         \\         "bar": "test"
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.property-is-evaluated-in-an-uncle-schema-to-unevaluatedProperties.uncle-keyword-evaluation-is-not-significant" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21615,20 +20594,19 @@ test "unevaluatedProperties.property-is-evaluated-in-an-uncle-schema-to-unevalua
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": {
         \\         "bar": "test",
         \\         "faz": "test"
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.in-place-applicator-siblings,-allOf-has-unevaluated.base-case:-both-properties-present" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21648,18 +20626,17 @@ test "unevaluatedProperties.in-place-applicator-siblings,-allOf-has-unevaluated.
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "bar": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.in-place-applicator-siblings,-allOf-has-unevaluated.in-place-applicator-siblings,-bar-is-missing" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21679,17 +20656,16 @@ test "unevaluatedProperties.in-place-applicator-siblings,-allOf-has-unevaluated.
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.in-place-applicator-siblings,-allOf-has-unevaluated.in-place-applicator-siblings,-foo-is-missing" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21709,17 +20685,16 @@ test "unevaluatedProperties.in-place-applicator-siblings,-allOf-has-unevaluated.
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.in-place-applicator-siblings,-anyOf-has-unevaluated.base-case:-both-properties-present" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21739,18 +20714,17 @@ test "unevaluatedProperties.in-place-applicator-siblings,-anyOf-has-unevaluated.
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "bar": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.in-place-applicator-siblings,-anyOf-has-unevaluated.in-place-applicator-siblings,-bar-is-missing" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21770,17 +20744,16 @@ test "unevaluatedProperties.in-place-applicator-siblings,-anyOf-has-unevaluated.
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.in-place-applicator-siblings,-anyOf-has-unevaluated.in-place-applicator-siblings,-foo-is-missing" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21800,17 +20773,16 @@ test "unevaluatedProperties.in-place-applicator-siblings,-anyOf-has-unevaluated.
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-+-single-cyclic-ref.Empty-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21821,15 +20793,14 @@ test "unevaluatedProperties.unevaluatedProperties-+-single-cyclic-ref.Empty-is-v
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-+-single-cyclic-ref.Single-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21840,17 +20811,16 @@ test "unevaluatedProperties.unevaluatedProperties-+-single-cyclic-ref.Single-is-
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "x": {}
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-+-single-cyclic-ref.Unevaluated-on-1st-level-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21861,18 +20831,17 @@ test "unevaluatedProperties.unevaluatedProperties-+-single-cyclic-ref.Unevaluate
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "x": {},
         \\     "y": {}
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-+-single-cyclic-ref.Nested-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21883,19 +20852,18 @@ test "unevaluatedProperties.unevaluatedProperties-+-single-cyclic-ref.Nested-is-
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "x": {
         \\         "x": {}
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-+-single-cyclic-ref.Unevaluated-on-2nd-level-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21906,20 +20874,19 @@ test "unevaluatedProperties.unevaluatedProperties-+-single-cyclic-ref.Unevaluate
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "x": {
         \\         "x": {},
         \\         "y": {}
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-+-single-cyclic-ref.Deep-nested-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21930,9 +20897,7 @@ test "unevaluatedProperties.unevaluatedProperties-+-single-cyclic-ref.Deep-neste
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "x": {
         \\         "x": {
@@ -21940,11 +20905,12 @@ test "unevaluatedProperties.unevaluatedProperties-+-single-cyclic-ref.Deep-neste
         \\         }
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-+-single-cyclic-ref.Unevaluated-on-3rd-level-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -21955,9 +20921,7 @@ test "unevaluatedProperties.unevaluatedProperties-+-single-cyclic-ref.Unevaluate
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "x": {
         \\         "x": {
@@ -21966,11 +20930,12 @@ test "unevaluatedProperties.unevaluatedProperties-+-single-cyclic-ref.Unevaluate
         \\         }
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-+-ref-inside-allOf-/-oneOf.Empty-is-invalid-(no-x-or-y)" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -22015,15 +20980,14 @@ test "unevaluatedProperties.unevaluatedProperties-+-ref-inside-allOf-/-oneOf.Emp
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-+-ref-inside-allOf-/-oneOf.a-and-b-are-invalid-(no-x-or-y)" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -22068,18 +21032,17 @@ test "unevaluatedProperties.unevaluatedProperties-+-ref-inside-allOf-/-oneOf.a-a
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "a": 1,
         \\     "b": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-+-ref-inside-allOf-/-oneOf.x-and-y-are-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -22124,18 +21087,17 @@ test "unevaluatedProperties.unevaluatedProperties-+-ref-inside-allOf-/-oneOf.x-a
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "x": 1,
         \\     "y": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-+-ref-inside-allOf-/-oneOf.a-and-x-are-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -22180,18 +21142,17 @@ test "unevaluatedProperties.unevaluatedProperties-+-ref-inside-allOf-/-oneOf.a-a
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "a": 1,
         \\     "x": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-+-ref-inside-allOf-/-oneOf.a-and-y-are-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -22236,18 +21197,17 @@ test "unevaluatedProperties.unevaluatedProperties-+-ref-inside-allOf-/-oneOf.a-a
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "a": 1,
         \\     "y": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-+-ref-inside-allOf-/-oneOf.a-and-b-and-x-are-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -22292,19 +21252,18 @@ test "unevaluatedProperties.unevaluatedProperties-+-ref-inside-allOf-/-oneOf.a-a
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "a": 1,
         \\     "b": 1,
         \\     "x": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-+-ref-inside-allOf-/-oneOf.a-and-b-and-y-are-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -22349,19 +21308,18 @@ test "unevaluatedProperties.unevaluatedProperties-+-ref-inside-allOf-/-oneOf.a-a
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "a": 1,
         \\     "b": 1,
         \\     "y": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-+-ref-inside-allOf-/-oneOf.a-and-b-and-x-and-y-are-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -22406,20 +21364,19 @@ test "unevaluatedProperties.unevaluatedProperties-+-ref-inside-allOf-/-oneOf.a-a
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "a": 1,
         \\     "b": 1,
         \\     "x": 1,
         \\     "y": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.Empty-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -22488,15 +21445,14 @@ test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.Empty-is-invali
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.a-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -22565,17 +21521,16 @@ test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.a-is-valid" {
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "a": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.b-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -22644,17 +21599,16 @@ test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.b-is-valid" {
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "b": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.c-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -22723,17 +21677,16 @@ test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.c-is-valid" {
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "c": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.d-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -22802,17 +21755,16 @@ test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.d-is-valid" {
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "d": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.a-+-b-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -22881,18 +21833,17 @@ test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.a-+-b-is-invali
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "a": 1,
         \\     "b": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.a-+-c-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -22961,18 +21912,17 @@ test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.a-+-c-is-invali
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "a": 1,
         \\     "c": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.a-+-d-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -23041,18 +21991,17 @@ test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.a-+-d-is-invali
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "a": 1,
         \\     "d": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.b-+-c-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -23121,18 +22070,17 @@ test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.b-+-c-is-invali
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "b": 1,
         \\     "c": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.b-+-d-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -23201,18 +22149,17 @@ test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.b-+-d-is-invali
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "b": 1,
         \\     "d": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.c-+-d-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -23281,18 +22228,17 @@ test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.c-+-d-is-invali
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "c": 1,
         \\     "d": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.xx-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -23361,17 +22307,16 @@ test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.xx-is-valid" {
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "xx": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.xx-+-foox-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -23440,18 +22385,17 @@ test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.xx-+-foox-is-va
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "xx": 1,
         \\     "foox": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.xx-+-foo-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -23520,18 +22464,17 @@ test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.xx-+-foo-is-inv
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "xx": 1,
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.xx-+-a-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -23600,18 +22543,17 @@ test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.xx-+-a-is-inval
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "xx": 1,
         \\     "a": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.xx-+-b-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -23680,18 +22622,17 @@ test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.xx-+-b-is-inval
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "xx": 1,
         \\     "b": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.xx-+-c-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -23760,18 +22701,17 @@ test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.xx-+-c-is-inval
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "xx": 1,
         \\     "c": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.xx-+-d-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -23840,18 +22780,17 @@ test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.xx-+-d-is-inval
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "xx": 1,
         \\     "d": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.all-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -23920,17 +22859,16 @@ test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.all-is-valid" {
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "all": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.all-+-foo-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -23999,18 +22937,17 @@ test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.all-+-foo-is-va
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "all": 1,
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.all-+-a-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$defs": {
@@ -24079,113 +23016,105 @@ test "unevaluatedProperties.dynamic-evalation-inside-nested-refs.all-+-a-is-inva
         \\     ],
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "all": 1,
         \\     "a": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.non-object-instances-are-valid.ignores-booleans" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ true
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.non-object-instances-are-valid.ignores-integers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ 123
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.non-object-instances-are-valid.ignores-floats" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.non-object-instances-are-valid.ignores-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.non-object-instances-are-valid.ignores-strings" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.non-object-instances-are-valid.ignores-null" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-with-null-valued-instance-properties.allows-null-valued-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "unevaluatedProperties": {
         \\         "type": "null"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": null
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-not-affected-by-propertyNames.allows-only-number-properties" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "propertyNames": {
@@ -24195,17 +23124,16 @@ test "unevaluatedProperties.unevaluatedProperties-not-affected-by-propertyNames.
         \\         "type": "number"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "a": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-not-affected-by-propertyNames.string-property-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "propertyNames": {
@@ -24215,17 +23143,16 @@ test "unevaluatedProperties.unevaluatedProperties-not-affected-by-propertyNames.
         \\         "type": "number"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "a": "b"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-can-see-annotations-from-if-without-then-and-else.valid-in-case-if-is-evaluated" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "if": {
@@ -24237,17 +23164,16 @@ test "unevaluatedProperties.unevaluatedProperties-can-see-annotations-from-if-wi
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "a"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "unevaluatedProperties.unevaluatedProperties-can-see-annotations-from-if-without-then-and-else.invalid-in-case-if-is-evaluated" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "if": {
@@ -24259,17 +23185,16 @@ test "unevaluatedProperties.unevaluatedProperties-can-see-annotations-from-if-wi
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": "a"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.dependentSchemas-with-unevaluatedProperties.unevaluatedProperties-doesn't-consider-dependentSchemas" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -24285,17 +23210,16 @@ test "unevaluatedProperties.dependentSchemas-with-unevaluatedProperties.unevalua
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": ""
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.dependentSchemas-with-unevaluatedProperties.unevaluatedProperties-doesn't-see-bar-when-foo2-is-absent" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -24311,17 +23235,16 @@ test "unevaluatedProperties.dependentSchemas-with-unevaluatedProperties.unevalua
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": ""
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "unevaluatedProperties.dependentSchemas-with-unevaluatedProperties.unevaluatedProperties-sees-bar-when-foo2-is-present" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "properties": {
@@ -24337,340 +23260,316 @@ test "unevaluatedProperties.dependentSchemas-with-unevaluatedProperties.unevalua
         \\     },
         \\     "unevaluatedProperties": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo2": "",
         \\     "bar": ""
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maxItems.maxItems-validation.shorter-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maxItems": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maxItems.maxItems-validation.exact-length-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maxItems": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maxItems.maxItems-validation.too-long-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maxItems": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2,
         \\     3
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "maxItems.maxItems-validation.ignores-non-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maxItems": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foobar"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maxItems.maxItems-validation-with-a-decimal.shorter-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maxItems": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "maxItems.maxItems-validation-with-a-decimal.too-long-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "maxItems": 2
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2,
         \\     3
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "pattern.pattern-validation.a-matching-pattern-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "pattern": "^a*$"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "aaa"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "pattern.pattern-validation.a-non-matching-pattern-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "pattern": "^a*$"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "abc"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "pattern.pattern-validation.ignores-booleans" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "pattern": "^a*$"
         \\ }
-    );
-
-    const case =
+    ,
         \\ true
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "pattern.pattern-validation.ignores-integers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "pattern": "^a*$"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 123
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "pattern.pattern-validation.ignores-floats" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "pattern": "^a*$"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "pattern.pattern-validation.ignores-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "pattern": "^a*$"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "pattern.pattern-validation.ignores-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "pattern": "^a*$"
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "pattern.pattern-validation.ignores-null" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "pattern": "^a*$"
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "pattern.pattern-is-not-anchored.matches-a-substring" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "pattern": "a+"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "xxaayy"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minProperties.minProperties-validation.longer-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minProperties": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minProperties.minProperties-validation.exact-length-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minProperties": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minProperties.minProperties-validation.too-short-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minProperties": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "minProperties.minProperties-validation.ignores-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minProperties": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minProperties.minProperties-validation.ignores-strings" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minProperties": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ ""
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minProperties.minProperties-validation.ignores-other-non-objects" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minProperties": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ 12
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minProperties.minProperties-validation-with-a-decimal.longer-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minProperties": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 1,
         \\     "bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "minProperties.minProperties-validation-with-a-decimal.too-short-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "minProperties": 1
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "anchor.Location-independent-identifier.match" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "#foo",
@@ -24681,15 +23580,14 @@ test "anchor.Location-independent-identifier.match" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "anchor.Location-independent-identifier.mismatch" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "#foo",
@@ -24700,15 +23598,14 @@ test "anchor.Location-independent-identifier.mismatch" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "a"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "anchor.Location-independent-identifier-with-absolute-URI.match" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "http://localhost:1234/draft2019-09/bar#foo",
@@ -24720,15 +23617,14 @@ test "anchor.Location-independent-identifier-with-absolute-URI.match" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "anchor.Location-independent-identifier-with-absolute-URI.mismatch" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "http://localhost:1234/draft2019-09/bar#foo",
@@ -24740,15 +23636,14 @@ test "anchor.Location-independent-identifier-with-absolute-URI.mismatch" {
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "a"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "anchor.Location-independent-identifier-with-base-URI-change-in-subschema.match" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:1234/draft2019-09/root",
@@ -24765,15 +23660,14 @@ test "anchor.Location-independent-identifier-with-base-URI-change-in-subschema.m
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "anchor.Location-independent-identifier-with-base-URI-change-in-subschema.mismatch" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:1234/draft2019-09/root",
@@ -24790,15 +23684,14 @@ test "anchor.Location-independent-identifier-with-base-URI-change-in-subschema.m
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "a"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "anchor.same-$anchor-with-different-base-uri.$ref-resolves-to-/$defs/A/allOf/1" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:1234/draft2019-09/foobar",
@@ -24820,15 +23713,14 @@ test "anchor.same-$anchor-with-different-base-uri.$ref-resolves-to-/$defs/A/allO
         \\     },
         \\     "$ref": "child1#my_anchor"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "a"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "anchor.same-$anchor-with-different-base-uri.$ref-does-not-resolve-to-/$defs/A/allOf/0" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$id": "http://localhost:1234/draft2019-09/foobar",
@@ -24850,15 +23742,14 @@ test "anchor.same-$anchor-with-different-base-uri.$ref-does-not-resolve-to-/$def
         \\     },
         \\     "$ref": "child1#my_anchor"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "enum.simple-enum-validation.one-of-the-enum-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
@@ -24867,15 +23758,14 @@ test "enum.simple-enum-validation.one-of-the-enum-is-valid" {
         \\         3
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "enum.simple-enum-validation.something-else-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
@@ -24884,15 +23774,14 @@ test "enum.simple-enum-validation.something-else-is-invalid" {
         \\         3
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 4
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "enum.heterogeneous-enum-validation.one-of-the-enum-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
@@ -24905,15 +23794,14 @@ test "enum.heterogeneous-enum-validation.one-of-the-enum-is-valid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "enum.heterogeneous-enum-validation.something-else-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
@@ -24926,15 +23814,14 @@ test "enum.heterogeneous-enum-validation.something-else-is-invalid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "enum.heterogeneous-enum-validation.objects-are-deep-compared" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
@@ -24947,17 +23834,16 @@ test "enum.heterogeneous-enum-validation.objects-are-deep-compared" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": false
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "enum.heterogeneous-enum-validation.valid-object-matches" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
@@ -24970,17 +23856,16 @@ test "enum.heterogeneous-enum-validation.valid-object-matches" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 12
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "enum.heterogeneous-enum-validation.extra-properties-in-object-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
@@ -24993,18 +23878,17 @@ test "enum.heterogeneous-enum-validation.extra-properties-in-object-is-invalid" 
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 12,
         \\     "boo": 42
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "enum.heterogeneous-enum-with-null-validation.null-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
@@ -25012,15 +23896,14 @@ test "enum.heterogeneous-enum-with-null-validation.null-is-valid" {
         \\         null
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "enum.heterogeneous-enum-with-null-validation.number-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
@@ -25028,15 +23911,14 @@ test "enum.heterogeneous-enum-with-null-validation.number-is-valid" {
         \\         null
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 6
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "enum.heterogeneous-enum-with-null-validation.something-else-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
@@ -25044,15 +23926,14 @@ test "enum.heterogeneous-enum-with-null-validation.something-else-is-invalid" {
         \\         null
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "test"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "enum.enums-in-properties.both-properties-are-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -25072,18 +23953,17 @@ test "enum.enums-in-properties.both-properties-are-valid" {
         \\         "bar"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "enum.enums-in-properties.wrong-foo-value" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -25103,18 +23983,17 @@ test "enum.enums-in-properties.wrong-foo-value" {
         \\         "bar"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foot",
         \\     "bar": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "enum.enums-in-properties.wrong-bar-value" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -25134,18 +24013,17 @@ test "enum.enums-in-properties.wrong-bar-value" {
         \\         "bar"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo",
         \\     "bar": "bart"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "enum.enums-in-properties.missing-optional-property-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -25165,17 +24043,16 @@ test "enum.enums-in-properties.missing-optional-property-is-valid" {
         \\         "bar"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "enum.enums-in-properties.missing-required-property-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -25195,17 +24072,16 @@ test "enum.enums-in-properties.missing-required-property-is-invalid" {
         \\         "bar"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "foo"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "enum.enums-in-properties.missing-all-properties-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "object",
@@ -25225,15 +24101,14 @@ test "enum.enums-in-properties.missing-all-properties-is-invalid" {
         \\         "bar"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {}
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "enum.enum-with-escaped-characters.member-1-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
@@ -25241,15 +24116,14 @@ test "enum.enum-with-escaped-characters.member-1-is-valid" {
         \\         "foo\rbar"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo\nbar"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "enum.enum-with-escaped-characters.member-2-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
@@ -25257,15 +24131,14 @@ test "enum.enum-with-escaped-characters.member-2-is-valid" {
         \\         "foo\rbar"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo\rbar"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "enum.enum-with-escaped-characters.another-string-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
@@ -25273,60 +24146,56 @@ test "enum.enum-with-escaped-characters.another-string-is-invalid" {
         \\         "foo\rbar"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "abc"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "enum.enum-with-false-does-not-match-0.false-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
         \\         false
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "enum.enum-with-false-does-not-match-0.integer-zero-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
         \\         false
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 0
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "enum.enum-with-false-does-not-match-0.float-zero-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
         \\         false
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 0
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "enum.enum-with-[false]-does-not-match-[0].[false]-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
@@ -25335,17 +24204,16 @@ test "enum.enum-with-[false]-does-not-match-[0].[false]-is-valid" {
         \\         ]
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     false
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "enum.enum-with-[false]-does-not-match-[0].[0]-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
@@ -25354,17 +24222,16 @@ test "enum.enum-with-[false]-does-not-match-[0].[0]-is-invalid" {
         \\         ]
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     0
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "enum.enum-with-[false]-does-not-match-[0].[0.0]-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
@@ -25373,62 +24240,58 @@ test "enum.enum-with-[false]-does-not-match-[0].[0.0]-is-invalid" {
         \\         ]
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     0
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "enum.enum-with-true-does-not-match-1.true-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
         \\         true
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ true
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "enum.enum-with-true-does-not-match-1.integer-one-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
         \\         true
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "enum.enum-with-true-does-not-match-1.float-one-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
         \\         true
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "enum.enum-with-[true]-does-not-match-[1].[true]-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
@@ -25437,17 +24300,16 @@ test "enum.enum-with-[true]-does-not-match-[1].[true]-is-valid" {
         \\         ]
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     true
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "enum.enum-with-[true]-does-not-match-[1].[1]-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
@@ -25456,17 +24318,16 @@ test "enum.enum-with-[true]-does-not-match-[1].[1]-is-invalid" {
         \\         ]
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "enum.enum-with-[true]-does-not-match-[1].[1.0]-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
@@ -25475,62 +24336,58 @@ test "enum.enum-with-[true]-does-not-match-[1].[1.0]-is-invalid" {
         \\         ]
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "enum.enum-with-0-does-not-match-false.false-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
         \\         0
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ false
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "enum.enum-with-0-does-not-match-false.integer-zero-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
         \\         0
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 0
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "enum.enum-with-0-does-not-match-false.float-zero-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
         \\         0
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 0
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "enum.enum-with-[0]-does-not-match-[false].[false]-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
@@ -25539,17 +24396,16 @@ test "enum.enum-with-[0]-does-not-match-[false].[false]-is-invalid" {
         \\         ]
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     false
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "enum.enum-with-[0]-does-not-match-[false].[0]-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
@@ -25558,17 +24414,16 @@ test "enum.enum-with-[0]-does-not-match-[false].[0]-is-valid" {
         \\         ]
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     0
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "enum.enum-with-[0]-does-not-match-[false].[0.0]-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
@@ -25577,62 +24432,58 @@ test "enum.enum-with-[0]-does-not-match-[false].[0.0]-is-valid" {
         \\         ]
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     0
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "enum.enum-with-1-does-not-match-true.true-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
         \\         1
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ true
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "enum.enum-with-1-does-not-match-true.integer-one-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
         \\         1
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "enum.enum-with-1-does-not-match-true.float-one-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
         \\         1
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "enum.enum-with-[1]-does-not-match-[true].[true]-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
@@ -25641,17 +24492,16 @@ test "enum.enum-with-[1]-does-not-match-[true].[true]-is-invalid" {
         \\         ]
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     true
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "enum.enum-with-[1]-does-not-match-[true].[1]-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
@@ -25660,17 +24510,16 @@ test "enum.enum-with-[1]-does-not-match-[true].[1]-is-valid" {
         \\         ]
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "enum.enum-with-[1]-does-not-match-[true].[1.0]-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
@@ -25679,47 +24528,44 @@ test "enum.enum-with-[1]-does-not-match-[true].[1.0]-is-valid" {
         \\         ]
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "enum.nul-characters-in-strings.match-string-with-nul" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
         \\         "hello\u0000there"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "hello\u0000there"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "enum.nul-characters-in-strings.do-not-match-string-lacking-nul" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "enum": [
         \\         "hello\u0000there"
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "hellothere"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "additionalItems.additionalItems-as-schema.additional-items-match-schema" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -25729,20 +24575,19 @@ test "additionalItems.additionalItems-as-schema.additional-items-match-schema" {
         \\         "type": "integer"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     null,
         \\     2,
         \\     3,
         \\     4
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "additionalItems.additionalItems-as-schema.additional-items-do-not-match-schema" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -25752,20 +24597,19 @@ test "additionalItems.additionalItems-as-schema.additional-items-do-not-match-sc
         \\         "type": "integer"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     null,
         \\     2,
         \\     3,
         \\     "foo"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "additionalItems.when-items-is-schema,-additionalItems-does-nothing.valid-with-a-array-of-type-integers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": {
@@ -25775,19 +24619,18 @@ test "additionalItems.when-items-is-schema,-additionalItems-does-nothing.valid-w
         \\         "type": "string"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2,
         \\     3
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "additionalItems.when-items-is-schema,-additionalItems-does-nothing.invalid-with-a-array-of-mixed-types" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": {
@@ -25797,27 +24640,24 @@ test "additionalItems.when-items-is-schema,-additionalItems-does-nothing.invalid
         \\         "type": "string"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     "2",
         \\     "3"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "additionalItems.when-items-is-schema,-boolean-additionalItems-does-nothing.all-items-match-schema" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": {},
         \\     "additionalItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2,
@@ -25825,11 +24665,12 @@ test "additionalItems.when-items-is-schema,-boolean-additionalItems-does-nothing
         \\     4,
         \\     5
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "additionalItems.array-of-items-with-no-additionalItems-permitted.empty-array" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -25839,15 +24680,14 @@ test "additionalItems.array-of-items-with-no-additionalItems-permitted.empty-arr
         \\     ],
         \\     "additionalItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ []
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "additionalItems.array-of-items-with-no-additionalItems-permitted.fewer-number-of-items-present-(1)" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -25857,17 +24697,16 @@ test "additionalItems.array-of-items-with-no-additionalItems-permitted.fewer-num
         \\     ],
         \\     "additionalItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "additionalItems.array-of-items-with-no-additionalItems-permitted.fewer-number-of-items-present-(2)" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -25877,18 +24716,17 @@ test "additionalItems.array-of-items-with-no-additionalItems-permitted.fewer-num
         \\     ],
         \\     "additionalItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "additionalItems.array-of-items-with-no-additionalItems-permitted.equal-number-of-items-present" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -25898,19 +24736,18 @@ test "additionalItems.array-of-items-with-no-additionalItems-permitted.equal-num
         \\     ],
         \\     "additionalItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2,
         \\     3
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "additionalItems.array-of-items-with-no-additionalItems-permitted.additional-items-are-not-permitted" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -25920,27 +24757,24 @@ test "additionalItems.array-of-items-with-no-additionalItems-permitted.additiona
         \\     ],
         \\     "additionalItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2,
         \\     3,
         \\     4
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "additionalItems.additionalItems-as-false-without-items.items-defaults-to-empty-schema-so-everything-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "additionalItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     2,
@@ -25948,26 +24782,26 @@ test "additionalItems.additionalItems-as-false-without-items.items-defaults-to-e
         \\     4,
         \\     5
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "additionalItems.additionalItems-as-false-without-items.ignores-non-arrays" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "additionalItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "bar"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "additionalItems.additionalItems-are-allowed-by-default.only-the-first-item-is-validated" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -25976,19 +24810,18 @@ test "additionalItems.additionalItems-are-allowed-by-default.only-the-first-item
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     "foo",
         \\     false
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "additionalItems.additionalItems-does-not-look-in-applicators,-valid-case.items-defined-in-allOf-are-not-examined" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -26004,18 +24837,17 @@ test "additionalItems.additionalItems-does-not-look-in-applicators,-valid-case.i
         \\         "type": "boolean"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     null
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "additionalItems.additionalItems-does-not-look-in-applicators,-invalid-case.items-defined-in-allOf-are-not-examined" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "allOf": [
@@ -26039,18 +24871,17 @@ test "additionalItems.additionalItems-does-not-look-in-applicators,-invalid-case
         \\         "type": "boolean"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     1,
         \\     "hello"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "additionalItems.items-validation-adjusts-the-starting-index-for-additionalItems.valid-items" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -26062,19 +24893,18 @@ test "additionalItems.items-validation-adjusts-the-starting-index-for-additional
         \\         "type": "integer"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "x",
         \\     2,
         \\     3
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "additionalItems.items-validation-adjusts-the-starting-index-for-additionalItems.wrong-type-of-second-item" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -26086,18 +24916,17 @@ test "additionalItems.items-validation-adjusts-the-starting-index-for-additional
         \\         "type": "integer"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "x",
         \\     "y"
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "additionalItems.additionalItems-with-heterogeneous-array.heterogeneous-invalid-instance" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -26105,19 +24934,18 @@ test "additionalItems.additionalItems-with-heterogeneous-array.heterogeneous-inv
         \\     ],
         \\     "additionalItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     "foo",
         \\     "bar",
         \\     37
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "additionalItems.additionalItems-with-heterogeneous-array.valid-instance" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "items": [
@@ -26125,86 +24953,80 @@ test "additionalItems.additionalItems-with-heterogeneous-array.valid-instance" {
         \\     ],
         \\     "additionalItems": false
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     null
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "additionalItems.additionalItems-with-null-instance-elements.allows-null-elements" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "additionalItems": {
         \\         "type": "null"
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ [
         \\     null
         \\ ]
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "exclusiveMaximum.exclusiveMaximum-validation.below-the-exclusiveMaximum-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "exclusiveMaximum": 3
         \\ }
-    );
-
-    const case =
+    ,
         \\ 2.2
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "exclusiveMaximum.exclusiveMaximum-validation.boundary-point-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "exclusiveMaximum": 3
         \\ }
-    );
-
-    const case =
+    ,
         \\ 3
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "exclusiveMaximum.exclusiveMaximum-validation.above-the-exclusiveMaximum-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "exclusiveMaximum": 3
         \\ }
-    );
-
-    const case =
+    ,
         \\ 3.5
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "exclusiveMaximum.exclusiveMaximum-validation.ignores-non-numbers" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "exclusiveMaximum": 3
         \\ }
-    );
-
-    const case =
+    ,
         \\ "x"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "anyOf.anyOf.first-anyOf-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "anyOf": [
@@ -26216,15 +25038,14 @@ test "anyOf.anyOf.first-anyOf-valid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "anyOf.anyOf.second-anyOf-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "anyOf": [
@@ -26236,15 +25057,14 @@ test "anyOf.anyOf.second-anyOf-valid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 2.5
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "anyOf.anyOf.both-anyOf-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "anyOf": [
@@ -26256,15 +25076,14 @@ test "anyOf.anyOf.both-anyOf-valid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 3
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "anyOf.anyOf.neither-anyOf-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "anyOf": [
@@ -26276,15 +25095,14 @@ test "anyOf.anyOf.neither-anyOf-valid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 1.5
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "anyOf.anyOf-with-base-schema.mismatch-base-schema" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "string",
@@ -26297,15 +25115,14 @@ test "anyOf.anyOf-with-base-schema.mismatch-base-schema" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 3
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "anyOf.anyOf-with-base-schema.one-anyOf-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "string",
@@ -26318,15 +25135,14 @@ test "anyOf.anyOf-with-base-schema.one-anyOf-valid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foobar"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "anyOf.anyOf-with-base-schema.both-anyOf-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "type": "string",
@@ -26339,15 +25155,14 @@ test "anyOf.anyOf-with-base-schema.both-anyOf-invalid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "anyOf.anyOf-with-boolean-schemas,-all-true.any-value-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "anyOf": [
@@ -26355,15 +25170,14 @@ test "anyOf.anyOf-with-boolean-schemas,-all-true.any-value-is-valid" {
         \\         true
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "anyOf.anyOf-with-boolean-schemas,-some-true.any-value-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "anyOf": [
@@ -26371,15 +25185,14 @@ test "anyOf.anyOf-with-boolean-schemas,-some-true.any-value-is-valid" {
         \\         false
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "anyOf.anyOf-with-boolean-schemas,-all-false.any-value-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "anyOf": [
@@ -26387,15 +25200,14 @@ test "anyOf.anyOf-with-boolean-schemas,-all-false.any-value-is-invalid" {
         \\         false
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "anyOf.anyOf-complex-types.first-anyOf-valid-(complex)" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "anyOf": [
@@ -26421,17 +25233,16 @@ test "anyOf.anyOf-complex-types.first-anyOf-valid-(complex)" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "anyOf.anyOf-complex-types.second-anyOf-valid-(complex)" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "anyOf": [
@@ -26457,17 +25268,16 @@ test "anyOf.anyOf-complex-types.second-anyOf-valid-(complex)" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "baz"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "anyOf.anyOf-complex-types.both-anyOf-valid-(complex)" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "anyOf": [
@@ -26493,18 +25303,17 @@ test "anyOf.anyOf-complex-types.both-anyOf-valid-(complex)" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": "baz",
         \\     "bar": 2
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "anyOf.anyOf-complex-types.neither-anyOf-valid-(complex)" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "anyOf": [
@@ -26530,18 +25339,17 @@ test "anyOf.anyOf-complex-types.neither-anyOf-valid-(complex)" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "foo": 2,
         \\     "bar": "quux"
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "anyOf.anyOf-with-one-empty-schema.string-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "anyOf": [
@@ -26551,15 +25359,14 @@ test "anyOf.anyOf-with-one-empty-schema.string-is-valid" {
         \\         {}
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ "foo"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "anyOf.anyOf-with-one-empty-schema.number-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "anyOf": [
@@ -26569,15 +25376,14 @@ test "anyOf.anyOf-with-one-empty-schema.number-is-valid" {
         \\         {}
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 123
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "anyOf.nested-anyOf,-to-check-validation-semantics.null-is-valid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "anyOf": [
@@ -26590,15 +25396,14 @@ test "anyOf.nested-anyOf,-to-check-validation-semantics.null-is-valid" {
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ null
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "anyOf.nested-anyOf,-to-check-validation-semantics.anything-non-null-is-invalid" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "anyOf": [
@@ -26611,149 +25416,138 @@ test "anyOf.nested-anyOf,-to-check-validation-semantics.anything-non-null-is-inv
         \\         }
         \\     ]
         \\ }
-    );
-
-    const case =
+    ,
         \\ 123
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }
 test "content.validation-of-string-encoded-content-based-on-media-type.a-valid-JSON-document" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contentMediaType": "application/json"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "{\"foo\": \"bar\"}"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "content.validation-of-string-encoded-content-based-on-media-type.an-invalid-JSON-document;-validates-true" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contentMediaType": "application/json"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "{:}"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "content.validation-of-string-encoded-content-based-on-media-type.ignores-non-strings" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contentMediaType": "application/json"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 100
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "content.validation-of-binary-string-encoding.a-valid-base64-string" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contentEncoding": "base64"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "eyJmb28iOiAiYmFyIn0K"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "content.validation-of-binary-string-encoding.an-invalid-base64-string-(%-is-not-a-valid-character);-validates-true" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contentEncoding": "base64"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "eyJmb28iOi%iYmFyIn0K"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "content.validation-of-binary-string-encoding.ignores-non-strings" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contentEncoding": "base64"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 100
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "content.validation-of-binary-encoded-media-type-documents.a-valid-base64-encoded-JSON-document" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contentMediaType": "application/json",
         \\     "contentEncoding": "base64"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "eyJmb28iOiAiYmFyIn0K"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "content.validation-of-binary-encoded-media-type-documents.a-validly-encoded-invalid-JSON-document;-validates-true" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contentMediaType": "application/json",
         \\     "contentEncoding": "base64"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "ezp9Cg=="
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "content.validation-of-binary-encoded-media-type-documents.an-invalid-base64-string-that-is-valid-JSON;-validates-true" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contentMediaType": "application/json",
         \\     "contentEncoding": "base64"
         \\ }
-    );
-
-    const case =
+    ,
         \\ "{}"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "content.validation-of-binary-encoded-media-type-documents.ignores-non-strings" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contentMediaType": "application/json",
         \\     "contentEncoding": "base64"
         \\ }
-    );
-
-    const case =
+    ,
         \\ 100
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "content.validation-of-binary-encoded-media-type-documents-with-schema.a-valid-base64-encoded-JSON-document" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contentMediaType": "application/json",
@@ -26770,15 +25564,14 @@ test "content.validation-of-binary-encoded-media-type-documents-with-schema.a-va
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "eyJmb28iOiAiYmFyIn0K"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "content.validation-of-binary-encoded-media-type-documents-with-schema.another-valid-base64-encoded-JSON-document" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contentMediaType": "application/json",
@@ -26795,15 +25588,14 @@ test "content.validation-of-binary-encoded-media-type-documents-with-schema.anot
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "eyJib28iOiAyMCwgImZvbyI6ICJiYXoifQ=="
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "content.validation-of-binary-encoded-media-type-documents-with-schema.an-invalid-base64-encoded-JSON-document;-validates-true" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contentMediaType": "application/json",
@@ -26820,15 +25612,14 @@ test "content.validation-of-binary-encoded-media-type-documents-with-schema.an-i
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "eyJib28iOiAyMH0="
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "content.validation-of-binary-encoded-media-type-documents-with-schema.an-empty-object-as-a-base64-encoded-JSON-document;-validates-true" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contentMediaType": "application/json",
@@ -26845,15 +25636,14 @@ test "content.validation-of-binary-encoded-media-type-documents-with-schema.an-e
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "e30="
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "content.validation-of-binary-encoded-media-type-documents-with-schema.an-empty-array-as-a-base64-encoded-JSON-document" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contentMediaType": "application/json",
@@ -26870,15 +25660,14 @@ test "content.validation-of-binary-encoded-media-type-documents-with-schema.an-e
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "W10="
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "content.validation-of-binary-encoded-media-type-documents-with-schema.a-validly-encoded-invalid-JSON-document;-validates-true" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contentMediaType": "application/json",
@@ -26895,15 +25684,14 @@ test "content.validation-of-binary-encoded-media-type-documents-with-schema.a-va
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "ezp9Cg=="
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "content.validation-of-binary-encoded-media-type-documents-with-schema.an-invalid-base64-string-that-is-valid-JSON;-validates-true" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contentMediaType": "application/json",
@@ -26920,15 +25708,14 @@ test "content.validation-of-binary-encoded-media-type-documents-with-schema.an-i
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ "{}"
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "content.validation-of-binary-encoded-media-type-documents-with-schema.ignores-non-strings" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "contentMediaType": "application/json",
@@ -26945,22 +25732,19 @@ test "content.validation-of-binary-encoded-media-type-documents-with-schema.igno
         \\         }
         \\     }
         \\ }
-    );
-
-    const case =
+    ,
         \\ 100
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "defs.validate-definition-against-metaschema.valid-definition-schema" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "https://json-schema.org/draft/2019-09/schema"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "$defs": {
         \\         "foo": {
@@ -26968,18 +25752,17 @@ test "defs.validate-definition-against-metaschema.valid-definition-schema" {
         \\         }
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), true);
+    ,
+        true,
+    );
 }
 test "defs.validate-definition-against-metaschema.invalid-definition-schema" {
-    const schema = try JSONSchema.parse(
+    try check_valid(
         \\ {
         \\     "$schema": "https://json-schema.org/draft/2019-09/schema",
         \\     "$ref": "https://json-schema.org/draft/2019-09/schema"
         \\ }
-    );
-
-    const case =
+    ,
         \\ {
         \\     "$defs": {
         \\         "foo": {
@@ -26987,6 +25770,7 @@ test "defs.validate-definition-against-metaschema.invalid-definition-schema" {
         \\         }
         \\     }
         \\ }
-    ;
-    try std.testing.expectEqual(schema.is_valid(case), false);
+    ,
+        false,
+    );
 }

@@ -40,7 +40,17 @@ pub fn main() !void {
             \\ const std = @import("std");
             \\ const JSONSchema = @import("json-schema");
             \\
-            \\
+            \\ fn check_valid(schema_str: []const u8, case: []const u8, is_valid: bool) !void {{
+            \\     const schema = JSONSchema.parse(schema_str) catch |err| std.debug.panic("Failed to parse JSON schema: {{}}\n", .{{err}});
+            \\     if (schema.is_valid(case) == is_valid) return;
+            \\     std.debug.print("\nReason:\nExpected Schema:\n{{s}}\nTo {{s}} Case:\n{{s}}\nBut it was {{s}}!\n", .{{
+            \\         schema_str,
+            \\         if (is_valid) "ACCEPT" else "REJECT",
+            \\         case,
+            \\         if (is_valid) "REJECTED" else "ACCEPTED",
+            \\     }});
+            \\     return error.FailedTest;
+            \\ }}
         ,
             .{},
         );
@@ -91,14 +101,13 @@ pub fn main() !void {
                     }
                     try output.print(
                         \\ test "{s}" {{
-                        \\   const schema = try JSONSchema.parse(
+                        \\   try check_valid(
                         \\      {f}
+                        \\      ,
+                        \\      {f}
+                        \\      ,
+                        \\      {},
                         \\   );
-                        \\
-                        \\   const case =
-                        \\            {f}
-                        \\   ;
-                        \\   try std.testing.expectEqual(schema.is_valid(case), {});
                         \\ }}
                         \\
                     ,
