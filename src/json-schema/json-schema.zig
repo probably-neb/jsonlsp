@@ -5,6 +5,11 @@
 //! - Parsing and validation of JSON Schemas
 //! - Validation of JSON according to it's respective schema
 //! - Asynchronous fetching of schemas defined by URI from the interwebs
+//!
+//! TODO: use segmented list for storing Constraints
+//! TODO: handle refs
+//!
+
 const std = @import("std");
 const mem = std.mem;
 const Arena = std.heap.ArenaAllocator;
