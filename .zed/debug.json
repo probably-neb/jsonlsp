@@ -1,0 +1,58 @@
+[
+  {
+    "label": "Debug Exe",
+    "adapter": "CodeLLDB",
+    "request": "launch",
+    "program": "${ZED_WORKTREE_ROOT}/zig-out/bin/jsonls",
+    "cwd": "${ZED_WORKTREE_ROOT}",
+    "build": {
+      "command": "zig",
+      "args": [
+        "build"
+      ]
+    },
+    "initCommands": [
+      "command script import ${ZED_WORKTREE_ROOT}/tools/lldb_pretty_printers.py",
+      "type category enable zig.lang",
+      "type category enable zig.std"
+    ]
+  },
+  {
+    "label": "Debug Mod Tests",
+    "adapter": "CodeLLDB",
+    "request": "launch",
+    "program": "${ZED_WORKTREE_ROOT}/zig-out/bin/mod-test",
+    "cwd": "${ZED_WORKTREE_ROOT}",
+    "build": {
+      "command": "zig",
+      "args": [
+        "build",
+        "debug-tests"
+      ]
+    },
+    "initCommands": [
+      "command script import ${ZED_WORKTREE_ROOT}/tools/lldb_pretty_printers.py",
+      "type category enable zig.lang",
+      "type category enable zig.std"
+    ]
+  },
+  {
+    "label": "Debug Exe Tests",
+    "adapter": "CodeLLDB",
+    "request": "launch",
+    "program": "${ZED_WORKTREE_ROOT}/zig-out/bin/exe-test",
+    "cwd": "${ZED_WORKTREE_ROOT}",
+    "build": {
+      "command": "zig",
+      "args": [
+        "build",
+        "debug-tests"
+      ]
+    },
+    "initCommands": [
+      "command script import ${ZED_WORKTREE_ROOT}/tools/lldb_pretty_printers.py",
+      "type category enable zig.lang",
+      "type category enable zig.std"
+    ]
+  }
+]
