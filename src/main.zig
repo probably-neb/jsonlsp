@@ -62,14 +62,6 @@ pub fn main() !void {
             .response => std.log.debug("received response from client", .{}),
         }
 
-        // The order of exchanged messages will look similar to this:
-        //
-        // 1. receive `initialize` request and send response
-        // 2. receive `initialized` notification
-        // 3. receive various requests like `textDocument/formatting`
-        // 4. receive `shutdown` request and send response
-        // 5. receive `exit` notification
-
         switch (parsed_message.value) {
             // requests must send a response back to the client
             .request => |request| switch (request.params) {
@@ -82,51 +74,14 @@ pub fn main() !void {
                         .{
                             // the server capabilities tell the client what "features" the server supports
                             .serverInfo = .{
-                                .name = "hello-server",
+                                .name = "json-lsp",
                             },
-                            .capabilities = .{
-                                .documentFormattingProvider = .{ .bool = true },
-                            },
+                            .capabilities = .{},
                         },
                         .{ .emit_null_optional_fields = false },
                     );
                 },
                 .shutdown => try transport.writeResponse(gpa, request.id, void, {}, .{}),
-                .@"textDocument/formatting" => |params| {
-                    const source = documents.get(params.textDocument.uri) orelse {
-                        // We should read the document from the file system
-                        try transport.writeResponse(gpa, request.id, void, {}, .{});
-                        continue;
-                    };
-                    const source_z = try gpa.dupeZ(u8, source);
-                    defer gpa.free(source_z);
-
-                    var tree: std.zig.Ast = try .parse(gpa, source_z, .zig);
-                    defer tree.deinit(gpa);
-
-                    if (tree.errors.len != 0) {
-                        try transport.writeResponse(gpa, request.id, void, {}, .{});
-                        continue;
-                    }
-
-                    const formatte_source = try tree.renderAlloc(gpa);
-                    defer gpa.free(formatte_source);
-
-                    if (std.mem.eql(u8, source, formatte_source)) {
-                        try transport.writeResponse(gpa, request.id, void, {}, .{});
-                        continue;
-                    }
-
-                    const result: []const lsp.types.TextEdit = &.{.{
-                        .range = .{
-                            .start = .{ .line = 0, .character = 0 },
-                            .end = lsp.offsets.indexToPosition(source, source.len, .@"utf-16"),
-                        },
-                        .newText = formatte_source,
-                    }};
-
-                    try transport.writeResponse(gpa, request.id, []const lsp.types.TextEdit, result, .{});
-                },
                 .other => try transport.writeResponse(gpa, request.id, void, {}, .{}),
             },
             .notification => |notification| switch (notification.params) {
@@ -143,7 +98,7 @@ pub fn main() !void {
                     const gop = try documents.getOrPutValue(gpa, duped_uri, duped_text);
                     if (gop.found_existing) @panic("document opened twice");
                 },
-                .@"textDocument/didChange" => @panic("TODO: implement textDocument/didChange"),
+                .@"textDocument/didChange" => |_| {},
                 .@"textDocument/didClose" => |params| {
                     const old_entry = documents.fetchOrderedRemove(params.textDocument.uri) orelse continue;
                     gpa.free(old_entry.key);
@@ -164,8 +119,6 @@ const RequestMethods = union(enum) {
     initialize: lsp.types.InitializeParams,
     /// https://microsoft.github.io/language-server-protocol/specifications/specification-current/#shutdown
     shutdown,
-    /// https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_formatting
-    @"textDocument/formatting": lsp.types.DocumentFormattingParams,
     other: lsp.MethodWithParams,
 };
 
