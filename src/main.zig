@@ -3,6 +3,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const lsp = @import("lsp");
+const Alloc = std.mem.Allocator;
 
 pub const std_options: std.Options = .{
     .log_level = std.log.default_level, // Customize the log level here
@@ -26,6 +27,8 @@ pub fn main() !void {
     var read_buffer: [256]u8 = undefined;
     var stdio_transport: lsp.Transport.Stdio = .init(&read_buffer, .stdin(), .stdout());
     const transport: *lsp.Transport = &stdio_transport.transport;
+
+    try wait_for_init(gpa, transport);
 
     // keep track of opened documents
     var documents: std.StringArrayHashMapUnmanaged([]const u8) = .empty;
@@ -65,31 +68,9 @@ pub fn main() !void {
         switch (parsed_message.value) {
             // requests must send a response back to the client
             .request => |request| switch (request.params) {
-                .initialize => |params| {
-                    _ = params.capabilities; // the client capabilities tell the server what "features" the client supports
-                    try transport.writeResponse(
-                        gpa,
-                        request.id,
-                        lsp.types.InitializeResult,
-                        .{
-                            // the server capabilities tell the client what "features" the server supports
-                            .serverInfo = .{
-                                .name = "json-lsp",
-                                .version = "0.0.0",
-                            },
-                            .capabilities = .{
-                                .textDocumentSync = .{
-                                    .TextDocumentSyncOptions = .{
-                                        .openClose = true,
-                                        .change = .None,
-                                    },
-                                },
-                            },
-                        },
-                        .{ .emit_null_optional_fields = false },
-                    );
+                .shutdown => {
+                    shutdown_received(request.id, gpa, transport);
                 },
-                .shutdown => try transport.writeResponse(gpa, request.id, void, {}, .{}),
                 .other => try transport.writeResponse(gpa, request.id, void, {}, .{}),
             },
             .notification => |notification| switch (notification.params) {
@@ -120,11 +101,165 @@ pub fn main() !void {
     }
 }
 
+// WIP:
+// - following spec to wait for initialize request or shutdown + exit
+// - partially implemented
+// - needs loop waiting on initialized notif to be split out and after a successful initialization req
+fn wait_for_init(gpa: Alloc, transport: *lsp.Transport) !void {
+    const InitRequest = union(enum) {
+        /// https://microsoft.github.io/language-server-protocol/specifications/specification-current/#initialize
+        initialize: lsp.types.InitializeParams,
+        shutdown,
+        other: lsp.MethodWithParams,
+    };
+    const InitNotifications = union(enum) {
+        /// https://microsoft.github.io/language-server-protocol/specifications/specification-current/#initialized
+        initialized: lsp.types.InitializedParams,
+        /// https://microsoft.github.io/language-server-protocol/specifications/specification-current/#exit
+        exit,
+        other: lsp.MethodWithParams,
+    };
+
+    const InitMessage = lsp.Message(InitRequest, InitNotifications, .{});
+    const NON_INIT_MESSAGES_MAX = 10;
+    for (0..NON_INIT_MESSAGES_MAX) |_| {
+        const json_message = try transport.readJsonMessage(gpa);
+        defer gpa.free(json_message);
+
+        const parsed_message: std.json.Parsed(InitMessage) = try InitMessage.parseFromSlice(
+            gpa,
+            json_message,
+            .{ .ignore_unknown_fields = true },
+        );
+        const message = parsed_message.value;
+
+        switch (parsed_message.value) {
+            .request => |request| {
+                switch (request.params) {
+                    .initialize => |params| {
+                        _ = params.capabilities; // the client capabilities tell the server what "features" the client supports
+                        try transport.writeResponse(
+                            gpa,
+                            request.id,
+                            lsp.types.InitializeResult,
+                            .{
+                                // the server capabilities tell the client what "features" the server supports
+                                .serverInfo = .{
+                                    .name = "json-lsp",
+                                    .version = "0.0.0",
+                                },
+                                .capabilities = .{
+                                    .textDocumentSync = .{
+                                        .TextDocumentSyncOptions = .{
+                                            .openClose = true,
+                                            .change = .None,
+                                        },
+                                    },
+                                },
+                            },
+                            .{ .emit_null_optional_fields = false },
+                        );
+                    },
+                    .shutdown => {
+                        return shutdown_received(request.id, gpa, transport);
+                    },
+                    .other => |other_request| {
+                        std.log.warn("{s} request received before initialization", .{other_request.method});
+                        try transport.writeErrorResponse(
+                            gpa,
+                            message.request.id,
+                            .{ .code = @as(lsp.JsonRPCMessage.Response.Error.Code, @enumFromInt(-32002)), .message = "Server not initialized" },
+                            .{ .emit_null_optional_fields = true },
+                        );
+                        continue;
+                    },
+                }
+            },
+            .notification => |notification| {
+                if (notification.params == .exit) {
+                    exit_received_without_shutdown();
+                }
+            },
+            .response => |_| {
+                continue;
+            },
+        }
+    } else {
+        return error.FailedToReceiveInit;
+    }
+}
+
+/// https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#exit
+fn exit_received_without_shutdown() noreturn {
+    std.process.exit(1);
+}
+
+fn shutdown_received(
+    request_id: lsp.JsonRPCMessage.ID,
+    gpa: Alloc,
+    transport: *lsp.Transport,
+) noreturn {
+    try transport.writeResponse(gpa, request_id, void, {}, .{});
+
+    const ExitNotification = union(enum) {
+        exit,
+    };
+    const ExitRequest = union(enum) {
+        unexpected: lsp.MethodWithParams,
+    };
+
+    const ExitMessage = lsp.Message(ExitRequest, ExitNotification, .{});
+
+    const NON_EXIT_MESSAGES_MAX = 10;
+
+    for (0..NON_EXIT_MESSAGES_MAX) |_| {
+        const json_message = transport.readJsonMessage(gpa) catch |err| {
+            std.log.err("Failed to read JSON message: {}", .{err});
+            std.process.exit(1);
+        };
+        defer gpa.free(json_message);
+
+        const parsed_message: std.json.Parsed(ExitMessage) = ExitMessage.parseFromSlice(
+            gpa,
+            json_message,
+            .{ .ignore_unknown_fields = true },
+        ) catch |err| {
+            std.log.err("Failed to parse JSON message: {}", .{err});
+            continue;
+        };
+        const message = parsed_message.value;
+        switch (message) {
+            .notification => |notification| {
+                if (notification.params == .exit) {
+                    std.process.exit(0);
+                }
+            },
+            .request => |request| {
+                std.log.warn("{s} request received before initialization", .{request.params.unexpected.method});
+
+                transport.writeErrorResponse(
+                    gpa,
+                    request.id,
+                    .{
+                        .code = .invalid_request,
+                        .message = "Server shutting down",
+                    },
+                    .{ .emit_null_optional_fields = true },
+                ) catch |err| {
+                    std.log.err("Failed to write error response: {}", .{err});
+                };
+            },
+            .response => |_| {},
+        }
+    } else {
+        std.log.err("Exit notification never received", .{});
+        std.process.exit(1);
+    }
+}
+
 const Message = lsp.Message(RequestMethods, NotificationMethods, .{});
 
 const RequestMethods = union(enum) {
-    /// https://microsoft.github.io/language-server-protocol/specifications/specification-current/#initialize
-    initialize: lsp.types.InitializeParams,
     /// https://microsoft.github.io/language-server-protocol/specifications/specification-current/#shutdown
     shutdown,
     other: lsp.MethodWithParams,
