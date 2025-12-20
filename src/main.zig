@@ -75,8 +75,16 @@ pub fn main() !void {
                             // the server capabilities tell the client what "features" the server supports
                             .serverInfo = .{
                                 .name = "json-lsp",
+                                .version = "0.0.0",
                             },
-                            .capabilities = .{},
+                            .capabilities = .{
+                                .textDocumentSync = .{
+                                    .TextDocumentSyncOptions = .{
+                                        .openClose = true,
+                                        .change = .None,
+                                    },
+                                },
+                            },
                         },
                         .{ .emit_null_optional_fields = false },
                     );
