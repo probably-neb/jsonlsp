@@ -66,6 +66,33 @@ pub fn build(b: *std.Build) void {
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
     test_step.dependOn(&run_exe_unit_tests.step);
 
+    // Snapshot tests
+    {
+        const snapshot_test_step = b.step("test:snapshots", "Run snapshot tests");
+
+        const update_snapshots = b.option(bool, "update-snapshots", "Update snapshot files with actual outputs") orelse false;
+
+        const options = b.addOptions();
+        options.addOption(bool, "update_snapshots", update_snapshots);
+
+        const snapshot_test_mod = b.createModule(.{
+            .root_source_file = b.path("src/snapshot_tests.zig"),
+            .optimize = optimize,
+            .target = target,
+        });
+        snapshot_test_mod.addOptions("build_options", options);
+        snapshot_test_mod.addImport("testing", mod_testing);
+
+        const snapshot_test_exe = b.addExecutable(.{
+            .name = "snapshot_tests",
+            .root_module = snapshot_test_mod,
+        });
+
+        const run_snapshot_tests = b.addRunArtifact(snapshot_test_exe);
+        run_snapshot_tests.setCwd(b.path("."));
+        snapshot_test_step.dependOn(&run_snapshot_tests.step);
+    }
+
     const exe = b.addExecutable(.{
         .name = "jsonls",
         .root_module = exe_mod,

@@ -135,7 +135,7 @@
     ]
   },
   {
-    "completed": false,
+    "completed": true,
     "description": "Create the test entry point and build integration for running snapshot tests with file discovery and update mode.",
     "steps": [
       "Create tests/snapshot_tests.zig",
