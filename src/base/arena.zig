@@ -2,6 +2,90 @@ const std = @import("std");
 const builtin = @import("builtin");
 const posix = std.posix;
 
+/// Reserve virtual address space with no access permissions.
+/// - POSIX: `mmap(PROT_NONE, MAP_PRIVATE|MAP_ANON)`
+/// - Windows: `VirtualAlloc(MEM_RESERVE, PAGE_NOACCESS)`
+///
+/// Returned memory must be released with the corresponding OS call:
+/// - POSIX: `munmap`
+/// - Windows: `VirtualFree(..., MEM_RELEASE)`
+///
+/// Note: this returns an aligned pointer suitable for subsequent protection
+/// changes / commit operations.
+fn virtualalloc(reserve_size: usize) Arena.Error![]align(page_size) u8 {
+    const size = std.mem.alignForward(usize, reserve_size, page_size);
+
+    switch (builtin.os.tag) {
+        .windows => {
+            const w = std.os.windows;
+
+            const ptr = w.kernel32.VirtualAlloc(
+                null,
+                size,
+                w.MEM.RESERVE,
+                w.PAGE.NOACCESS,
+            );
+
+            if (ptr == null) return error.OutOfMemory;
+
+            return @as([*]align(page_size) u8, @ptrCast(@alignCast(ptr)))[0..size];
+        },
+        else => {
+            // Reserve virtual address space with no access permissions (PROT_NONE)
+            // This reserves the address range without committing physical memory
+            return posix.mmap(
+                null,
+                size,
+                posix.PROT.NONE,
+                .{ .TYPE = .PRIVATE, .ANONYMOUS = true },
+                -1,
+                0,
+            ) catch |err| switch (err) {
+                error.OutOfMemory => error.OutOfMemory,
+                error.AccessDenied => error.AccessDenied,
+                error.PermissionDenied => error.PermissionDenied,
+                error.LockedMemoryLimitExceeded => error.LockedMemoryLimitExceeded,
+                error.MemoryMappingNotSupported => error.MemoryMappingNotSupported,
+                error.ProcessFdQuotaExceeded => error.ProcessFdQuotaExceeded,
+                error.SystemFdQuotaExceeded => error.SystemFdQuotaExceeded,
+                error.MappingAlreadyExists => error.MappingAlreadyExists,
+                else => error.Unexpected,
+            };
+        },
+    }
+}
+
+/// Commit physical memory (back it with pages) and make it readable/writable.
+/// - POSIX: `mprotect(PROT_READ|PROT_WRITE)`
+/// - Windows: `VirtualAlloc(MEM_COMMIT, PAGE_READWRITE)`
+fn virtualcommit(base: [*]align(page_size) u8, start: usize, len: usize) Arena.Error!void {
+    if (len == 0) return;
+
+    switch (builtin.os.tag) {
+        .windows => {
+            const w = std.os.windows;
+            const addr: ?*anyopaque = @ptrCast(base + start);
+            const p = w.kernel32.VirtualAlloc(
+                addr,
+                len,
+                w.MEM.COMMIT,
+                w.PAGE.READWRITE,
+            );
+            if (p == null) return error.OutOfMemory;
+        },
+        else => {
+            const slice: []align(page_size) u8 = @alignCast(base[start .. start + len]);
+            posix.mprotect(slice, posix.PROT.READ | posix.PROT.WRITE) catch |err| {
+                return switch (err) {
+                    error.OutOfMemory => error.OutOfMemory,
+                    error.AccessDenied => error.AccessDenied,
+                    error.Unexpected => error.Unexpected,
+                };
+            };
+        },
+    }
+}
+
 /// Default size to reserve for an arena (64 GB of virtual address space)
 pub const default_reserve_size: usize = 64 * 1024 * 1024 * 1024;
 
@@ -60,16 +144,7 @@ pub const Arena = struct {
     pub fn init(options: InitOptions) Error!Self {
         const reserve_size = std.mem.alignForward(usize, options.reserve_size, page_size);
 
-        // Reserve virtual address space with no access permissions (PROT_NONE)
-        // This reserves the address range without committing physical memory
-        const memory = try posix.mmap(
-            null,
-            reserve_size,
-            posix.PROT.NONE,
-            .{ .TYPE = .PRIVATE, .ANONYMOUS = true },
-            -1,
-            0,
-        );
+        const memory = try virtualalloc(reserve_size);
 
         return .{
             .memory = memory.ptr,
@@ -82,8 +157,18 @@ pub const Arena = struct {
 
     /// Release all virtual memory back to the operating system.
     pub fn deinit(self: *Self) void {
-        const slice: []align(page_size) u8 = @alignCast(self.memory[0..self.capacity]);
-        posix.munmap(slice);
+        switch (builtin.os.tag) {
+            .windows => {
+                const w = std.os.windows;
+                const ptr: ?*anyopaque = @ptrCast(self.memory);
+                // dwSize must be 0 when using MEM_RELEASE
+                _ = w.kernel32.VirtualFree(ptr, 0, w.MEM.RELEASE);
+            },
+            else => {
+                const slice: []align(page_size) u8 = @alignCast(self.memory[0..self.capacity]);
+                posix.munmap(slice);
+            },
+        }
         self.* = undefined;
     }
 
@@ -223,16 +308,7 @@ pub const Arena = struct {
         const start = arena.committed;
         const len = commit_target - start;
 
-        // Make the memory readable and writable
-        const slice: []align(page_size) u8 = @alignCast(arena.memory[start..commit_target]);
-        posix.mprotect(slice, posix.PROT.READ | posix.PROT.WRITE) catch |err| {
-            return switch (err) {
-                error.OutOfMemory => error.OutOfMemory,
-                error.AccessDenied => error.AccessDenied,
-                error.Unexpected => error.Unexpected,
-            };
-        };
-        _ = len;
+        try virtualcommit(arena.memory, start, len);
 
         arena.committed = commit_target;
     }
