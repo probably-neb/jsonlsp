@@ -33,24 +33,14 @@ fn virtualalloc(reserve_size: usize) Arena.Error![]align(page_size) u8 {
         else => {
             // Reserve virtual address space with no access permissions (PROT_NONE)
             // This reserves the address range without committing physical memory
-            return posix.mmap(
+            return try posix.mmap(
                 null,
                 size,
                 posix.PROT.NONE,
                 .{ .TYPE = .PRIVATE, .ANONYMOUS = true },
                 -1,
                 0,
-            ) catch |err| switch (err) {
-                error.OutOfMemory => error.OutOfMemory,
-                error.AccessDenied => error.AccessDenied,
-                error.PermissionDenied => error.PermissionDenied,
-                error.LockedMemoryLimitExceeded => error.LockedMemoryLimitExceeded,
-                error.MemoryMappingNotSupported => error.MemoryMappingNotSupported,
-                error.ProcessFdQuotaExceeded => error.ProcessFdQuotaExceeded,
-                error.SystemFdQuotaExceeded => error.SystemFdQuotaExceeded,
-                error.MappingAlreadyExists => error.MappingAlreadyExists,
-                else => error.Unexpected,
-            };
+            );
         },
     }
 }
@@ -327,6 +317,131 @@ pub const Arena = struct {
     };
 };
 
+/// FreeList wraps an Arena and maintains a free list of previously freed allocations.
+/// This allows memory to be reused without resetting the entire arena.
+///
+/// Each allocation is at least `min_alloc_size` bytes (2 * @sizeOf(usize)) to ensure
+/// there's enough space to store the free list node (next pointer and length) when freed.
+pub const FreeList = struct {
+    arena: *Arena,
+    /// Head of the free list - points to the first free node
+    free_head: ?*FreeNode,
+
+    const Self = @This();
+
+    /// Free list node stored in freed memory
+    const FreeNode = struct {
+        /// Pointer to the next free node
+        next: ?*FreeNode,
+        /// Size of this free block (including the node header)
+        size: usize,
+    };
+
+    /// Minimum allocation size to ensure space for free list node
+    pub const min_alloc_size = @max(2 * @sizeOf(usize), @alignOf(FreeNode));
+
+    /// Minimum alignment to ensure we can store a FreeNode in freed memory
+    pub const min_alignment = @alignOf(FreeNode);
+
+    /// Initialize a FreeList wrapping the given arena.
+    pub fn init(arena: *Arena) Self {
+        return .{
+            .arena = arena,
+            .free_head = null,
+        };
+    }
+
+    /// Returns a `std.mem.Allocator` interface for this free list.
+    pub fn allocator(self: *Self) std.mem.Allocator {
+        return .{
+            .ptr = self,
+            .vtable = &.{
+                .alloc = alloc_fn,
+                .resize = resize_fn,
+                .remap = remap_fn,
+                .free = free_fn,
+            },
+        };
+    }
+
+    fn alloc_fn(ctx: *anyopaque, len: usize, ptr_align: std.mem.Alignment, _: usize) ?[*]u8 {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+        return self.alloc_internal(len, ptr_align);
+    }
+
+    fn alloc_internal(self: *Self, len: usize, ptr_align: std.mem.Alignment) ?[*]u8 {
+        // Ensure minimum alignment for free list node storage
+        const alignment = @max(ptr_align.toByteUnits(), min_alignment);
+        // Ensure minimum size for free list node storage
+        const alloc_size = @max(len, min_alloc_size);
+
+        // Search the free list for a suitable block
+        var prev: ?*FreeNode = null;
+        var current = self.free_head;
+
+        while (current) |node| {
+            const node_addr = @intFromPtr(node);
+            const aligned_addr = std.mem.alignForward(usize, node_addr, alignment);
+            const padding = aligned_addr - node_addr;
+
+            // Check if this block is large enough
+            if (node.size >= alloc_size + padding) {
+                // Remove from free list
+                if (prev) |p| {
+                    p.next = node.next;
+                } else {
+                    self.free_head = node.next;
+                }
+
+                // Return the aligned pointer
+                return @ptrFromInt(aligned_addr);
+            }
+
+            prev = node;
+            current = node.next;
+        }
+
+        // No suitable free block found, allocate from arena
+        const slice = self.arena.push_aligned(alloc_size, alignment) catch return null;
+        return slice.ptr;
+    }
+
+    fn resize_fn(_: *anyopaque, _: []u8, _: std.mem.Alignment, _: usize, _: usize) bool {
+        // FreeList doesn't support resizing individual allocations
+        return false;
+    }
+
+    fn remap_fn(_: *anyopaque, _: []u8, _: std.mem.Alignment, _: usize, _: usize) ?[*]u8 {
+        // FreeList doesn't support remapping individual allocations
+        return null;
+    }
+
+    fn free_fn(ctx: *anyopaque, buf: []u8, _: std.mem.Alignment, _: usize) void {
+        const self: *Self = @ptrCast(@alignCast(ctx));
+        self.free_internal(buf);
+    }
+
+    fn free_internal(self: *Self, buf: []u8) void {
+        if (buf.len == 0) return;
+
+        // The actual allocation size was at least min_alloc_size
+        const size = @max(buf.len, min_alloc_size);
+
+        // Store a free node in the freed memory
+        const node: *FreeNode = @ptrCast(@alignCast(buf.ptr));
+        node.* = .{
+            .next = self.free_head,
+            .size = size,
+        };
+        self.free_head = node;
+    }
+
+    /// Clear the free list (does not affect the underlying arena).
+    pub fn clear(self: *Self) void {
+        self.free_head = null;
+    }
+};
+
 /// Number of scratch arenas per thread.
 /// Two is sufficient for alternating between persistent and scratch allocations.
 const scratch_arena_count = 2;
@@ -505,4 +620,92 @@ test "scratch arenas: conflict avoidance" {
 
     scratch2.release();
     scratch1.release();
+}
+
+test "FreeList: basic allocation and reuse" {
+    var arena = try Arena.init(.{ .reserve_size = 1024 * 1024 });
+    defer arena.deinit();
+
+    var free_list = FreeList.init(&arena);
+    const ally = free_list.allocator();
+
+    // Allocate some memory
+    const slice1 = try ally.alloc(u8, 100);
+    try std.testing.expectEqual(@as(usize, 100), slice1.len);
+
+    const pos_after_alloc = arena.get_pos();
+
+    // Free it
+    ally.free(slice1);
+
+    // Allocate again - should reuse the freed block
+    const slice2 = try ally.alloc(u8, 50);
+    try std.testing.expectEqual(@as(usize, 50), slice2.len);
+
+    // Arena position should not have changed (memory was reused)
+    try std.testing.expectEqual(pos_after_alloc, arena.get_pos());
+}
+
+test "FreeList: minimum allocation size" {
+    var arena = try Arena.init(.{ .reserve_size = 1024 * 1024 });
+    defer arena.deinit();
+
+    var free_list = FreeList.init(&arena);
+    const ally = free_list.allocator();
+
+    // Allocate less than min_alloc_size
+    const slice = try ally.alloc(u8, 1);
+    try std.testing.expectEqual(@as(usize, 1), slice.len);
+
+    // Free and reallocate
+    ally.free(slice);
+
+    const slice2 = try ally.alloc(u8, FreeList.min_alloc_size);
+    try std.testing.expectEqual(@as(usize, FreeList.min_alloc_size), slice2.len);
+}
+
+test "FreeList: multiple allocations and frees" {
+    var arena = try Arena.init(.{ .reserve_size = 1024 * 1024 });
+    defer arena.deinit();
+
+    var free_list = FreeList.init(&arena);
+    const ally = free_list.allocator();
+
+    // Allocate multiple blocks (use sizes >= min_alloc_size to be predictable)
+    const a = try ally.alloc(u8, FreeList.min_alloc_size);
+    const b = try ally.alloc(u8, FreeList.min_alloc_size * 2);
+    const c = try ally.alloc(u8, FreeList.min_alloc_size * 3);
+
+    const pos_after_allocs = arena.get_pos();
+
+    // Free them in reverse order (LIFO - so smallest ends up at head)
+    ally.free(c);
+    ally.free(b);
+    ally.free(a);
+
+    // Reallocate with same sizes - should reuse freed blocks in order
+    _ = try ally.alloc(u8, FreeList.min_alloc_size);
+    _ = try ally.alloc(u8, FreeList.min_alloc_size * 2);
+    _ = try ally.alloc(u8, FreeList.min_alloc_size * 3);
+
+    // Arena should not have grown
+    try std.testing.expectEqual(pos_after_allocs, arena.get_pos());
+}
+
+test "FreeList: typed allocations" {
+    var arena = try Arena.init(.{ .reserve_size = 1024 * 1024 });
+    defer arena.deinit();
+
+    var free_list = FreeList.init(&arena);
+    const ally = free_list.allocator();
+
+    const Point = struct { x: i32, y: i32, z: i32 };
+
+    const points = try ally.alloc(Point, 10);
+    try std.testing.expectEqual(@as(usize, 10), points.len);
+
+    points[0] = .{ .x = 1, .y = 2, .z = 3 };
+    try std.testing.expectEqual(@as(i32, 1), points[0].x);
+
+    ally.free(points);
 }
