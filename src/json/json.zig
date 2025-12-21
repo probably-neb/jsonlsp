@@ -527,13 +527,17 @@ test parse {
         },
     };
 
+    var arena = Arena.init(.{}) catch @panic("OOM");
+    defer arena.deinit();
     for (table) |test_case| {
         const input, const expected = test_case;
 
-        const result = try parse(std.testing.allocator, input);
-        defer result.arena.deinit();
+        var scoped = arena.scoped();
+        defer scoped.release();
 
-        var actual_tree_writer: std.Io.Writer.Allocating = .init(std.testing.allocator);
+        const result = try parse(scoped.arena, input);
+
+        var actual_tree_writer: std.Io.Writer.Allocating = .init(scoped.arena.allocator());
         defer actual_tree_writer.deinit();
         try dbg_print_tree(&actual_tree_writer.writer, &result.tree, 0);
         const actual_tree = actual_tree_writer.written();
