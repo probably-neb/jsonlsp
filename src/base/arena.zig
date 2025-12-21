@@ -47,17 +47,7 @@ pub fn init(options: InitOptions) InitError!Arena {
 }
 
 pub fn deinit(self: *Arena) void {
-    switch (builtin.os.tag) {
-        .windows => {
-            const w = std.os.windows;
-            const ptr: ?*anyopaque = @ptrCast(self.memory);
-            _ = w.kernel32.VirtualFree(ptr, 0, w.MEM.RELEASE);
-        },
-        else => {
-            const slice: []align(page_size) u8 = @alignCast(self.memory[0..self.capacity]);
-            posix.munmap(slice);
-        },
-    }
+    virtualfree(self.memory[0..self.capacity]);
     self.* = undefined;
 }
 
@@ -232,13 +222,20 @@ fn virtualcommit(base: [*]align(page_size) u8, start: usize, len: usize) InitErr
         },
         else => {
             const slice: []align(page_size) u8 = @alignCast(base[start .. start + len]);
-            posix.mprotect(slice, posix.PROT.READ | posix.PROT.WRITE) catch |err| {
-                return switch (err) {
-                    error.OutOfMemory => error.OutOfMemory,
-                    error.AccessDenied => error.AccessDenied,
-                    error.Unexpected => error.Unexpected,
-                };
-            };
+            try posix.mprotect(slice, posix.PROT.READ | posix.PROT.WRITE);
+        },
+    }
+}
+
+fn virtualfree(base: []align(page_size) u8) void {
+    switch (builtin.os.tag) {
+        .windows => {
+            const w = std.os.windows;
+            const ptr: ?*anyopaque = @ptrCast(base.ptr);
+            _ = w.kernel32.VirtualFree(ptr, 0, w.MEM.RELEASE);
+        },
+        else => {
+            posix.munmap(base);
         },
     }
 }
