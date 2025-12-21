@@ -35,7 +35,10 @@ pub const TestResult = struct {
     /// Free all allocated memory.
     pub fn deinit(self: *TestResult) void {
         self.allocator.free(self.expected_messages);
-        // actual_messages are owned by TestTransport, not freed here
+        for (self.actual_messages) |msg| {
+            self.allocator.free(msg);
+        }
+        self.allocator.free(self.actual_messages);
         self.* = undefined;
     }
 };
@@ -155,13 +158,20 @@ pub fn runTest(allocator: Allocator, snap: Snapshot, timeout_ms: u64) RunError!T
     const expected_copy = allocator.alloc([]const u8, expect_list.items.len) catch return error.OutOfMemory;
     @memcpy(expected_copy, expect_list.items);
 
+    // Copy actual messages for result (TestTransport owns the originals and will free them on deinit)
+    const actual_copy = allocator.alloc([]const u8, actual_outputs.len) catch return error.OutOfMemory;
+    errdefer allocator.free(actual_copy);
+    for (actual_outputs, 0..) |msg, i| {
+        actual_copy[i] = allocator.dupe(u8, msg) catch return error.OutOfMemory;
+    }
+
     // Compare outputs
-    const compare_result = compareMessages(allocator, expected_copy, actual_outputs);
+    const compare_result = compareMessages(allocator, expected_copy, actual_copy);
 
     return .{
         .passed = compare_result.passed,
         .expected_messages = expected_copy,
-        .actual_messages = actual_outputs,
+        .actual_messages = actual_copy,
         .first_mismatch_index = compare_result.first_mismatch_index,
         .allocator = allocator,
     };

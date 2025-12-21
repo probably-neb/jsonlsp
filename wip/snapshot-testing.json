@@ -160,7 +160,7 @@
     ]
   },
   {
-    "completed": false,
+    "completed": true,
     "description": "Create the first snapshot test file for basic LSP initialization and shutdown sequence.",
     "steps": [
       "Create tests/snapshots/init_basic.txt",
