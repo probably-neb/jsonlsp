@@ -1,0 +1,207 @@
+[
+  {
+    "completed": true,
+    "description": "Extract server logic from main.zig into server.zig, making run_server return an error union instead of calling std.process.exit(). The main.zig should become a thin wrapper that calls server.run() with a Stdio transport.",
+    "steps": [
+      "Create src/server.zig with a pub fn run(arena: *Arena, transport: *lsp.Transport) !void function",
+      "Move wait_for_init, exit_received_without_shutdown, shutdown_received functions from main.zig to server.zig",
+      "Change shutdown_received and exit_received_without_shutdown to return errors instead of calling std.process.exit() - use error.ServerShutdown and error.ExitWithoutShutdown",
+      "Move the main loop logic (after wait_for_init) into server.run()",
+      "Move the Message, RequestMethods, and NotificationMethods types to server.zig",
+      "Update main.zig to import server module and call server.run(), catching the shutdown error as successful exit",
+      "Add 'const server = @import(\"server.zig\");' to main.zig imports",
+      "In main.main(), wrap server.run() call and handle error.ServerShutdown as clean exit (exit code 0), error.ExitWithoutShutdown as error exit (exit code 1)"
+    ],
+    "verification": [
+      "Run 'zig build' - should compile without errors",
+      "Run 'zig build run' and send initialize/shutdown/exit sequence via stdin - should exit cleanly",
+      "Run 'zig build test' - existing tests should still pass"
+    ]
+  },
+  {
+    "completed": false,
+    "description": "Create the testing module structure with a TestTransport that implements lsp.Transport interface. The TestTransport should have a queue of input messages and capture output messages.",
+    "steps": [
+      "Create src/testing/ directory",
+      "Create src/testing/testing.zig as module root that exports: pub const transport = @import(\"transport.zig\");",
+      "Create src/testing/transport.zig with TestTransport struct",
+      "TestTransport fields: transport: lsp.Transport, input_messages: []const []const u8, input_index: usize, output_messages: std.ArrayList([]const u8), allocator: std.mem.Allocator",
+      "Implement pub fn init(allocator: Allocator, input_messages: []const []const u8) TestTransport - initializes with vtable pointing to readJsonMessage and writeJsonMessage",
+      "Implement fn readJsonMessage(transport_ptr: *lsp.Transport, allocator: Allocator) ReadError![]u8 - returns next input message or error.EndOfStream when exhausted",
+      "Implement fn writeJsonMessage(transport_ptr: *lsp.Transport, json_message: []const u8) WriteError!void - appends copy of message to output_messages",
+      "Implement pub fn deinit(self: *TestTransport) void - frees captured output messages",
+      "Implement pub fn getOutputMessages(self: *TestTransport) []const []const u8 - returns captured messages",
+      "Update build.zig: create mod_testing module from src/testing/testing.zig, add imports for lsp and base modules"
+    ],
+    "verification": [
+      "Run 'zig build' - should compile without errors",
+      "Add a test in transport.zig that creates TestTransport with sample inputs, calls readJsonMessage to get them back, calls writeJsonMessage, verifies outputs",
+      "Run 'zig build test' - new test should pass"
+    ]
+  },
+  {
+    "completed": false,
+    "description": "Create the snapshot file parser that reads the >>> and <<< delimited format with multi-line JSON blocks.\n\nFILE FORMAT SPECIFICATION:\n\n- A snapshot file contains a sequence of message blocks separated by blank lines\n- Each message block starts with a direction marker on its own line:\n  - '>>>' means client-to-server (send)\n  - '<<<' means server-to-client (expect)\n- The JSON content follows on subsequent lines until a blank line or EOF\n- The JSON should be pretty-printed (multi-line with indentation)\n- No comments are supported in the format\n- Blank lines between message blocks are required\n\nEXAMPLE FILE:\n\n>>>\n{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 1,\n  \"method\": \"initialize\",\n  \"params\": {\n    \"capabilities\": {}\n  }\n}\n\n<<<\n{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 1,\n  \"result\": {\n    \"capabilities\": {}\n  }\n}\n\n>>>\n{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"exit\"\n}\n\nPARSING RULES:\n1. Iterate through lines, tracking current state (looking for marker vs reading json)\n2. When a line is '>>>' or '<<<' (trimmed), start a new message block with that direction\n3. Accumulate subsequent non-blank lines as JSON content\n4. When hitting a blank line or EOF, finalize current message block\n5. Store direction, raw JSON string, and starting line number for error reporting",
+    "steps": [
+      "Create src/testing/snapshot.zig",
+      "Define pub const Direction = enum { send, expect };",
+      "Define pub const Message = struct { direction: Direction, json: []const u8, line_start: u32 };",
+      "Define pub const Snapshot = struct { messages: []const Message, allocator: std.mem.Allocator };",
+      "Define pub const ParseError = error { InvalidDirectionMarker, EmptyMessage, UnexpectedContent };",
+      "Implement pub fn parse(allocator: Allocator, content: []const u8) ParseError!Snapshot",
+      "Parser state machine: iterate lines, detect '>>>'/'<<<' markers, accumulate JSON lines, finalize on blank line",
+      "Store line_start as the line number where the marker appeared (1-indexed for human readability)",
+      "Implement pub fn deinit(self: *Snapshot) void to free allocated messages",
+      "Export from testing.zig: pub const snapshot = @import(\"snapshot.zig\");"
+    ],
+    "verification": [
+      "Add test 'parse empty file' - should return Snapshot with 0 messages",
+      "Add test 'parse single send message' - verify direction=.send, json content correct, line_start=1",
+      "Add test 'parse send and expect' - verify both messages parsed correctly",
+      "Add test 'parse multiple messages' - verify all messages in order",
+      "Add test 'parse with extra blank lines' - should handle gracefully",
+      "Add test 'invalid marker' - should return error.InvalidDirectionMarker",
+      "Run 'zig build test' - all tests pass"
+    ]
+  },
+  {
+    "completed": false,
+    "description": "Create the snapshot file serializer that writes the format back, preserving >>> messages and pretty-printing <<< JSON messages.",
+    "steps": [
+      "In src/testing/snapshot.zig, implement pub fn serialize(self: Snapshot, allocator: Allocator) ![]const u8",
+      "For each message: write direction marker ('>>>' or '<<<') on its own line",
+      "For send (>>>) messages: write the JSON as-is (preserve original formatting)",
+      "For expect (<<<) messages: parse JSON and re-serialize with pretty printing (2-space indent)",
+      "Add blank line between message blocks",
+      "Use std.json.parseFromSlice and std.json.stringifyAlloc with .whitespace = .indent_2 for pretty printing",
+      "Return the complete serialized content as a single allocated string"
+    ],
+    "verification": [
+      "Add test 'serialize empty snapshot' - should return empty string",
+      "Add test 'serialize single message' - verify output format matches spec",
+      "Add test 'round trip parse then serialize' - parse a snapshot, serialize it, verify structure preserved",
+      "Add test 'serialize pretty prints expect messages' - verify <<< blocks have indented JSON",
+      "Run 'zig build test' - all tests pass"
+    ]
+  },
+  {
+    "completed": false,
+    "description": "Create the message comparison helper that uses comptime to deeply compare LSP message structs with special case handling.",
+    "steps": [
+      "Create src/testing/compare.zig",
+      "Implement pub fn json_eql(allocator: Allocator, expected_json: []const u8, actual_json: []const u8) !bool",
+      "Parse both JSON strings into std.json.Value using std.json.parseFromSlice",
+      "Implement fn value_eql(expected: std.json.Value, actual: std.json.Value) bool for recursive comparison",
+      "Handle all json.Value variants: .null, .bool, .integer, .float, .string, .array, .object",
+      "For objects: compare that both have same keys and values match (order independent)",
+      "For arrays: compare length and each element in order",
+      "Export from testing.zig: pub const compare = @import(\"compare.zig\");"
+    ],
+    "verification": [
+      "Add test 'identical json' - should return true",
+      "Add test 'different field order' - should return true (order independent)",
+      "Add test 'different values' - should return false",
+      "Add test 'missing field' - should return false",
+      "Add test 'extra field' - should return false",
+      "Add test 'nested objects' - should compare deeply",
+      "Add test 'arrays' - should compare in order",
+      "Run 'zig build test' - all tests pass"
+    ]
+  },
+  {
+    "completed": false,
+    "description": "Create the snapshot test runner that runs server in a separate thread, communicates via TestTransport, and has timeout support.",
+    "steps": [
+      "Create src/testing/runner.zig",
+      "Define pub const TestResult = struct { passed: bool, expected_messages: []const []const u8, actual_messages: []const []const u8, first_mismatch_index: ?usize };",
+      "Define pub const RunError = error { Timeout, ServerError, ParseError };",
+      "Implement pub fn runTest(allocator: Allocator, snapshot: Snapshot, timeout_ms: u64) RunError!TestResult",
+      "Extract send messages from snapshot as input_messages for TestTransport",
+      "Extract expect messages from snapshot as expected_outputs for comparison",
+      "Create TestTransport with input_messages",
+      "Spawn server thread: std.Thread.spawn(.{}, serverThreadFn, .{&test_transport, &server_error})",
+      "Implement serverThreadFn that calls server.run() and captures any error",
+      "In main thread: wait for server thread with timeout using thread.timedJoin(timeout_ns)",
+      "If timeout: return error.Timeout (server thread will be left running - acceptable for test failure)",
+      "After server completes: compare test_transport.getOutputMessages() against expected_outputs using compare.json_eql",
+      "Return TestResult with comparison details",
+      "Export from testing.zig: pub const runner = @import(\"runner.zig\");"
+    ],
+    "verification": [
+      "Add test 'run simple init/exit' - create minimal snapshot, verify server responds correctly",
+      "Add test 'timeout triggers' - create snapshot that would hang, verify timeout error returned",
+      "Add test 'mismatch detected' - create snapshot with wrong expectation, verify TestResult.passed=false and first_mismatch_index set",
+      "Run 'zig build test' - all tests pass"
+    ]
+  },
+  {
+    "completed": false,
+    "description": "Create the test entry point and build integration for running snapshot tests with file discovery and update mode.",
+    "steps": [
+      "Create tests/snapshot_tests.zig",
+      "Import testing module and std",
+      "Implement fn discoverSnapshots(allocator: Allocator, dir_path: []const u8) ![][]const u8 - lists .txt files in directory",
+      "Implement main test function that iterates discovered snapshots",
+      "For each snapshot file: read contents, parse with snapshot.parse(), run with runner.runTest()",
+      "On test failure: print detailed diff showing expected vs actual messages",
+      "Add build option handling: const build_options = @import(\"build_options\"); const update_mode = build_options.update_snapshots;",
+      "If update_mode and test would fail: serialize actual results back to file using snapshot.serialize() and std.fs.cwd().writeFile()",
+      "Update build.zig: create test:snapshots step",
+      "In build.zig: add update-snapshots bool option with b.option()",
+      "In build.zig: create snapshot_tests module, add imports (testing, server, lsp, base)",
+      "In build.zig: pass update_snapshots option via b.addOptions()",
+      "In build.zig: add test artifact and run step, depend on main exe build"
+    ],
+    "verification": [
+      "Run 'zig build test:snapshots' with empty tests/snapshots/ directory - should pass (no tests)",
+      "Create a dummy .txt file with invalid format - should report parse error",
+      "Run 'zig build test:snapshots -Dupdate-snapshots=true' - should not crash",
+      "Run 'zig build test' - should still work (snapshot tests separate)"
+    ]
+  },
+  {
+    "completed": false,
+    "description": "Create the first snapshot test file for basic LSP initialization and shutdown sequence.",
+    "steps": [
+      "Create tests/snapshots/init_basic.txt",
+      "Add >>> block with initialize request: {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"capabilities\":{}}}",
+      "Add <<< block with expected initialize response (copy actual server response format from main.zig wait_for_init)",
+      "Add >>> block with initialized notification: {\"jsonrpc\":\"2.0\",\"method\":\"initialized\",\"params\":{}}",
+      "Add >>> block with shutdown request: {\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"shutdown\"}",
+      "Add <<< block with expected shutdown response: {\"jsonrpc\":\"2.0\",\"id\":2,\"result\":null}",
+      "Add >>> block with exit notification: {\"jsonrpc\":\"2.0\",\"method\":\"exit\"}",
+      "Format all JSON blocks with pretty printing (2-space indent)"
+    ],
+    "verification": [
+      "Run 'zig build test:snapshots' - test should pass",
+      "Manually corrupt an expected response in the file, run test - should fail with diff output",
+      "Run 'zig build test:snapshots -Dupdate-snapshots=true' after corruption - file should be fixed",
+      "Run 'zig build test:snapshots' again - should pass"
+    ]
+  },
+  {
+    "completed": false,
+    "description": "Create additional snapshot tests for document lifecycle and pre-initialization error handling.",
+    "steps": [
+      "Create tests/snapshots/document_open.txt:",
+      "  - Initialize and initialized sequence (copy from init_basic.txt)",
+      "  - >>> textDocument/didOpen notification with sample JSON document",
+      "  - <<< publishDiagnostics notification (may be empty diagnostics array)",
+      "  - Shutdown and exit sequence",
+      "Create tests/snapshots/error_before_init.txt:",
+      "  - >>> Send a textDocument/completion request before initialize",
+      "  - <<< Expect error response with code -32002 (ServerNotInitialized)",
+      "  - Continue with normal init/shutdown sequence",
+      "Create tests/snapshots/document_syntax_error.txt:",
+      "  - Initialize sequence",
+      "  - >>> textDocument/didOpen with invalid JSON content (e.g., {invalid})",
+      "  - <<< publishDiagnostics with syntax error diagnostic",
+      "  - Shutdown and exit sequence"
+    ],
+    "verification": [
+      "Run 'zig build test:snapshots' - all tests should pass",
+      "Verify each test file is properly formatted (run with -Dupdate-snapshots=true to normalize)",
+      "Review diagnostic messages in document_syntax_error.txt match actual server behavior"
+    ]
+  }
+]
