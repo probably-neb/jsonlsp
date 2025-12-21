@@ -1,0 +1,1500 @@
+>>>
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "initialize",
+  "params": {
+    "capabilities": {}
+  }
+}
+
+<<<
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "capabilities": {
+      "textDocumentSync": {
+        "openClose": true,
+        "change": 0
+      }
+    },
+    "serverInfo": {
+      "name": "json-lsp",
+      "version": "0.0.0"
+    }
+  }
+}
+
+>>>
+{
+  "jsonrpc": "2.0",
+  "method": "initialized",
+  "params": {}
+}
+
+>>>
+{
+  "jsonrpc": "2.0",
+  "method": "textDocument/didOpen",
+  "params": {
+    "textDocument": {
+      "uri": "file:///test/invalid.json",
+      "languageId": "json",
+      "version": 1,
+      "text": "{invalid json content}"
+    }
+  }
+}
+
+<<<
+{
+  "jsonrpc": "2.0",
+  "method": "textDocument/publishDiagnostics",
+  "params": {
+    "uri": "file:///test/invalid.json",
+    "version": 1,
+    "diagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected string",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected colon",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "unexpected token",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected comma",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected string",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected colon",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "unexpected token",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected comma",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected string",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected colon",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "unexpected token",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected comma",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected string",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected colon",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "unexpected token",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected comma",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected string",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected colon",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "unexpected token",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected comma",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected string",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected colon",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "unexpected token",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected comma",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected string",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected colon",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "unexpected token",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected comma",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected string",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected colon",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "unexpected token",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected comma",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected string",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected colon",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "unexpected token",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected comma",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected string",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected colon",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "unexpected token",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected comma",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected string",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected colon",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "unexpected token",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected comma",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected string",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected colon",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "unexpected token",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected comma",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected string",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected colon",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "unexpected token",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected comma",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected string",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected colon",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "unexpected token",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected comma",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected string",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected colon",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "unexpected token",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected comma",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected string",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected colon",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "unexpected token",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected comma",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected string",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected colon",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "unexpected token",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected comma",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected string",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected colon",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      },
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 0
+          },
+          "end": {
+            "line": 1,
+            "character": 0
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "unexpected token",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      }
+    ]
+  }
+}
+
+>>>
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "shutdown"
+}
+
+<<<
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": null
+}
+
+>>>
+{
+  "jsonrpc": "2.0",
+  "method": "exit"
+}

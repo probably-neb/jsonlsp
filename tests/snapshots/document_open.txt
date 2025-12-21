@@ -1,0 +1,68 @@
+>>>
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "initialize",
+  "params": {
+    "capabilities": {}
+  }
+}
+
+<<<
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "capabilities": {
+      "textDocumentSync": {
+        "openClose": true,
+        "change": 0
+      }
+    },
+    "serverInfo": {
+      "name": "json-lsp",
+      "version": "0.0.0"
+    }
+  }
+}
+
+>>>
+{
+  "jsonrpc": "2.0",
+  "method": "initialized",
+  "params": {}
+}
+
+>>>
+{
+  "jsonrpc": "2.0",
+  "method": "textDocument/didOpen",
+  "params": {
+    "textDocument": {
+      "uri": "file:///test/sample.json",
+      "languageId": "json",
+      "version": 1,
+      "text": "{\"name\": \"test\", \"value\": 42}"
+    }
+  }
+}
+
+>>>
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "shutdown"
+}
+
+<<<
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": null
+}
+
+>>>
+{
+  "jsonrpc": "2.0",
+  "method": "exit"
+}

@@ -7,6 +7,7 @@ const lsp = @import("lsp");
 const documents = @import("documents.zig");
 
 const Arena = base.Arena;
+const DocumentStore = documents.DocumentStore;
 
 pub const ServerError = error{
     /// Server received exit notification after proper shutdown
@@ -22,14 +23,15 @@ pub fn run(arena: *Arena, transport: *lsp.Transport) !void {
         scoped.release();
     }
 
-    documents.init();
+    var doc_store = DocumentStore.init();
+    defer doc_store.deinit();
 
     while (true) {
         var frame_arena = arena.scoped();
         defer frame_arena.release();
         const frame_alloc = frame_arena.arena.allocator();
 
-        for (try documents.diagnostics(frame_arena.arena)) |document| {
+        for (try doc_store.diagnostics(frame_arena.arena)) |document| {
             if (!document.has_diagnostics()) {
                 continue;
             }
@@ -105,7 +107,7 @@ pub fn run(arena: *Arena, transport: *lsp.Transport) !void {
                 .exit => return ServerError.ExitWithoutShutdown,
                 .@"textDocument/didOpen" => |params| {
                     const doc = params.textDocument;
-                    documents.open(doc.uri, doc.text, doc.version, doc.languageId) catch |err| {
+                    doc_store.open(doc.uri, doc.text, doc.version, doc.languageId) catch |err| {
                         switch (err) {
                             error.OpenDocumentLimitReached => {
                                 std.log.err("Document limit reached. Could not open `{s}`", .{doc.uri});
@@ -123,7 +125,7 @@ pub fn run(arena: *Arena, transport: *lsp.Transport) !void {
                 },
                 .@"textDocument/didChange" => |_| {},
                 .@"textDocument/didClose" => |params| {
-                    const closed = documents.close(params.textDocument.uri);
+                    const closed = doc_store.close(params.textDocument.uri);
                     if (!closed) {
                         std.log.warn("Asked to close `{s}`, but it wasn't open", .{params.textDocument.uri});
                         continue;
