@@ -214,7 +214,7 @@ fn wait_for_init(arena: *Arena, transport: *lsp.Transport) !void {
                             scoped_alloc,
                             message.request.id,
                             .{ .code = @as(lsp.JsonRPCMessage.Response.Error.Code, @enumFromInt(-32002)), .message = "Server not initialized" },
-                            .{ .emit_null_optional_fields = true },
+                            .{ .emit_null_optional_fields = false },
                         );
                         continue;
                     },
@@ -287,7 +287,7 @@ fn shutdown_received(
                         .code = .invalid_request,
                         .message = "Server shutting down",
                     },
-                    .{ .emit_null_optional_fields = true },
+                    .{ .emit_null_optional_fields = false },
                 ) catch |err| {
                     std.log.err("Failed to write error response: {}", .{err});
                 };
