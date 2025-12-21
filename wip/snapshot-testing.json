@@ -65,7 +65,7 @@
     ]
   },
   {
-    "completed": false,
+    "completed": true,
     "description": "Create the snapshot file serializer that writes the format back, preserving >>> messages and pretty-printing <<< JSON messages.",
     "steps": [
       "In src/testing/snapshot.zig, implement pub fn serialize(self: Snapshot, allocator: Allocator) ![]const u8",
@@ -85,7 +85,7 @@
     ]
   },
   {
-    "completed": false,
+    "completed": true,
     "description": "Create the message comparison helper that uses comptime to deeply compare LSP message structs with special case handling.",
     "steps": [
       "Create src/testing/compare.zig",
