@@ -19,7 +19,7 @@ pub const InitOptions = struct {
     commit_size: usize = COMMIT_GRANULARITY_DEFAULT,
 };
 
-pub const VirtualAllocError = error{
+pub const InitError = error{
     OutOfMemory,
     AccessDenied,
     PermissionDenied,
@@ -33,7 +33,7 @@ pub const VirtualAllocError = error{
 
 pub const AllocError = error{OutOfMemory};
 
-pub fn init(options: InitOptions) VirtualAllocError!Arena {
+pub fn init(options: InitOptions) InitError!Arena {
     const reserve_size = std.mem.alignForward(usize, options.reserve_size, page_size);
     const memory = try virtualalloc(reserve_size);
 
@@ -126,7 +126,7 @@ pub fn clear(arena: *Arena) void {
     arena.pos = 0;
 }
 
-pub fn scope(arena: *Arena) Scope {
+pub fn scoped(arena: *Arena) Scoped {
     return .{ .arena = arena, .pos = arena.pos };
 }
 
@@ -175,16 +175,16 @@ fn commit_up_to(arena: *Arena, target_pos: usize) AllocError!void {
     arena.committed = commit_target;
 }
 
-pub const Scope = struct {
+pub const Scoped = struct {
     arena: *Arena,
     pos: usize,
 
-    pub fn release(s: Scope) void {
+    pub fn release(s: Scoped) void {
         s.arena.set_pos(s.pos);
     }
 };
 
-fn virtualalloc(reserve_size: usize) VirtualAllocError![]align(page_size) u8 {
+fn virtualalloc(reserve_size: usize) InitError![]align(page_size) u8 {
     const size = std.mem.alignForward(usize, reserve_size, page_size);
 
     switch (builtin.os.tag) {
@@ -215,7 +215,7 @@ fn virtualalloc(reserve_size: usize) VirtualAllocError![]align(page_size) u8 {
     }
 }
 
-fn virtualcommit(base: [*]align(page_size) u8, start: usize, len: usize) VirtualAllocError!void {
+fn virtualcommit(base: [*]align(page_size) u8, start: usize, len: usize) InitError!void {
     if (len == 0) return;
 
     switch (builtin.os.tag) {
@@ -337,7 +337,7 @@ const scratch_arena_count = 2;
 threadlocal var scratch_arenas: [scratch_arena_count]?Arena = .{null} ** scratch_arena_count;
 
 /// Get a thread-local scratch arena. Pass conflicting arenas to avoid getting the same one.
-pub fn get_scratch(conflicts: []const *const Arena) Scope {
+pub fn get_scratch(conflicts: []const *const Arena) Scoped {
     for (&scratch_arenas) |*maybe_arena| {
         if (maybe_arena.* == null) {
             maybe_arena.* = Arena.init(.{}) catch @panic("Failed to initialize scratch arena");
@@ -354,7 +354,7 @@ pub fn get_scratch(conflicts: []const *const Arena) Scope {
             }
         }
         if (!is_conflict) {
-            return arena.scope();
+            return arena.scoped();
         }
     }
 
@@ -430,7 +430,7 @@ test "Arena: scope" {
     const pos_before = arena.get_pos();
 
     {
-        const s = arena.scope();
+        const s = arena.scoped();
         defer s.release();
 
         _ = try arena.push(500);

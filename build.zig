@@ -32,8 +32,9 @@ pub fn build(b: *std.Build) void {
     mod_json_schema.addImport("pcre", pcre_mod);
 
     const lsp_kit_pkg = b.dependency("lsp_kit", .{ .optimize = optimize, .target = target });
-    const lsp_kit_mod = lsp_kit_pkg.module("lsp");
-    exe_mod.addImport("lsp", lsp_kit_mod);
+    const mod_lsp = lsp_kit_pkg.module("lsp");
+    exe_mod.addImport("lsp", mod_lsp);
+    exe_mod.addImport("base", mod_base);
 
     const exe_unit_tests = b.addTest(.{
         .root_module = exe_mod,

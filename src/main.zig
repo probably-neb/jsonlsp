@@ -3,6 +3,9 @@
 const std = @import("std");
 const Alloc = std.mem.Allocator;
 const builtin = @import("builtin");
+const base = @import("base");
+
+const Arena = base.Arena;
 
 const lsp = @import("lsp");
 
@@ -12,16 +15,8 @@ pub const std_options: std.Options = .{
     .log_level = std.log.default_level, // Customize the log level here
 };
 
-var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
-
 pub fn main() !void {
-    const gpa, const is_debug = switch (builtin.mode) {
-        .Debug, .ReleaseSafe => .{ debug_allocator.allocator(), true },
-        .ReleaseFast, .ReleaseSmall => .{ std.heap.smp_allocator, false },
-    };
-    defer if (is_debug) {
-        _ = debug_allocator.deinit();
-    };
+    var arena: Arena = try .init(.{});
 
     // Language servers can support multiple communication channels (e.g. stdio, pipes, sockets).
     // See https://microsoft.github.io/language-server-protocol/specifications/specification-current/#implementationConsiderations
@@ -31,19 +26,24 @@ pub fn main() !void {
     var stdio_transport: lsp.Transport.Stdio = .init(&read_buffer, .stdin(), .stdout());
     const transport: *lsp.Transport = &stdio_transport.transport;
 
-    try wait_for_init(gpa, transport);
+    {
+        const scoped = arena.scoped();
+        try wait_for_init(scoped.arena, transport);
+        scoped.release();
+    }
 
     documents.init();
 
     while (true) {
-        // read the unparsed JSON-RPC message
-        const json_message = try transport.readJsonMessage(gpa);
-        defer gpa.free(json_message);
-        // std.log.debug("received message from client: {s}", .{json_message});
+        var frame_arena = arena.scoped();
+        defer frame_arena.release();
+        const frame_alloc = frame_arena.arena.allocator();
+
+        const json_message = try transport.readJsonMessage(frame_alloc);
 
         // parse the message
         const parsed_message: std.json.Parsed(Message) = try Message.parseFromSlice(
-            gpa,
+            arena.allocator(),
             json_message,
             .{ .ignore_unknown_fields = true },
         );
@@ -66,24 +66,29 @@ pub fn main() !void {
             // requests must send a response back to the client
             .request => |request| switch (request.params) {
                 .shutdown => {
-                    shutdown_received(request.id, gpa, transport);
+                    shutdown_received(request.id, &arena, transport);
                 },
-                .other => try transport.writeResponse(gpa, request.id, void, {}, .{}),
+                .other => try transport.writeResponse(frame_alloc, request.id, void, {}, .{}),
             },
             .notification => |notification| switch (notification.params) {
                 .initialized => {},
                 .exit => return,
                 .@"textDocument/didOpen" => |params| {
                     const doc = params.textDocument;
-                    documents.open(gpa, doc.uri, doc.text, doc.version, doc.languageId) catch |err| switch (err) {
-                        error.OpenDocumentLimitReached => {
-                            std.log.err("Document limit reached. Could not open `{s}`", .{doc.uri});
-                        },
-                        error.DocumentAlreadyOpen => {
-                            std.log.warn("Asked to open `{s}`, but it was already open", .{doc.uri});
-                            continue;
-                        },
-                        error.OutOfMemory => @panic("OOM"),
+                    documents.open(doc.uri, doc.text, doc.version, doc.languageId) catch |err| {
+                        switch (err) {
+                            error.OpenDocumentLimitReached => {
+                                std.log.err("Document limit reached. Could not open `{s}`", .{doc.uri});
+                            },
+                            error.DocumentAlreadyOpen => {
+                                std.log.warn("Asked to open `{s}`, but it was already open", .{doc.uri});
+                                continue;
+                            },
+                            else => {
+                                std.log.err("Failed to open `{s}`: {}", .{ doc.uri, err });
+                                continue;
+                            },
+                        }
                     };
                 },
                 .@"textDocument/didChange" => |_| {},
@@ -106,7 +111,7 @@ pub fn main() !void {
 // - following spec to wait for initialize request or shutdown + exit
 // - partially implemented
 // - needs loop waiting on initialized notif to be split out and after a successful initialization req
-fn wait_for_init(gpa: Alloc, transport: *lsp.Transport) !void {
+fn wait_for_init(arena: *Arena, transport: *lsp.Transport) !void {
     const InitRequest = union(enum) {
         /// https://microsoft.github.io/language-server-protocol/specifications/specification-current/#initialize
         initialize: lsp.types.InitializeParams,
@@ -124,11 +129,14 @@ fn wait_for_init(gpa: Alloc, transport: *lsp.Transport) !void {
     const InitMessage = lsp.Message(InitRequest, InitNotifications, .{});
     const NON_INIT_MESSAGES_MAX = 10;
     for (0..NON_INIT_MESSAGES_MAX) |_| {
-        const json_message = try transport.readJsonMessage(gpa);
-        defer gpa.free(json_message);
+        var scoped = arena.scoped();
+        defer scoped.release();
+        const scoped_alloc = scoped.arena.allocator();
+
+        const json_message = try transport.readJsonMessage(scoped_alloc);
 
         const parsed_message: std.json.Parsed(InitMessage) = try InitMessage.parseFromSlice(
-            gpa,
+            scoped_alloc,
             json_message,
             .{ .ignore_unknown_fields = true },
         );
@@ -140,7 +148,7 @@ fn wait_for_init(gpa: Alloc, transport: *lsp.Transport) !void {
                     .initialize => |params| {
                         _ = params.capabilities; // the client capabilities tell the server what "features" the client supports
                         try transport.writeResponse(
-                            gpa,
+                            scoped_alloc,
                             request.id,
                             lsp.types.InitializeResult,
                             .{
@@ -162,12 +170,12 @@ fn wait_for_init(gpa: Alloc, transport: *lsp.Transport) !void {
                         );
                     },
                     .shutdown => {
-                        return shutdown_received(request.id, gpa, transport);
+                        return shutdown_received(request.id, scoped.arena, transport);
                     },
                     .other => |other_request| {
                         std.log.warn("{s} request received before initialization", .{other_request.method});
                         try transport.writeErrorResponse(
-                            gpa,
+                            scoped_alloc,
                             message.request.id,
                             .{ .code = @as(lsp.JsonRPCMessage.Response.Error.Code, @enumFromInt(-32002)), .message = "Server not initialized" },
                             .{ .emit_null_optional_fields = true },
@@ -197,10 +205,10 @@ fn exit_received_without_shutdown() noreturn {
 
 fn shutdown_received(
     request_id: lsp.JsonRPCMessage.ID,
-    gpa: Alloc,
+    arena: *Arena,
     transport: *lsp.Transport,
 ) noreturn {
-    transport.writeResponse(gpa, request_id, void, {}, .{}) catch |err| {
+    transport.writeResponse(arena.allocator(), request_id, void, {}, .{}) catch |err| {
         std.log.err("Failed to write shutdown response: {}", .{err});
         std.process.exit(1);
     };
@@ -218,14 +226,17 @@ fn shutdown_received(
     const NON_EXIT_MESSAGES_MAX = 10;
 
     for (0..NON_EXIT_MESSAGES_MAX) |_| {
-        const json_message = transport.readJsonMessage(gpa) catch |err| {
+        const scoped = arena.scoped();
+        defer scoped.release();
+        const scoped_alloc = scoped.arena.allocator();
+
+        const json_message = transport.readJsonMessage(scoped_alloc) catch |err| {
             std.log.err("Failed to read JSON message: {}", .{err});
             std.process.exit(1);
         };
-        defer gpa.free(json_message);
 
         const parsed_message: std.json.Parsed(ExitMessage) = ExitMessage.parseFromSlice(
-            gpa,
+            scoped_alloc,
             json_message,
             .{ .ignore_unknown_fields = true },
         ) catch |err| {
@@ -243,7 +254,7 @@ fn shutdown_received(
                 std.log.warn("{s} request received while awaiting exit notification", .{request.params.other.method});
 
                 transport.writeErrorResponse(
-                    gpa,
+                    scoped_alloc,
                     request.id,
                     .{
                         .code = .invalid_request,
@@ -283,3 +294,7 @@ const NotificationMethods = union(enum) {
     @"textDocument/didClose": lsp.types.DidCloseTextDocumentParams,
     other: lsp.MethodWithParams,
 };
+
+test {
+    std.testing.refAllDecls(@This());
+}

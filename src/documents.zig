@@ -1,6 +1,7 @@
 const std = @import("std");
+const base = @import("base");
 const Alloc = std.mem.Allocator;
-const Arena = std.heap.ArenaAllocator;
+const Arena = base.Arena;
 const OOM = error{OutOfMemory};
 
 const DOCUMENTS_MAX: usize = 4096;
@@ -46,9 +47,9 @@ fn find(uri: []const u8) ?usize {
     return null;
 }
 
-const OpenError = error{ OpenDocumentLimitReached, DocumentAlreadyOpen } || OOM;
+const OpenError = error{ OpenDocumentLimitReached, DocumentAlreadyOpen } || Arena.InitError;
 
-pub fn open(gpa: Alloc, uri: []const u8, contents: []const u8, version: i32, language_id: []const u8) OpenError!void {
+pub fn open(uri: []const u8, contents: []const u8, version: i32, language_id: []const u8) OpenError!void {
     if (find(uri) != null) return error.DocumentAlreadyOpen;
     if (DOCUMENTS_FREE == DOCUMENTS_MAX) {
         return error.OpenDocumentLimitReached;
@@ -56,7 +57,7 @@ pub fn open(gpa: Alloc, uri: []const u8, contents: []const u8, version: i32, lan
 
     const doc = &DOCUMENTS[DOCUMENTS_FREE];
     const next_free = doc.next;
-    var arena_state: Arena = .init(gpa);
+    var arena_state: Arena = try .init(.{});
     const alloc = arena_state.allocator();
     doc.* = .{
         .next = DOCUMENTS_OPEN,
