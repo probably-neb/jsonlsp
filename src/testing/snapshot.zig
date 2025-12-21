@@ -1,72 +1,23 @@
-//! Snapshot file parser and serializer for LSP message testing.
-//!
-//! FILE FORMAT SPECIFICATION:
-//!
-//! - A snapshot file contains a sequence of message blocks separated by blank lines
-//! - Each message block starts with a direction marker on its own line:
-//!   - '>>>' means client-to-server (send)
-//!   - '<<<' means server-to-client (expect)
-//! - The JSON content follows on subsequent lines until a blank line or EOF
-//! - The JSON should be pretty-printed (multi-line with indentation)
-//! - No comments are supported in the format
-//! - Blank lines between message blocks are required
-//!
-//! EXAMPLE FILE:
-//!
-//! >>>
-//! {
-//!   "jsonrpc": "2.0",
-//!   "id": 1,
-//!   "method": "initialize",
-//!   "params": {
-//!     "capabilities": {}
-//!   }
-//! }
-//!
-//! <<<
-//! {
-//!   "jsonrpc": "2.0",
-//!   "id": 1,
-//!   "result": {
-//!     "capabilities": {}
-//!   }
-//! }
-//!
-//! >>>
-//! {
-//!   "jsonrpc": "2.0",
-//!   "method": "exit"
-//! }
+//! Snapshot parser and serializer for LSP message testing.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-/// Direction of a message in the snapshot.
 pub const Direction = enum {
-    /// Client-to-server message (>>>)
     send,
-    /// Server-to-client message (<<<)
     expect,
 };
 
-/// A single message in a snapshot file.
 pub const Message = struct {
-    /// Direction of the message (send or expect).
     direction: Direction,
-    /// The raw JSON content of the message.
     json: []const u8,
-    /// Line number where the marker appeared (1-indexed for human readability).
     line_start: u32,
 };
 
-/// A parsed snapshot file containing a sequence of messages.
 pub const Snapshot = struct {
-    /// The messages in the snapshot, in order.
     messages: []const Message,
-    /// Allocator used for allocations (needed for deinit).
     allocator: Allocator,
 
-    /// Free all allocated memory.
     pub fn deinit(self: *Snapshot) void {
         for (self.messages) |msg| {
             self.allocator.free(msg.json);
@@ -76,30 +27,18 @@ pub const Snapshot = struct {
     }
 };
 
-/// Errors that can occur during snapshot parsing.
 pub const ParseError = error{
-    /// A line that looks like a marker but isn't >>> or <<<
     InvalidDirectionMarker,
-    /// A message block with no JSON content
     EmptyMessage,
-    /// Content found before any direction marker
     UnexpectedContent,
-    /// Memory allocation failed
     OutOfMemory,
 };
 
-/// Parse state machine states.
 const ParseState = enum {
-    /// Looking for a direction marker
     looking_for_marker,
-    /// Reading JSON lines after a marker
     reading_json,
 };
 
-/// Parse a snapshot file from its content.
-///
-/// Returns a Snapshot containing all parsed messages.
-/// The caller must call deinit() on the returned Snapshot to free memory.
 pub fn parse(allocator: Allocator, content: []const u8) ParseError!Snapshot {
     var messages: std.ArrayList(Message) = .empty;
     errdefer {
@@ -126,12 +65,10 @@ pub fn parse(allocator: Allocator, content: []const u8) ParseError!Snapshot {
 
         switch (state) {
             .looking_for_marker => {
-                // Skip blank lines when looking for a marker
                 if (trimmed.len == 0) {
                     continue;
                 }
 
-                // Check for direction markers
                 if (std.mem.eql(u8, trimmed, ">>>")) {
                     state = .reading_json;
                     current_direction = .send;
@@ -143,22 +80,18 @@ pub fn parse(allocator: Allocator, content: []const u8) ParseError!Snapshot {
                     current_line_start = line_number;
                     json_lines.clearRetainingCapacity();
                 } else {
-                    // Non-blank, non-marker content before any marker
                     return ParseError.UnexpectedContent;
                 }
             },
             .reading_json => {
-                // Blank line or new marker ends the current message
                 const is_blank = trimmed.len == 0;
                 const is_marker = std.mem.eql(u8, trimmed, ">>>") or std.mem.eql(u8, trimmed, "<<<");
 
                 if (is_blank or is_marker) {
-                    // Finalize current message
                     if (json_lines.items.len == 0) {
                         return ParseError.EmptyMessage;
                     }
 
-                    // Join all JSON lines with newlines
                     const json = try std.mem.join(allocator, "\n", json_lines.items);
                     errdefer allocator.free(json);
 
@@ -171,7 +104,6 @@ pub fn parse(allocator: Allocator, content: []const u8) ParseError!Snapshot {
                     json_lines.clearRetainingCapacity();
 
                     if (is_marker) {
-                        // Start new message immediately
                         if (std.mem.eql(u8, trimmed, ">>>")) {
                             current_direction = .send;
                         } else {
@@ -182,14 +114,12 @@ pub fn parse(allocator: Allocator, content: []const u8) ParseError!Snapshot {
                         state = .looking_for_marker;
                     }
                 } else {
-                    // Accumulate JSON line
                     try json_lines.append(allocator, line);
                 }
             },
         }
     }
 
-    // Handle final message if we were reading JSON at EOF
     if (state == .reading_json) {
         if (json_lines.items.len == 0) {
             return ParseError.EmptyMessage;
@@ -211,24 +141,15 @@ pub fn parse(allocator: Allocator, content: []const u8) ParseError!Snapshot {
     };
 }
 
-/// Serialize a snapshot back to the file format.
-///
-/// For send (>>>) messages: writes the JSON as-is (preserves original formatting).
-/// For expect (<<<) messages: parses and re-serializes with pretty printing.
-///
-/// Returns the complete serialized content as a single allocated string.
-/// The caller owns the returned memory.
 pub fn serialize(self: Snapshot, allocator: Allocator) ![]const u8 {
     var output: std.ArrayList(u8) = .empty;
     errdefer output.deinit(allocator);
 
     for (self.messages, 0..) |msg, i| {
-        // Add blank line between messages (but not before the first one)
         if (i > 0) {
             try output.append(allocator, '\n');
         }
 
-        // Write direction marker
         const marker: []const u8 = switch (msg.direction) {
             .send => ">>>",
             .expect => "<<<",
@@ -236,11 +157,8 @@ pub fn serialize(self: Snapshot, allocator: Allocator) ![]const u8 {
         try output.appendSlice(allocator, marker);
         try output.append(allocator, '\n');
 
-        // Write JSON content
         if (msg.direction == .expect) {
-            // Pretty-print expect messages
             const parsed = std.json.parseFromSlice(std.json.Value, allocator, msg.json, .{}) catch {
-                // If JSON is invalid, just write it as-is
                 try output.appendSlice(allocator, msg.json);
                 try output.append(allocator, '\n');
                 continue;
@@ -252,7 +170,6 @@ pub fn serialize(self: Snapshot, allocator: Allocator) ![]const u8 {
             try output.appendSlice(allocator, pretty_json);
             try output.append(allocator, '\n');
         } else {
-            // Write send messages as-is
             try output.appendSlice(allocator, msg.json);
             try output.append(allocator, '\n');
         }
@@ -456,21 +373,18 @@ test "round trip parse then serialize" {
     const serialized = try serialize(snapshot, allocator);
     defer allocator.free(serialized);
 
-    // Parse again to verify structure is preserved
     var snapshot2 = try parse(allocator, serialized);
     defer snapshot2.deinit();
 
     try std.testing.expectEqual(snapshot.messages.len, snapshot2.messages.len);
     for (snapshot.messages, snapshot2.messages) |orig, round_tripped| {
         try std.testing.expectEqual(orig.direction, round_tripped.direction);
-        // Note: JSON content may be reformatted for expect messages
     }
 }
 
 test "serialize pretty prints expect messages" {
     const allocator = std.testing.allocator;
 
-    // Compact JSON that should be pretty-printed
     const json = try allocator.dupe(u8, "{\"result\":{\"capabilities\":{}}}");
     defer allocator.free(json);
 
@@ -491,8 +405,6 @@ test "serialize pretty prints expect messages" {
     const result = try serialize(snapshot, allocator);
     defer allocator.free(result);
 
-    // Should contain newlines from pretty-printing
     try std.testing.expect(std.mem.indexOf(u8, result, "\n  ") != null);
-    // Should start with the marker
     try std.testing.expect(std.mem.startsWith(u8, result, "<<<\n"));
 }

@@ -1,7 +1,4 @@
-//! Testing utilities for JSON Language Server.
-//!
-//! This module provides test infrastructure for running snapshot tests
-//! against the server without needing real I/O.
+//! Testing utilities.
 
 const std = @import("std");
 

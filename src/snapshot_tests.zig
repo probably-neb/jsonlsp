@@ -1,11 +1,4 @@
-//! Snapshot test entry point.
-//!
-//! This module discovers and runs snapshot tests from .txt files in the
-//! tests/snapshots/ directory. Each snapshot file contains a sequence of
-//! send (>>>) and expect (<<<) messages that define a test scenario.
-//!
-//! Run with: zig build test:snapshots
-//! Update mode: zig build test:snapshots -Dupdate-snapshots=true
+//! Snapshot tests.
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -18,8 +11,7 @@ const Direction = testing.snapshot.Direction;
 
 const update_snapshots = build_options.update_snapshots;
 
-/// Discover all .txt snapshot files in the given directory.
-fn discoverSnapshots(allocator: Allocator, dir_path: []const u8) ![][]const u8 {
+fn discover_snapshots(allocator: Allocator, dir_path: []const u8) ![][]const u8 {
     var paths: std.ArrayList([]const u8) = .empty;
     errdefer {
         for (paths.items) |p| allocator.free(p);
@@ -44,55 +36,42 @@ fn discoverSnapshots(allocator: Allocator, dir_path: []const u8) ![][]const u8 {
     }
 
     std.mem.sort([]const u8, paths.items, {}, struct {
-        fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+        fn less_than(_: void, a: []const u8, b: []const u8) bool {
             return std.mem.lessThan(u8, a, b);
         }
-    }.lessThan);
+    }.less_than);
 
     return try paths.toOwnedSlice(allocator);
 }
 
-/// Format a diff between expected and actual messages.
-fn formatDiff(allocator: Allocator, expected: []const u8, actual: []const u8) ![]const u8 {
-    var output: std.ArrayList(u8) = .empty;
-    errdefer output.deinit(allocator);
+fn format_diff(allocator: Allocator, expected: []const u8, actual: []const u8) ![]const u8 {
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
 
-    try output.appendSlice(allocator, "--- Expected ---\n");
+    try out.appendSlice(allocator, "--- Expected ---\n");
+    try append_pretty_json_or_raw(allocator, &out, expected);
+    try out.appendSlice(allocator, "\n+++ Actual +++\n");
+    try append_pretty_json_or_raw(allocator, &out, actual);
 
-    const expected_parsed = std.json.parseFromSlice(std.json.Value, allocator, expected, .{}) catch {
-        try output.appendSlice(allocator, expected);
-        try output.appendSlice(allocator, "\n");
-        try output.appendSlice(allocator, "\n+++ Actual +++\n");
-        try output.appendSlice(allocator, actual);
-        try output.appendSlice(allocator, "\n");
-        return try output.toOwnedSlice(allocator);
-    };
-    defer expected_parsed.deinit();
-
-    const expected_pretty = try std.json.Stringify.valueAlloc(allocator, expected_parsed.value, .{ .whitespace = .indent_2 });
-    defer allocator.free(expected_pretty);
-    try output.appendSlice(allocator, expected_pretty);
-    try output.appendSlice(allocator, "\n");
-
-    try output.appendSlice(allocator, "\n+++ Actual +++\n");
-
-    const actual_parsed = std.json.parseFromSlice(std.json.Value, allocator, actual, .{}) catch {
-        try output.appendSlice(allocator, actual);
-        try output.appendSlice(allocator, "\n");
-        return try output.toOwnedSlice(allocator);
-    };
-    defer actual_parsed.deinit();
-
-    const actual_pretty = try std.json.Stringify.valueAlloc(allocator, actual_parsed.value, .{ .whitespace = .indent_2 });
-    defer allocator.free(actual_pretty);
-    try output.appendSlice(allocator, actual_pretty);
-    try output.appendSlice(allocator, "\n");
-
-    return try output.toOwnedSlice(allocator);
+    return try out.toOwnedSlice(allocator);
 }
 
-/// Build an updated snapshot from original messages and actual outputs.
-fn buildUpdatedSnapshot(allocator: Allocator, original: Snapshot, actual_outputs: []const []const u8) !Snapshot {
+fn append_pretty_json_or_raw(allocator: Allocator, out: *std.ArrayList(u8), json: []const u8) !void {
+    const parsed = std.json.parseFromSlice(std.json.Value, allocator, json, .{}) catch {
+        try out.appendSlice(allocator, json);
+        try out.appendSlice(allocator, "\n");
+        return;
+    };
+    defer parsed.deinit();
+
+    const pretty = try std.json.Stringify.valueAlloc(allocator, parsed.value, .{ .whitespace = .indent_2 });
+    defer allocator.free(pretty);
+
+    try out.appendSlice(allocator, pretty);
+    try out.appendSlice(allocator, "\n");
+}
+
+fn build_updated_snapshot(allocator: Allocator, original: Snapshot, actual_outputs: []const []const u8) !Snapshot {
     var messages: std.ArrayList(testing.snapshot.Message) = .empty;
     errdefer {
         for (messages.items) |msg| allocator.free(msg.json);
@@ -143,8 +122,7 @@ fn buildUpdatedSnapshot(allocator: Allocator, original: Snapshot, actual_outputs
     };
 }
 
-/// Run a single snapshot test.
-fn runSnapshotTest(allocator: Allocator, path: []const u8) !void {
+fn run_snapshot_test(allocator: Allocator, path: []const u8) !void {
     const content = std.fs.cwd().readFileAlloc(allocator, path, 1024 * 1024) catch |err| {
         std.debug.print("Failed to read snapshot file '{s}': {}\n", .{ path, err });
         return err;
@@ -157,7 +135,7 @@ fn runSnapshotTest(allocator: Allocator, path: []const u8) !void {
     };
     defer snap.deinit();
 
-    var result = testing.runner.runTest(allocator, snap, 10000) catch |err| {
+    var result = testing.runner.run_test(allocator, snap, 10000) catch |err| {
         std.debug.print("Test execution failed for '{s}': {}\n", .{ path, err });
         return err;
     };
@@ -169,7 +147,7 @@ fn runSnapshotTest(allocator: Allocator, path: []const u8) !void {
     }
 
     if (update_snapshots) {
-        var updated_snap = try buildUpdatedSnapshot(allocator, snap, result.actual_messages);
+        var updated_snap = try build_updated_snapshot(allocator, snap, result.actual_messages);
         defer updated_snap.deinit();
 
         const serialized = try testing.snapshot.serialize(updated_snap, allocator);
@@ -193,7 +171,7 @@ fn runSnapshotTest(allocator: Allocator, path: []const u8) !void {
         std.debug.print("  First mismatch at message index {d}\n", .{idx});
 
         if (idx < result.expected_messages.len and idx < result.actual_messages.len) {
-            const diff = try formatDiff(allocator, result.expected_messages[idx], result.actual_messages[idx]);
+            const diff = try format_diff(allocator, result.expected_messages[idx], result.actual_messages[idx]);
             defer allocator.free(diff);
             std.debug.print("{s}\n", .{diff});
         } else if (idx >= result.expected_messages.len) {
@@ -219,7 +197,7 @@ pub fn main() !void {
 
     const snapshot_dir = "tests/snapshots";
 
-    const snapshot_paths = try discoverSnapshots(allocator, snapshot_dir);
+    const snapshot_paths = try discover_snapshots(allocator, snapshot_dir);
     defer {
         for (snapshot_paths) |p| allocator.free(p);
         allocator.free(snapshot_paths);
@@ -237,7 +215,7 @@ pub fn main() !void {
     var updated: usize = 0;
 
     for (snapshot_paths) |path| {
-        runSnapshotTest(allocator, path) catch |err| {
+        run_snapshot_test(allocator, path) catch |err| {
             if (err == error.TestFailed) {
                 failed += 1;
                 continue;
@@ -265,9 +243,9 @@ pub fn main() !void {
     }
 }
 
-test "discoverSnapshots returns empty for missing directory" {
+test "discover_snapshots returns empty for missing directory" {
     const allocator = std.testing.allocator;
-    const paths = try discoverSnapshots(allocator, "nonexistent/directory");
+    const paths = try discover_snapshots(allocator, "nonexistent/directory");
     defer {
         for (paths) |p| allocator.free(p);
         allocator.free(paths);

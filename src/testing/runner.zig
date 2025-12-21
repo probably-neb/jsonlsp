@@ -1,8 +1,4 @@
-//! Snapshot test runner that runs the server in a separate thread.
-//!
-//! The runner communicates with the server via TestTransport, compares
-//! actual output messages against expected messages from the snapshot,
-//! and supports timeout to prevent hanging tests.
+//! Snapshot test runner.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -19,20 +15,13 @@ const Snapshot = snapshot_mod.Snapshot;
 const Direction = snapshot_mod.Direction;
 const TestTransport = transport_mod.TestTransport;
 
-/// Result of running a snapshot test.
 pub const TestResult = struct {
-    /// Whether all expected messages matched actual messages.
     passed: bool,
-    /// The expected messages from the snapshot.
     expected_messages: []const []const u8,
-    /// The actual messages produced by the server.
     actual_messages: []const []const u8,
-    /// Index of the first mismatched message, if any.
     first_mismatch_index: ?usize,
-    /// Allocator used for allocations (needed for deinit).
     allocator: Allocator,
 
-    /// Free all allocated memory.
     pub fn deinit(self: *TestResult) void {
         self.allocator.free(self.expected_messages);
         for (self.actual_messages) |msg| {
@@ -43,19 +32,13 @@ pub const TestResult = struct {
     }
 };
 
-/// Errors that can occur during test execution.
 pub const RunError = error{
-    /// The server did not complete within the timeout period.
     Timeout,
-    /// The server returned an unexpected error.
     ServerError,
-    /// Failed to parse a message.
     ParseError,
-    /// Memory allocation failed.
     OutOfMemory,
 };
 
-/// Thread context for running the server.
 const ServerThreadContext = struct {
     transport: *TestTransport,
     completed: *std.atomic.Value(bool),
@@ -63,36 +46,18 @@ const ServerThreadContext = struct {
     arena: *Arena,
 };
 
-/// Server thread function.
-fn serverThreadFn(ctx: ServerThreadContext) void {
+fn server_thread_fn(ctx: ServerThreadContext) void {
     defer ctx.completed.store(true, .release);
 
     server.run(ctx.arena, &ctx.transport.transport) catch |err| {
         switch (err) {
-            error.ServerShutdown => {
-                // Normal shutdown, not an error
-            },
-            else => {
-                ctx.server_error.* = err;
-            },
+            error.ServerShutdown => {},
+            else => ctx.server_error.* = err,
         }
     };
 }
 
-/// Run a snapshot test against the server.
-///
-/// Extracts send messages from the snapshot to use as server inputs,
-/// runs the server in a separate thread, waits for completion or timeout,
-/// and compares actual outputs against expected messages.
-///
-/// Parameters:
-/// - allocator: Allocator for test infrastructure
-/// - snap: The parsed snapshot containing test messages
-/// - timeout_ms: Maximum time to wait for server completion (milliseconds)
-///
-/// Returns a TestResult indicating whether the test passed and details about any mismatches.
-pub fn runTest(allocator: Allocator, snap: Snapshot, timeout_ms: u64) RunError!TestResult {
-    // Extract send messages (inputs to server) and expect messages (expected outputs)
+pub fn run_test(allocator: Allocator, snap: Snapshot, timeout_ms: u64) RunError!TestResult {
     var send_list: std.ArrayListUnmanaged([]const u8) = .empty;
     defer send_list.deinit(allocator);
 
@@ -106,19 +71,15 @@ pub fn runTest(allocator: Allocator, snap: Snapshot, timeout_ms: u64) RunError!T
         }
     }
 
-    // Create TestTransport with send messages as input
     var test_transport = TestTransport.init(allocator, send_list.items);
     defer test_transport.deinit();
 
-    // Create arena for server
     var arena = Arena.init(.{}) catch return error.OutOfMemory;
     defer arena.deinit();
 
-    // Thread synchronization
     var completed = std.atomic.Value(bool).init(false);
     var server_error: ?anyerror = null;
 
-    // Spawn server thread
     const ctx = ServerThreadContext{
         .transport = &test_transport,
         .completed = &completed,
@@ -126,47 +87,38 @@ pub fn runTest(allocator: Allocator, snap: Snapshot, timeout_ms: u64) RunError!T
         .arena = &arena,
     };
 
-    const thread = std.Thread.spawn(.{}, serverThreadFn, .{ctx}) catch return error.ServerError;
+    const thread = std.Thread.spawn(.{}, server_thread_fn, .{ctx}) catch return error.ServerError;
 
-    // Wait for completion with timeout using ResetEvent pattern
     const timeout_ns = timeout_ms * std.time.ns_per_ms;
     const start_time = std.time.nanoTimestamp();
 
-    // Poll for completion with small sleep intervals
-    const poll_interval_ns: u64 = 1 * std.time.ns_per_ms; // 1ms poll interval
+    const poll_interval_ns: u64 = 1 * std.time.ns_per_ms;
     while (!completed.load(.acquire)) {
         const elapsed: u64 = @intCast(std.time.nanoTimestamp() - start_time);
         if (elapsed >= timeout_ns) {
-            // Timeout - thread will be left running
             return error.Timeout;
         }
         std.Thread.sleep(poll_interval_ns);
     }
 
-    // Thread completed, join it
     thread.join();
 
-    // Check for server errors (ExitWithoutShutdown is an error, ServerShutdown is handled in thread)
     if (server_error) |_| {
         return error.ServerError;
     }
 
-    // Get actual outputs from transport
-    const actual_outputs = test_transport.getOutputMessages();
+    const actual_outputs = test_transport.get_output_messages();
 
-    // Copy expected messages for result (we need owned copies)
     const expected_copy = allocator.alloc([]const u8, expect_list.items.len) catch return error.OutOfMemory;
     @memcpy(expected_copy, expect_list.items);
 
-    // Copy actual messages for result (TestTransport owns the originals and will free them on deinit)
     const actual_copy = allocator.alloc([]const u8, actual_outputs.len) catch return error.OutOfMemory;
     errdefer allocator.free(actual_copy);
     for (actual_outputs, 0..) |msg, i| {
         actual_copy[i] = allocator.dupe(u8, msg) catch return error.OutOfMemory;
     }
 
-    // Compare outputs
-    const compare_result = compareMessages(allocator, expected_copy, actual_copy);
+    const compare_result = compare_messages(allocator, expected_copy, actual_copy);
 
     return .{
         .passed = compare_result.passed,
@@ -177,30 +129,24 @@ pub fn runTest(allocator: Allocator, snap: Snapshot, timeout_ms: u64) RunError!T
     };
 }
 
-/// Result of comparing message lists.
 const CompareResult = struct {
     passed: bool,
     first_mismatch_index: ?usize,
 };
 
-/// Compare expected and actual message lists.
-fn compareMessages(allocator: Allocator, expected: []const []const u8, actual: []const []const u8) CompareResult {
-    // Check length first
+fn compare_messages(allocator: Allocator, expected: []const []const u8, actual: []const []const u8) CompareResult {
     if (expected.len != actual.len) {
-        // Find first difference point
         const min_len = @min(expected.len, actual.len);
         for (0..min_len) |i| {
-            if (!compare.jsonEql(allocator, expected[i], actual[i])) {
+            if (!compare.json_eql(allocator, expected[i], actual[i])) {
                 return .{ .passed = false, .first_mismatch_index = i };
             }
         }
-        // Length mismatch is the first difference
         return .{ .passed = false, .first_mismatch_index = min_len };
     }
 
-    // Compare each message
     for (expected, actual, 0..) |exp, act, i| {
-        if (!compare.jsonEql(allocator, exp, act)) {
+        if (!compare.json_eql(allocator, exp, act)) {
             return .{ .passed = false, .first_mismatch_index = i };
         }
     }
@@ -208,14 +154,11 @@ fn compareMessages(allocator: Allocator, expected: []const []const u8, actual: [
     return .{ .passed = true, .first_mismatch_index = null };
 }
 
-// ============================================================================
 // Tests
-// ============================================================================
 
 test "run simple init/shutdown/exit" {
     const allocator = std.testing.allocator;
 
-    // Create a minimal snapshot for init/shutdown/exit sequence
     const content =
         \\>>>
         \\{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}
@@ -239,7 +182,7 @@ test "run simple init/shutdown/exit" {
     var snap = try snapshot_mod.parse(allocator, content);
     defer snap.deinit();
 
-    var result = try runTest(allocator, snap, 5000);
+    var result = try run_test(allocator, snap, 5000);
     defer result.deinit();
 
     try std.testing.expect(result.passed);
@@ -249,7 +192,6 @@ test "run simple init/shutdown/exit" {
 test "mismatch detected" {
     const allocator = std.testing.allocator;
 
-    // Create snapshot with intentionally wrong expected response
     const content =
         \\>>>
         \\{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}
@@ -273,7 +215,7 @@ test "mismatch detected" {
     var snap = try snapshot_mod.parse(allocator, content);
     defer snap.deinit();
 
-    var result = try runTest(allocator, snap, 5000);
+    var result = try run_test(allocator, snap, 5000);
     defer result.deinit();
 
     try std.testing.expect(!result.passed);
@@ -281,17 +223,8 @@ test "mismatch detected" {
 }
 
 test "timeout triggers" {
-    // Note: With the current TestTransport design, when input messages are exhausted,
-    // the transport returns EndOfStream, causing the server to exit with ExitWithoutShutdown
-    // (mapped to ServerError) rather than blocking and timing out.
-    //
-    // To properly test timeouts, we would need a modified TestTransport that blocks
-    // instead of returning EndOfStream. For now, we verify that incomplete sequences
-    // return ServerError (which indicates the server exited abnormally).
     const allocator = std.testing.allocator;
 
-    // Create a snapshot that sends initialize but never sends shutdown/exit,
-    // so the server will get EndOfStream and exit abnormally
     const content =
         \\>>>
         \\{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}
@@ -300,9 +233,6 @@ test "timeout triggers" {
     var snap = try snapshot_mod.parse(allocator, content);
     defer snap.deinit();
 
-    // Server will exit with ExitWithoutShutdown when it gets EndOfStream
-    const result = runTest(allocator, snap, 100);
-
-    // This returns ServerError because the server exits without proper shutdown
+    const result = run_test(allocator, snap, 100);
     try std.testing.expectError(error.ServerError, result);
 }

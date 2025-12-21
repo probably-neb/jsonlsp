@@ -52,27 +52,27 @@ pub const DocumentStore = struct {
         return store;
     }
 
-    pub fn deinit(self: *DocumentStore) void {
-        var it = self.iter();
+    pub fn deinit(store: *DocumentStore) void {
+        var it = store.iter();
         while (it.next()) |i| {
-            const doc = &self.documents[i];
+            const doc = &store.documents[i];
             if (doc.arena_state) |*arena_state| {
                 arena_state.deinit();
             }
         }
-        self.* = undefined;
+        store.* = undefined;
     }
 
-    fn find(self: *DocumentStore, uri: []const u8) ?usize {
-        var it = self.iter();
+    fn find(store: *DocumentStore, uri: []const u8) ?usize {
+        var it = store.iter();
         while (it.next()) |i| {
-            if (std.mem.eql(u8, self.documents[i].uri, uri)) return i;
+            if (std.mem.eql(u8, store.documents[i].uri, uri)) return i;
         }
         return null;
     }
 
-    fn iter(self: *DocumentStore) Document_Iter {
-        return .{ .store = self, .idx = self.documents_open };
+    fn iter(store: *DocumentStore) Document_Iter {
+        return .{ .store = store, .idx = store.documents_open };
     }
 
     const Document_Iter = struct {
@@ -89,18 +89,18 @@ pub const DocumentStore = struct {
 
     pub const OpenError = error{ OpenDocumentLimitReached, DocumentAlreadyOpen } || Arena.InitError;
 
-    pub fn open(self: *DocumentStore, uri: []const u8, contents: []const u8, version: i32, language_id: []const u8) OpenError!void {
-        if (self.find(uri) != null) return error.DocumentAlreadyOpen;
-        if (self.documents_free == DOCUMENTS_MAX) {
+    pub fn open(store: *DocumentStore, uri: []const u8, contents: []const u8, version: i32, language_id: []const u8) OpenError!void {
+        if (store.find(uri) != null) return error.DocumentAlreadyOpen;
+        if (store.documents_free == DOCUMENTS_MAX) {
             return error.OpenDocumentLimitReached;
         }
 
-        const doc = &self.documents[self.documents_free];
+        const doc = &store.documents[store.documents_free];
         const next_free = doc.next;
         var arena_state: Arena = try .init(.{});
         const alloc = arena_state.allocator();
         doc.* = .{
-            .next = self.documents_open,
+            .next = store.documents_open,
             .uri = try alloc.dupe(u8, uri),
             .text = try alloc.dupe(u8, contents),
             .version = version,
@@ -111,41 +111,41 @@ pub const DocumentStore = struct {
         doc.tree = try json.parse(&arena_state, doc.text);
         doc.arena_state = arena_state;
 
-        self.documents_open = self.documents_free;
-        self.documents_free = next_free;
-        self.documents_used += 1;
+        store.documents_open = store.documents_free;
+        store.documents_free = next_free;
+        store.documents_used += 1;
     }
 
-    pub fn close(self: *DocumentStore, uri: []const u8) bool {
-        const idx = self.find(uri) orelse return false;
+    pub fn close(store: *DocumentStore, uri: []const u8) bool {
+        const idx = store.find(uri) orelse return false;
 
-        const doc = &self.documents[idx];
+        const doc = &store.documents[idx];
         if (doc.arena_state) |*arena_state| {
             arena_state.deinit();
         }
 
         // Remove from open list
-        if (self.documents_open == idx) {
-            self.documents_open = doc.next;
+        if (store.documents_open == idx) {
+            store.documents_open = doc.next;
         } else {
             // Find the previous document that points to this one
             var prev_idx: ?usize = null;
-            var it = self.iter();
+            var it = store.iter();
             while (it.next()) |i| {
-                if (self.documents[i].next == idx) {
+                if (store.documents[i].next == idx) {
                     prev_idx = i;
                     break;
                 }
             }
             if (prev_idx) |pi| {
-                self.documents[pi].next = doc.next;
+                store.documents[pi].next = doc.next;
             }
         }
 
         doc.* = .zero;
-        self.documents[idx].next = self.documents_free;
-        self.documents_free = idx;
-        self.documents_used -= 1;
+        store.documents[idx].next = store.documents_free;
+        store.documents_free = idx;
+        store.documents_used -= 1;
         return true;
     }
 
@@ -158,13 +158,13 @@ pub const DocumentStore = struct {
         }
     };
 
-    pub fn diagnostics(self: *DocumentStore, arena: *Arena) OOM![]const DiagnosticSet {
-        var result = try arena.alloc(DiagnosticSet, self.documents_used);
-        var it = self.iter();
+    pub fn diagnostics(store: *DocumentStore, arena: *Arena) OOM![]const DiagnosticSet {
+        var result = try arena.alloc(DiagnosticSet, store.documents_used);
+        var it = store.iter();
         var result_idx: usize = 0;
 
         while (it.next()) |i| {
-            const doc = &self.documents[i];
+            const doc = &store.documents[i];
             result[result_idx].document = doc;
             result[result_idx].syntax_errors = try json.syntax_errors(arena, &doc.tree.?.tree);
             result_idx += 1;
