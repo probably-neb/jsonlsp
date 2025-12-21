@@ -19,7 +19,7 @@
     ]
   },
   {
-    "completed": false,
+    "completed": true,
     "description": "Create the testing module structure with a TestTransport that implements lsp.Transport interface. The TestTransport should have a queue of input messages and capture output messages.",
     "steps": [
       "Create src/testing/ directory",

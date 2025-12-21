@@ -38,6 +38,29 @@ pub fn build(b: *std.Build) void {
     exe_mod.addImport("lsp", mod_lsp);
     exe_mod.addImport("base", mod_base);
 
+    // Testing module for snapshot tests
+    const mod_testing = b.createModule(.{
+        .root_source_file = b.path("src/testing/testing.zig"),
+        .optimize = optimize,
+        .target = target,
+    });
+    mod_testing.addImport("lsp", mod_lsp);
+    mod_testing.addImport("base", mod_base);
+
+    const testing_lib = b.addLibrary(.{
+        .linkage = .static,
+        .name = "testing",
+        .root_module = mod_testing,
+    });
+    b.installArtifact(testing_lib);
+
+    const testing_tests = b.addTest(.{
+        .root_module = mod_testing,
+        .filters = test_filters,
+    });
+    const run_testing_tests = b.addRunArtifact(testing_tests);
+    test_step.dependOn(&run_testing_tests.step);
+
     const exe_unit_tests = b.addTest(.{
         .root_module = exe_mod,
         .filters = test_filters,
