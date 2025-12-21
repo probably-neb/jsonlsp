@@ -1,5 +1,8 @@
-//! An intrusive singly-linked list. The element type must have a `next` field
-//! of type `?*T` where `T` is the element type itself.
+//! Intrusive linked list implementations.
+//!
+//! `IntrusiveLinkedList` - singly-linked, element type must have `next: ?*T`
+//! `IntrusiveDoublyLinkedList` - circular doubly-linked, element type must have `next: *T` and `prev: *T`
+const std = @import("std");
 
 pub fn IntrusiveLinkedList(comptime T: type) type {
     return struct {
@@ -71,6 +74,133 @@ pub fn IntrusiveLinkedList(comptime T: type) type {
             const first = list.first orelse return null;
             list.first = first.next;
             return first;
+        }
+
+        pub fn concat(list: *Self, other: Self) void {
+            if (other.first == null) return;
+            if (list.first == null) {
+                list.first = other.first;
+                return;
+            }
+            find_last(list.first.?).next = other.first;
+        }
+    };
+}
+
+/// Circular doubly-linked list. `prev` of `first` always points to the last element.
+/// `next` of the last element points back to `first`.
+/// Element type must have `next: *T` and `prev: *T` fields.
+pub fn IntrusiveDoublyLinkedList(comptime T: type) type {
+std.meta.fields(comptime T: type)
+    _ = std.meta.fieldIndex(T, "prev") orelse {
+        @compileError(
+            "T type must have field `prev: *" ++ @typeName(T) ++ "`"
+        );
+    };
+    _ = std.meta.fieldIndex(T, "next") orelse {
+        @compileError(
+            "T type must have field `next: *" ++ @typeName(T) ++ "`"
+        );
+    }
+
+    return struct {
+        const Self = @This();
+
+        first: ?*T = null,
+
+        pub fn prepend(list: *Self, new_node: *T) void {
+            if (list.first) |first| {
+                new_node.next = first;
+                new_node.prev = first.prev;
+                first.prev.next = new_node;
+                first.prev = new_node;
+            } else {
+                new_node.next = new_node;
+                new_node.prev = new_node;
+            }
+            list.first = new_node;
+        }
+
+        pub fn append(list: *Self, new_node: *T) void {
+            if (list.first) |first| {
+                new_node.next = first;
+                new_node.prev = first.prev;
+                first.prev.next = new_node;
+                first.prev = new_node;
+            } else {
+                new_node.next = new_node;
+                new_node.prev = new_node;
+                list.first = new_node;
+            }
+        }
+
+        pub fn insert_after(node: *T, new_node: *T) void {
+            new_node.next = node.next;
+            new_node.prev = node;
+            node.next.prev = new_node;
+            node.next = new_node;
+        }
+
+        pub fn insert_before(node: *T, new_node: *T) void {
+            new_node.prev = node.prev;
+            new_node.next = node;
+            node.prev.next = new_node;
+            node.prev = new_node;
+        }
+
+        pub fn remove(list: *Self, node: *T) void {
+            if (node.next == node) {
+                list.first = null;
+            } else {
+                node.prev.next = node.next;
+                node.next.prev = node.prev;
+                if (list.first == node) {
+                    list.first = node.next;
+                }
+            }
+        }
+
+        pub fn pop_first(list: *Self) ?*T {
+            const first = list.first orelse return null;
+            list.remove(first);
+            return first;
+        }
+
+        pub fn pop_last(list: *Self) ?*T {
+            const first = list.first orelse return null;
+            const last_node = first.prev;
+            list.remove(last_node);
+            return last_node;
+        }
+
+        pub fn last(list: Self) ?*T {
+            const first = list.first orelse return null;
+            return first.prev;
+        }
+
+        pub fn concat(list: *Self, other: Self) void {
+            const other_first = other.first orelse return;
+            const first = list.first orelse {
+                list.first = other_first;
+                return;
+            };
+            const last_node = first.prev;
+            const other_last = other_first.prev;
+
+            last_node.next = other_first;
+            other_first.prev = last_node;
+            other_last.next = first;
+            first.prev = other_last;
+        }
+
+        pub fn count(list: Self) usize {
+            const first = list.first orelse return 0;
+            var c: usize = 1;
+            var it = first.next;
+            while (it != first) : (it = it.next) {
+                c += 1;
+            }
+            return c;
         }
     };
 }
