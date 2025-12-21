@@ -57,8 +57,8 @@ pub fn main() !void {
         // An actual LSP server implementation should try to comply with these requirements.
 
         switch (parsed_message.value) {
-            .request => |request| std.log.debug("received '{s}' request from client", .{@tagName(request.params)}),
-            .notification => |notification| std.log.debug("received '{s}' notification from client", .{@tagName(notification.params)}),
+            .request => |request| std.log.debug("received '{s}' request from client", .{request.params.method()}),
+            .notification => |notification| std.log.debug("received '{s}' notification from client", .{notification.params.method()}),
             .response => std.log.debug("received response from client", .{}),
         }
 
@@ -279,6 +279,13 @@ const RequestMethods = union(enum) {
     /// https://microsoft.github.io/language-server-protocol/specifications/specification-current/#shutdown
     shutdown,
     other: lsp.MethodWithParams,
+
+    fn method(msg: RequestMethods) []const u8 {
+        return switch (msg) {
+            .other => |other| other.method,
+            else => @tagName(msg),
+        };
+    }
 };
 
 const NotificationMethods = union(enum) {
@@ -293,6 +300,13 @@ const NotificationMethods = union(enum) {
     /// https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_didClose
     @"textDocument/didClose": lsp.types.DidCloseTextDocumentParams,
     other: lsp.MethodWithParams,
+
+    fn method(notif: NotificationMethods) []const u8 {
+        return switch (notif) {
+            .other => |other| other.method,
+            else => @tagName(notif),
+        };
+    }
 };
 
 test {
