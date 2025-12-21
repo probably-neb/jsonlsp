@@ -39,6 +39,46 @@ pub fn main() !void {
         defer frame_arena.release();
         const frame_alloc = frame_arena.arena.allocator();
 
+        for (try documents.diagnostics(frame_arena.arena)) |document| {
+            if (!document.has_diagnostics()) {
+                continue;
+            }
+            const diagnostic_count = document.syntax_errors.count();
+
+            std.log.info("Found {d} diagnostics for {s}", .{ diagnostic_count, document.document.uri });
+            var diagnostics = try frame_arena.arena.alloc(lsp.types.Diagnostic, diagnostic_count);
+            var diag_idx: u32 = 0;
+
+            var syntax_iter = document.syntax_errors.iter();
+            while (syntax_iter.next()) |syntax_error| : (diag_idx += 1) {
+                diagnostics[diag_idx] = lsp.types.Diagnostic{
+                    .severity = .Error,
+                    .message = syntax_error.message,
+                    .range = lsp.types.Range{
+                        .start = lsp.types.Position{
+                            .character = 0,
+                            .line = 0,
+                        },
+                        .end = lsp.types.Position{
+                            .character = 0,
+                            .line = 1,
+                        },
+                    },
+                };
+            }
+            try transport.writeNotification(
+                frame_alloc,
+                "textDocument/publishDiagnostics",
+                lsp.types.PublishDiagnosticsParams,
+                .{
+                    .uri = document.document.uri,
+                    .version = document.document.version,
+                    .diagnostics = diagnostics,
+                },
+                .{ .emit_null_optional_fields = true },
+            );
+        }
+
         const json_message = try transport.readJsonMessage(frame_alloc);
 
         // parse the message
@@ -107,10 +147,6 @@ pub fn main() !void {
     }
 }
 
-// WIP:
-// - following spec to wait for initialize request or shutdown + exit
-// - partially implemented
-// - needs loop waiting on initialized notif to be split out and after a successful initialization req
 fn wait_for_init(arena: *Arena, transport: *lsp.Transport) !void {
     const InitRequest = union(enum) {
         /// https://microsoft.github.io/language-server-protocol/specifications/specification-current/#initialize

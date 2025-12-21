@@ -1,6 +1,7 @@
 const std = @import("std");
 const mem = std.mem;
-const Arena = std.heap.ArenaAllocator;
+const base = @import("base");
+const Arena = base.Arena;
 const Allocator = mem.Allocator;
 
 const str8 = []const u8;
@@ -28,14 +29,12 @@ const Token = struct {
 };
 
 pub fn parse(
-    base_alloc: Allocator,
+    arena: *Arena,
     contents: []const u8,
 ) OOM!Tree_Root {
-    var arena_state: Arena = .init(base_alloc);
+    const tokens = try lex(arena.allocator(), contents);
 
-    const tokens = try lex(arena_state.allocator(), contents);
-
-    var parser: Parser = .init(arena_state, tokens);
+    var parser: Parser = .init(arena, tokens);
     try parse_any(&parser);
 
     return build_tree(parser);
@@ -142,9 +141,9 @@ const Tree_Kind = union(enum) {
     }
 };
 
-const Tree_Root = struct {
+pub const Tree_Root = struct {
     tree: Tree,
-    arena: Arena,
+    arena: *Arena,
 };
 
 const Tree = struct {
@@ -164,7 +163,7 @@ const Child = union(enum) {
 const Parser = struct {
     tokens: []const Token,
     pos: usize,
-    arena: Arena,
+    arena: *Arena,
     events: std.ArrayList(Event),
 
     const Event = union(enum) {
@@ -177,7 +176,7 @@ const Parser = struct {
         }
     };
 
-    fn init(arena: Arena, tokens: []const Token) Parser {
+    fn init(arena: *Arena, tokens: []const Token) Parser {
         return .{
             .tokens = tokens,
             .pos = 0,
@@ -313,6 +312,7 @@ fn build_tree(parser: Parser) OOM!Tree_Root {
     std.debug.assert(tok_pos == tokens.len);
 
     return Tree_Root{
+        // TODO: remove arena, just pass around trees
         .arena = p.arena,
         .tree = stack.pop().?,
     };
@@ -398,6 +398,41 @@ pub fn dbg_print_tree(w: *std.io.Writer, tree: *const Tree, depth: usize) !void 
             },
         }
     }
+}
+
+pub const SyntaxError = struct {
+    next: *SyntaxError,
+    prev: *SyntaxError,
+    message: []const u8,
+
+    const zero = SyntaxError{
+        .next = &zero,
+        .prev = &zero,
+        .message = "",
+    };
+};
+
+pub fn syntax_errors(arena: *Arena, tree: *const Tree) OOM!base.IntrusiveDoublyLinkedList(SyntaxError) {
+    var result: base.IntrusiveDoublyLinkedList(SyntaxError) = .zero;
+    switch (tree.kind) {
+        .err => {
+            const e = try arena.create(SyntaxError);
+            e.message = tree.kind.err;
+
+            result.append(e);
+        },
+        else => {},
+    }
+    for (tree.children.items) |child| {
+        switch (child) {
+            .tree => {
+                const rest = try syntax_errors(arena, &child.tree);
+                result.concat(rest);
+            },
+            .tok => {},
+        }
+    }
+    return result;
 }
 
 test parse {

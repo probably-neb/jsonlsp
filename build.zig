@@ -15,7 +15,7 @@ pub fn build(b: *std.Build) void {
     const test_filters = b.option([]const []const u8, "test-filter", "Filter tests") orelse &.{};
 
     const mod_base = subsystem(b, "base", exe_mod, test_step, target, optimize, test_filters);
-    _ = subsystem(
+    const mod_json = subsystem(
         b,
         "json",
         exe_mod,
@@ -24,6 +24,8 @@ pub fn build(b: *std.Build) void {
         optimize,
         test_filters,
     );
+    mod_json.addImport("base", mod_base);
+
     const mod_json_schema = subsystem(b, "json-schema", exe_mod, test_step, target, optimize, test_filters);
     mod_json_schema.addImport("base", mod_base);
 
