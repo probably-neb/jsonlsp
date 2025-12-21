@@ -138,6 +138,18 @@ fn eqlUnion(comptime T: type, comptime u: std.builtin.Type.Union, a: T, b: T) bo
     return false;
 }
 
+/// Compare two JSON strings for semantic equality.
+/// Returns true if they represent the same JSON value (ignoring whitespace and key order).
+pub fn jsonEql(allocator: std.mem.Allocator, expected_json: []const u8, actual_json: []const u8) bool {
+    const expected_parsed = std.json.parseFromSlice(std.json.Value, allocator, expected_json, .{}) catch return false;
+    defer expected_parsed.deinit();
+
+    const actual_parsed = std.json.parseFromSlice(std.json.Value, allocator, actual_json, .{}) catch return false;
+    defer actual_parsed.deinit();
+
+    return eqlJsonValue(expected_parsed.value, actual_parsed.value);
+}
+
 fn eqlJsonValue(a: std.json.Value, b: std.json.Value) bool {
     if (std.meta.activeTag(a) != std.meta.activeTag(b)) return false;
 
@@ -400,4 +412,55 @@ test "eql slice of structs" {
 
     try std.testing.expect(eql([]const Item, &items_a, &items_b));
     try std.testing.expect(!eql([]const Item, &items_a, &items_c));
+}
+
+test "jsonEql with identical json" {
+    const allocator = std.testing.allocator;
+    const json1 = "{\"a\":1,\"b\":2}";
+    const json2 = "{\"a\":1,\"b\":2}";
+    try std.testing.expect(jsonEql(allocator, json1, json2));
+}
+
+test "jsonEql with different field order" {
+    const allocator = std.testing.allocator;
+    const json1 = "{\"a\":1,\"b\":2}";
+    const json2 = "{\"b\":2,\"a\":1}";
+    try std.testing.expect(jsonEql(allocator, json1, json2));
+}
+
+test "jsonEql with different values" {
+    const allocator = std.testing.allocator;
+    const json1 = "{\"a\":1,\"b\":2}";
+    const json2 = "{\"a\":1,\"b\":3}";
+    try std.testing.expect(!jsonEql(allocator, json1, json2));
+}
+
+test "jsonEql with missing field" {
+    const allocator = std.testing.allocator;
+    const json1 = "{\"a\":1,\"b\":2}";
+    const json2 = "{\"a\":1}";
+    try std.testing.expect(!jsonEql(allocator, json1, json2));
+}
+
+test "jsonEql with extra field" {
+    const allocator = std.testing.allocator;
+    const json1 = "{\"a\":1}";
+    const json2 = "{\"a\":1,\"b\":2}";
+    try std.testing.expect(!jsonEql(allocator, json1, json2));
+}
+
+test "jsonEql with nested objects" {
+    const allocator = std.testing.allocator;
+    const json1 = "{\"outer\":{\"inner\":42}}";
+    const json2 = "{\"outer\":{\"inner\":42}}";
+    try std.testing.expect(jsonEql(allocator, json1, json2));
+}
+
+test "jsonEql with arrays" {
+    const allocator = std.testing.allocator;
+    const json1 = "[1,2,3]";
+    const json2 = "[1,2,3]";
+    const json3 = "[1,3,2]";
+    try std.testing.expect(jsonEql(allocator, json1, json2));
+    try std.testing.expect(!jsonEql(allocator, json1, json3));
 }

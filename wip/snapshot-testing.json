@@ -109,7 +109,7 @@
     ]
   },
   {
-    "completed": false,
+    "completed": true,
     "description": "Create the snapshot test runner that runs server in a separate thread, communicates via TestTransport, and has timeout support.",
     "steps": [
       "Create src/testing/runner.zig",
