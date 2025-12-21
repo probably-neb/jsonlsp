@@ -14,6 +14,7 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     const test_filters = b.option([]const []const u8, "test-filter", "Filter tests") orelse &.{};
 
+    const mod_base = subsystem(b, "base", exe_mod, test_step, target, optimize, test_filters);
     _ = subsystem(
         b,
         "json",
@@ -24,6 +25,7 @@ pub fn build(b: *std.Build) void {
         test_filters,
     );
     const mod_json_schema = subsystem(b, "json-schema", exe_mod, test_step, target, optimize, test_filters);
+    mod_json_schema.addImport("base", mod_base);
 
     const pcre_pkg = b.dependency("libpcre_zig", .{ .optimize = optimize, .target = target });
     const pcre_mod = pcre_pkg.module("libpcre");
