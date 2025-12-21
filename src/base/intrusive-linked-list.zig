@@ -10,7 +10,7 @@ pub fn IntrusiveLinkedList(comptime T: type) type {
 
         first: ?*T = null,
 
-        const empty = Self{
+        pub const zero = Self{
             .first = null,
         };
 
@@ -91,22 +91,21 @@ pub fn IntrusiveLinkedList(comptime T: type) type {
 /// `next` of the last element points back to `first`.
 /// Element type must have `next: *T` and `prev: *T` fields.
 pub fn IntrusiveDoublyLinkedList(comptime T: type) type {
-std.meta.fields(comptime T: type)
-    _ = std.meta.fieldIndex(T, "prev") orelse {
-        @compileError(
-            "T type must have field `prev: *" ++ @typeName(T) ++ "`"
-        );
-    };
-    _ = std.meta.fieldIndex(T, "next") orelse {
-        @compileError(
-            "T type must have field `next: *" ++ @typeName(T) ++ "`"
-        );
+    if (!@hasField(T, "prev")) {
+        @compileError("T type must have field `prev: *" ++ @typeName(T) ++ "`");
+    }
+    if (!@hasField(T, "next")) {
+        @compileError("T type must have field `next: *" ++ @typeName(T) ++ "`");
     }
 
     return struct {
         const Self = @This();
 
         first: ?*T = null,
+
+        pub const zero = Self{
+            .first = null,
+        };
 
         pub fn prepend(list: *Self, new_node: *T) void {
             if (list.first) |first| {
@@ -201,6 +200,30 @@ std.meta.fields(comptime T: type)
                 c += 1;
             }
             return c;
+        }
+
+        pub const Iter = struct {
+            list: *const Self,
+            node: ?*T,
+
+            pub fn next(self: *Iter) ?*T {
+                const node = self.node;
+                if (node) |n| {
+                    self.node =
+                        if (n.next != self.list.first)
+                            n.next
+                        else
+                            null;
+                }
+                return node;
+            }
+        };
+
+        pub fn iter(list: *const Self) Iter {
+            return Iter{
+                .list = list,
+                .node = list.first,
+            };
         }
     };
 }
