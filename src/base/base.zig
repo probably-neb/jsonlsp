@@ -4,9 +4,8 @@
 //!
 const std = @import("std");
 
-const arena = @import("arena.zig");
-pub const Arena = arena.Arena;
-pub const get_scratch = arena.get_scratch;
+pub const Arena = @import("arena.zig");
+pub const get_scratch = Arena.get_scratch;
 
 test {
     std.testing.refAllDecls(@This());

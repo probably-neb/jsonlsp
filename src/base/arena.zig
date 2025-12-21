@@ -2,6 +2,234 @@ const std = @import("std");
 const builtin = @import("builtin");
 const posix = std.posix;
 
+pub const RESERVE_SIZE_DEFAULT: usize = 64 * 1024 * 1024 * 1024; // 64 GB of virtual address space
+
+pub const COMMIT_GRANULARITY_DEFAULT: usize = 64 * 1024; // 64 KB
+
+/// Page size for the current platform
+pub const page_size = std.heap.page_size_min;
+
+// Self-reference aliases for internal use
+const Self = @This();
+const Arena = @This();
+
+/// The reserved virtual address space
+memory: [*]align(page_size) u8,
+/// Total reserved size (virtual address space)
+capacity: usize,
+/// Current allocation position (bytes in use)
+pos: usize,
+/// How many bytes are currently committed (backed by physical memory)
+committed: usize,
+/// Commit granularity
+commit_size: usize,
+
+pub const InitOptions = struct {
+    /// Size of virtual address space to reserve
+    reserve_size: usize = RESERVE_SIZE_DEFAULT,
+    /// Granularity for committing physical pages
+    commit_size: usize = COMMIT_GRANULARITY_DEFAULT,
+};
+
+pub const Error = error{
+    OutOfMemory,
+    AccessDenied,
+    PermissionDenied,
+    LockedMemoryLimitExceeded,
+    MemoryMappingNotSupported,
+    ProcessFdQuotaExceeded,
+    SystemFdQuotaExceeded,
+    MappingAlreadyExists,
+    Unexpected,
+};
+
+/// Initialize an arena by reserving virtual address space.
+/// No physical memory is committed until allocations are made.
+pub fn init(options: InitOptions) Error!Self {
+    const reserve_size = std.mem.alignForward(usize, options.reserve_size, page_size);
+
+    const memory = try virtualalloc(reserve_size);
+
+    return .{
+        .memory = memory.ptr,
+        .capacity = reserve_size,
+        .pos = 0,
+        .committed = 0,
+        .commit_size = options.commit_size,
+    };
+}
+
+/// Release all virtual memory back to the operating system.
+pub fn deinit(self: *Self) void {
+    switch (builtin.os.tag) {
+        .windows => {
+            const w = std.os.windows;
+            const ptr: ?*anyopaque = @ptrCast(self.memory);
+            // dwSize must be 0 when using MEM_RELEASE
+            _ = w.kernel32.VirtualFree(ptr, 0, w.MEM.RELEASE);
+        },
+        else => {
+            const slice: []align(page_size) u8 = @alignCast(self.memory[0..self.capacity]);
+            posix.munmap(slice);
+        },
+    }
+    self.* = undefined;
+}
+
+/// Allocate `size` bytes from the arena.
+/// Returns a slice of uninitialized memory.
+pub fn push(arena: *Self, size: usize) Error![]u8 {
+    return arena.push_aligned(size, 1);
+}
+
+/// Allocate `size` bytes from the arena, aligned to `alignment`.
+pub fn push_aligned(arena: *Self, size: usize, alignment: usize) Error![]u8 {
+    const aligned_pos = std.mem.alignForward(usize, arena.pos, alignment);
+    const new_pos = aligned_pos + size;
+
+    if (new_pos > arena.capacity) {
+        return error.OutOfMemory;
+    }
+
+    // Commit more physical memory if needed
+    if (new_pos > arena.committed) {
+        try arena.commit_up_to(new_pos);
+    }
+
+    arena.pos = new_pos;
+    return arena.memory[aligned_pos..new_pos];
+}
+
+/// Allocate `size` bytes from the arena, initialized to zero.
+pub fn push_zero(arena: *Self, size: usize) Error![]u8 {
+    return arena.push_zero_aligned(size, 1);
+}
+
+/// Allocate `size` bytes from the arena, aligned and zeroed.
+pub fn push_zero_aligned(arena: *Self, size: usize, alignment: usize) Error![]u8 {
+    const slice = try arena.push_aligned(size, alignment);
+    @memset(slice, 0);
+    return slice;
+}
+
+/// Allocate and return a pointer to a single item of type `T`.
+pub fn create(arena: *Self, comptime T: type) Error!*T {
+    const slice = try arena.push_zero_aligned(@sizeOf(T), @alignOf(T));
+    return @ptrCast(@alignCast(slice.ptr));
+}
+
+/// Allocate a slice of `n` items of type `T`.
+pub fn alloc(arena: *Self, comptime T: type, n: usize) Error![]T {
+    const byte_size = @sizeOf(T) * n;
+    const slice = try arena.push_aligned(byte_size, @alignOf(T));
+    return @as([*]T, @ptrCast(@alignCast(slice.ptr)))[0..n];
+}
+
+/// Allocate a slice of `n` items of type `T`, initialized to zero.
+pub fn alloc_zero(arena: *Self, comptime T: type, n: usize) Error![]T {
+    const byte_size = @sizeOf(T) * n;
+    const slice = try arena.push_zero_aligned(byte_size, @alignOf(T));
+    return @as([*]T, @ptrCast(@alignCast(slice.ptr)))[0..n];
+}
+
+/// Pop `size` bytes from the top of the arena.
+pub fn pop(arena: *Self, size: usize) void {
+    arena.pos = if (size > arena.pos) 0 else arena.pos - size;
+}
+
+/// Get the current allocation position.
+pub fn get_pos(arena: *const Self) usize {
+    return arena.pos;
+}
+
+/// Restore the arena to a previous position.
+/// Any memory beyond this position is considered freed.
+pub fn set_pos(arena: *Self, new_pos: usize) void {
+    if (new_pos < arena.pos) {
+        arena.pos = new_pos;
+    }
+}
+
+/// Clear all allocations, resetting position to zero.
+/// Committed memory is retained for future allocations.
+pub fn clear(arena: *Self) void {
+    arena.pos = 0;
+}
+
+/// Create a temporary scope for sub-lifetime allocations.
+/// Call `release()` on the returned `Temp` to restore the arena position.
+pub fn temp(arena: *Self) Temp {
+    return .{
+        .arena = arena,
+        .pos = arena.pos,
+    };
+}
+
+/// Returns a `std.mem.Allocator` interface for this arena.
+/// Note: `free` and `resize` are no-ops since arena uses bulk deallocation.
+pub fn allocator(arena: *Self) std.mem.Allocator {
+    return .{
+        .ptr = arena,
+        .vtable = &.{
+            .alloc = alloc_fn,
+            .resize = resize_fn,
+            .remap = remap_fn,
+            .free = free_fn,
+        },
+    };
+}
+
+fn alloc_fn(ctx: *anyopaque, len: usize, ptr_align: std.mem.Alignment, _: usize) ?[*]u8 {
+    const self: *Self = @ptrCast(@alignCast(ctx));
+    const alignment = ptr_align.toByteUnits();
+    const slice = self.push_aligned(len, alignment) catch return null;
+    return slice.ptr;
+}
+
+fn resize_fn(_: *anyopaque, _: []u8, _: std.mem.Alignment, _: usize, _: usize) bool {
+    // Arena doesn't support resizing individual allocations
+    return false;
+}
+
+fn remap_fn(_: *anyopaque, _: []u8, _: std.mem.Alignment, _: usize, _: usize) ?[*]u8 {
+    // Arena doesn't support remapping individual allocations
+    return null;
+}
+
+fn free_fn(_: *anyopaque, _: []u8, _: std.mem.Alignment, _: usize) void {
+    // Arena uses bulk deallocation - individual frees are no-ops
+}
+
+/// Commit physical memory up to the specified position.
+fn commit_up_to(arena: *Self, target_pos: usize) Error!void {
+    const new_committed = std.mem.alignForward(usize, target_pos, arena.commit_size);
+    const commit_target = @min(new_committed, arena.capacity);
+
+    if (commit_target <= arena.committed) {
+        return;
+    }
+
+    const start = arena.committed;
+    const len = commit_target - start;
+
+    try virtualcommit(arena.memory, start, len);
+
+    arena.committed = commit_target;
+}
+
+/// Temporary arena scope for sub-lifetime allocations.
+/// Captures the arena position at creation and restores it on release.
+pub const Temp = struct {
+    arena: *Arena,
+    pos: usize,
+
+    /// Release the temporary scope, restoring the arena to its previous position.
+    /// All allocations made since `temp()` was called are effectively freed.
+    pub fn release(self: Temp) void {
+        self.arena.set_pos(self.pos);
+    }
+};
+
 /// Reserve virtual address space with no access permissions.
 /// - POSIX: `mmap(PROT_NONE, MAP_PRIVATE|MAP_ANON)`
 /// - Windows: `VirtualAlloc(MEM_RESERVE, PAGE_NOACCESS)`
@@ -12,7 +240,7 @@ const posix = std.posix;
 ///
 /// Note: this returns an aligned pointer suitable for subsequent protection
 /// changes / commit operations.
-fn virtualalloc(reserve_size: usize) Arena.Error![]align(page_size) u8 {
+fn virtualalloc(reserve_size: usize) Error![]align(page_size) u8 {
     const size = std.mem.alignForward(usize, reserve_size, page_size);
 
     switch (builtin.os.tag) {
@@ -48,7 +276,7 @@ fn virtualalloc(reserve_size: usize) Arena.Error![]align(page_size) u8 {
 /// Commit physical memory (back it with pages) and make it readable/writable.
 /// - POSIX: `mprotect(PROT_READ|PROT_WRITE)`
 /// - Windows: `VirtualAlloc(MEM_COMMIT, PAGE_READWRITE)`
-fn virtualcommit(base: [*]align(page_size) u8, start: usize, len: usize) Arena.Error!void {
+fn virtualcommit(base: [*]align(page_size) u8, start: usize, len: usize) Error!void {
     if (len == 0) return;
 
     switch (builtin.os.tag) {
@@ -76,247 +304,6 @@ fn virtualcommit(base: [*]align(page_size) u8, start: usize, len: usize) Arena.E
     }
 }
 
-/// Default size to reserve for an arena (64 GB of virtual address space)
-pub const default_reserve_size: usize = 64 * 1024 * 1024 * 1024;
-
-/// Default commit granularity (64 KB)
-pub const default_commit_size: usize = 64 * 1024;
-
-/// Page size for the current platform
-pub const page_size = std.heap.page_size_min;
-
-/// Arena allocator that reserves a large virtual address space upfront
-/// and commits physical pages as needed.
-///
-/// This design is inspired by Ryan Fleury's arena allocator pattern:
-/// https://www.rfleury.com/p/untangling-lifetimes-the-arena-allocator
-///
-/// Key benefits:
-/// - O(1) allocation (just bump a pointer)
-/// - O(1) bulk deallocation (just reset the position)
-/// - Memory contiguity for cache-friendly access
-/// - No per-allocation bookkeeping overhead
-pub const Arena = struct {
-    /// The reserved virtual address space
-    memory: [*]align(page_size) u8,
-    /// Total reserved size (virtual address space)
-    capacity: usize,
-    /// Current allocation position (bytes in use)
-    pos: usize,
-    /// How many bytes are currently committed (backed by physical memory)
-    committed: usize,
-    /// Commit granularity
-    commit_size: usize,
-
-    const Self = @This();
-
-    pub const InitOptions = struct {
-        /// Size of virtual address space to reserve
-        reserve_size: usize = default_reserve_size,
-        /// Granularity for committing physical pages
-        commit_size: usize = default_commit_size,
-    };
-
-    pub const Error = error{
-        OutOfMemory,
-        AccessDenied,
-        PermissionDenied,
-        LockedMemoryLimitExceeded,
-        MemoryMappingNotSupported,
-        ProcessFdQuotaExceeded,
-        SystemFdQuotaExceeded,
-        MappingAlreadyExists,
-        Unexpected,
-    };
-
-    /// Initialize an arena by reserving virtual address space.
-    /// No physical memory is committed until allocations are made.
-    pub fn init(options: InitOptions) Error!Self {
-        const reserve_size = std.mem.alignForward(usize, options.reserve_size, page_size);
-
-        const memory = try virtualalloc(reserve_size);
-
-        return .{
-            .memory = memory.ptr,
-            .capacity = reserve_size,
-            .pos = 0,
-            .committed = 0,
-            .commit_size = options.commit_size,
-        };
-    }
-
-    /// Release all virtual memory back to the operating system.
-    pub fn deinit(self: *Self) void {
-        switch (builtin.os.tag) {
-            .windows => {
-                const w = std.os.windows;
-                const ptr: ?*anyopaque = @ptrCast(self.memory);
-                // dwSize must be 0 when using MEM_RELEASE
-                _ = w.kernel32.VirtualFree(ptr, 0, w.MEM.RELEASE);
-            },
-            else => {
-                const slice: []align(page_size) u8 = @alignCast(self.memory[0..self.capacity]);
-                posix.munmap(slice);
-            },
-        }
-        self.* = undefined;
-    }
-
-    /// Allocate `size` bytes from the arena.
-    /// Returns a slice of uninitialized memory.
-    pub fn push(arena: *Self, size: usize) Error![]u8 {
-        return arena.push_aligned(size, 1);
-    }
-
-    /// Allocate `size` bytes from the arena, aligned to `alignment`.
-    pub fn push_aligned(arena: *Self, size: usize, alignment: usize) Error![]u8 {
-        const aligned_pos = std.mem.alignForward(usize, arena.pos, alignment);
-        const new_pos = aligned_pos + size;
-
-        if (new_pos > arena.capacity) {
-            return error.OutOfMemory;
-        }
-
-        // Commit more physical memory if needed
-        if (new_pos > arena.committed) {
-            try arena.commit_up_to(new_pos);
-        }
-
-        arena.pos = new_pos;
-        return arena.memory[aligned_pos..new_pos];
-    }
-
-    /// Allocate `size` bytes from the arena, initialized to zero.
-    pub fn push_zero(arena: *Self, size: usize) Error![]u8 {
-        return arena.push_zero_aligned(size, 1);
-    }
-
-    /// Allocate `size` bytes from the arena, aligned and zeroed.
-    pub fn push_zero_aligned(arena: *Self, size: usize, alignment: usize) Error![]u8 {
-        const slice = try arena.push_aligned(size, alignment);
-        @memset(slice, 0);
-        return slice;
-    }
-
-    /// Allocate and return a pointer to a single item of type `T`.
-    pub fn create(arena: *Self, comptime T: type) Error!*T {
-        const slice = try arena.push_zero_aligned(@sizeOf(T), @alignOf(T));
-        return @ptrCast(@alignCast(slice.ptr));
-    }
-
-    /// Allocate a slice of `n` items of type `T`.
-    pub fn alloc(arena: *Self, comptime T: type, n: usize) Error![]T {
-        const byte_size = @sizeOf(T) * n;
-        const slice = try arena.push_aligned(byte_size, @alignOf(T));
-        return @as([*]T, @ptrCast(@alignCast(slice.ptr)))[0..n];
-    }
-
-    /// Allocate a slice of `n` items of type `T`, initialized to zero.
-    pub fn alloc_zero(arena: *Self, comptime T: type, n: usize) Error![]T {
-        const byte_size = @sizeOf(T) * n;
-        const slice = try arena.push_zero_aligned(byte_size, @alignOf(T));
-        return @as([*]T, @ptrCast(@alignCast(slice.ptr)))[0..n];
-    }
-
-    /// Pop `size` bytes from the top of the arena.
-    pub fn pop(arena: *Self, size: usize) void {
-        arena.pos = if (size > arena.pos) 0 else arena.pos - size;
-    }
-
-    /// Get the current allocation position.
-    pub fn get_pos(arena: *const Self) usize {
-        return arena.pos;
-    }
-
-    /// Restore the arena to a previous position.
-    /// Any memory beyond this position is considered freed.
-    pub fn set_pos(arena: *Self, new_pos: usize) void {
-        if (new_pos < arena.pos) {
-            arena.pos = new_pos;
-        }
-    }
-
-    /// Clear all allocations, resetting position to zero.
-    /// Committed memory is retained for future allocations.
-    pub fn clear(arena: *Self) void {
-        arena.pos = 0;
-    }
-
-    /// Create a temporary scope for sub-lifetime allocations.
-    /// Call `release()` on the returned `Temp` to restore the arena position.
-    pub fn temp(arena: *Self) Temp {
-        return .{
-            .arena = arena,
-            .pos = arena.pos,
-        };
-    }
-
-    /// Returns a `std.mem.Allocator` interface for this arena.
-    /// Note: `free` and `resize` are no-ops since arena uses bulk deallocation.
-    pub fn allocator(arena: *Self) std.mem.Allocator {
-        return .{
-            .ptr = arena,
-            .vtable = &.{
-                .alloc = alloc_fn,
-                .resize = resize_fn,
-                .remap = remap_fn,
-                .free = free_fn,
-            },
-        };
-    }
-
-    fn alloc_fn(ctx: *anyopaque, len: usize, ptr_align: std.mem.Alignment, _: usize) ?[*]u8 {
-        const self: *Self = @ptrCast(@alignCast(ctx));
-        const alignment = ptr_align.toByteUnits();
-        const slice = self.push_aligned(len, alignment) catch return null;
-        return slice.ptr;
-    }
-
-    fn resize_fn(_: *anyopaque, _: []u8, _: std.mem.Alignment, _: usize, _: usize) bool {
-        // Arena doesn't support resizing individual allocations
-        return false;
-    }
-
-    fn remap_fn(_: *anyopaque, _: []u8, _: std.mem.Alignment, _: usize, _: usize) ?[*]u8 {
-        // Arena doesn't support remapping individual allocations
-        return null;
-    }
-
-    fn free_fn(_: *anyopaque, _: []u8, _: std.mem.Alignment, _: usize) void {
-        // Arena uses bulk deallocation - individual frees are no-ops
-    }
-
-    /// Commit physical memory up to the specified position.
-    fn commit_up_to(arena: *Self, target_pos: usize) Error!void {
-        const new_committed = std.mem.alignForward(usize, target_pos, arena.commit_size);
-        const commit_target = @min(new_committed, arena.capacity);
-
-        if (commit_target <= arena.committed) {
-            return;
-        }
-
-        const start = arena.committed;
-        const len = commit_target - start;
-
-        try virtualcommit(arena.memory, start, len);
-
-        arena.committed = commit_target;
-    }
-
-    /// Temporary arena scope for sub-lifetime allocations.
-    /// Captures the arena position at creation and restores it on release.
-    pub const Temp = struct {
-        arena: *Arena,
-        pos: usize,
-
-        /// Release the temporary scope, restoring the arena to its previous position.
-        /// All allocations made since `temp()` was called are effectively freed.
-        pub fn release(self: Temp) void {
-            self.arena.set_pos(self.pos);
-        }
-    };
-};
-
 /// FreeList wraps an Arena and maintains a free list of previously freed allocations.
 /// This allows memory to be reused without resetting the entire arena.
 ///
@@ -326,8 +313,6 @@ pub const FreeList = struct {
     arena: *Arena,
     /// Head of the free list - points to the first free node
     free_head: ?*FreeNode,
-
-    const Self = @This();
 
     /// Free list node stored in freed memory
     const FreeNode = struct {
@@ -344,7 +329,7 @@ pub const FreeList = struct {
     pub const min_alignment = @alignOf(FreeNode);
 
     /// Initialize a FreeList wrapping the given arena.
-    pub fn init(arena: *Arena) Self {
+    pub fn init(arena: *Arena) FreeList {
         return .{
             .arena = arena,
             .free_head = null,
@@ -352,24 +337,24 @@ pub const FreeList = struct {
     }
 
     /// Returns a `std.mem.Allocator` interface for this free list.
-    pub fn allocator(self: *Self) std.mem.Allocator {
+    pub fn allocator(free_list: *FreeList) std.mem.Allocator {
         return .{
-            .ptr = self,
+            .ptr = free_list,
             .vtable = &.{
-                .alloc = alloc_fn,
-                .resize = resize_fn,
-                .remap = remap_fn,
-                .free = free_fn,
+                .alloc = freelist_alloc_fn,
+                .resize = freelist_resize_fn,
+                .remap = freelist_remap_fn,
+                .free = freelist_free_fn,
             },
         };
     }
 
-    fn alloc_fn(ctx: *anyopaque, len: usize, ptr_align: std.mem.Alignment, _: usize) ?[*]u8 {
-        const self: *Self = @ptrCast(@alignCast(ctx));
+    fn freelist_alloc_fn(ctx: *anyopaque, len: usize, ptr_align: std.mem.Alignment, _: usize) ?[*]u8 {
+        const self: *FreeList = @ptrCast(@alignCast(ctx));
         return self.alloc_internal(len, ptr_align);
     }
 
-    fn alloc_internal(self: *Self, len: usize, ptr_align: std.mem.Alignment) ?[*]u8 {
+    fn alloc_internal(self: *FreeList, len: usize, ptr_align: std.mem.Alignment) ?[*]u8 {
         // Ensure minimum alignment for free list node storage
         const alignment = @max(ptr_align.toByteUnits(), min_alignment);
         // Ensure minimum size for free list node storage
@@ -406,22 +391,22 @@ pub const FreeList = struct {
         return slice.ptr;
     }
 
-    fn resize_fn(_: *anyopaque, _: []u8, _: std.mem.Alignment, _: usize, _: usize) bool {
+    fn freelist_resize_fn(_: *anyopaque, _: []u8, _: std.mem.Alignment, _: usize, _: usize) bool {
         // FreeList doesn't support resizing individual allocations
         return false;
     }
 
-    fn remap_fn(_: *anyopaque, _: []u8, _: std.mem.Alignment, _: usize, _: usize) ?[*]u8 {
+    fn freelist_remap_fn(_: *anyopaque, _: []u8, _: std.mem.Alignment, _: usize, _: usize) ?[*]u8 {
         // FreeList doesn't support remapping individual allocations
         return null;
     }
 
-    fn free_fn(ctx: *anyopaque, buf: []u8, _: std.mem.Alignment, _: usize) void {
-        const self: *Self = @ptrCast(@alignCast(ctx));
+    fn freelist_free_fn(ctx: *anyopaque, buf: []u8, _: std.mem.Alignment, _: usize) void {
+        const self: *FreeList = @ptrCast(@alignCast(ctx));
         self.free_internal(buf);
     }
 
-    fn free_internal(self: *Self, buf: []u8) void {
+    fn free_internal(self: *FreeList, buf: []u8) void {
         if (buf.len == 0) return;
 
         // The actual allocation size was at least min_alloc_size
@@ -437,7 +422,7 @@ pub const FreeList = struct {
     }
 
     /// Clear the free list (does not affect the underlying arena).
-    pub fn clear(self: *Self) void {
+    pub fn clear(self: *FreeList) void {
         self.free_head = null;
     }
 };
@@ -463,7 +448,7 @@ threadlocal var scratch_arenas: [scratch_arena_count]?Arena = .{null} ** scratch
 ///     // Use scratch.arena for temporary work...
 /// }
 /// ```
-pub fn get_scratch(conflicts: []const *const Arena) Arena.Temp {
+pub fn get_scratch(conflicts: []const *const Arena) Temp {
     // Initialize scratch arenas lazily
     for (&scratch_arenas) |*maybe_arena| {
         if (maybe_arena.* == null) {
