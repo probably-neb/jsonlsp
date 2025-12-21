@@ -40,7 +40,7 @@
     ]
   },
   {
-    "completed": false,
+    "completed": true,
     "description": "Create the snapshot file parser that reads the >>> and <<< delimited format with multi-line JSON blocks.\n\nFILE FORMAT SPECIFICATION:\n\n- A snapshot file contains a sequence of message blocks separated by blank lines\n- Each message block starts with a direction marker on its own line:\n  - '>>>' means client-to-server (send)\n  - '<<<' means server-to-client (expect)\n- The JSON content follows on subsequent lines until a blank line or EOF\n- The JSON should be pretty-printed (multi-line with indentation)\n- No comments are supported in the format\n- Blank lines between message blocks are required\n\nEXAMPLE FILE:\n\n>>>\n{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 1,\n  \"method\": \"initialize\",\n  \"params\": {\n    \"capabilities\": {}\n  }\n}\n\n<<<\n{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 1,\n  \"result\": {\n    \"capabilities\": {}\n  }\n}\n\n>>>\n{\n  \"jsonrpc\": \"2.0\",\n  \"method\": \"exit\"\n}\n\nPARSING RULES:\n1. Iterate through lines, tracking current state (looking for marker vs reading json)\n2. When a line is '>>>' or '<<<' (trimmed), start a new message block with that direction\n3. Accumulate subsequent non-blank lines as JSON content\n4. When hitting a blank line or EOF, finalize current message block\n5. Store direction, raw JSON string, and starting line number for error reporting",
     "steps": [
       "Create src/testing/snapshot.zig",

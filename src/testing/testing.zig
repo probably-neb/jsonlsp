@@ -5,6 +5,7 @@
 
 const std = @import("std");
 
+pub const snapshot = @import("snapshot.zig");
 pub const transport = @import("transport.zig");
 
 test {
