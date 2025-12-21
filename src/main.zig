@@ -4,7 +4,7 @@
 const std = @import("std");
 const base = @import("base");
 const lsp = @import("lsp");
-const server = @import("server.zig");
+const server = @import("server");
 
 const Arena = base.Arena;
 

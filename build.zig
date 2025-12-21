@@ -15,15 +15,7 @@ pub fn build(b: *std.Build) void {
     const test_filters = b.option([]const []const u8, "test-filter", "Filter tests") orelse &.{};
 
     const mod_base = subsystem(b, "base", exe_mod, test_step, target, optimize, test_filters);
-    const mod_json = subsystem(
-        b,
-        "json",
-        exe_mod,
-        test_step,
-        target,
-        optimize,
-        test_filters,
-    );
+    const mod_json = subsystem(b, "json", exe_mod, test_step, target, optimize, test_filters);
     mod_json.addImport("base", mod_base);
 
     const mod_json_schema = subsystem(b, "json-schema", exe_mod, test_step, target, optimize, test_filters);
@@ -36,7 +28,12 @@ pub fn build(b: *std.Build) void {
     const lsp_kit_pkg = b.dependency("lsp_kit", .{ .optimize = optimize, .target = target });
     const mod_lsp = lsp_kit_pkg.module("lsp");
     exe_mod.addImport("lsp", mod_lsp);
-    exe_mod.addImport("base", mod_base);
+
+    // Server subsystem
+    const mod_server = subsystem(b, "server", exe_mod, test_step, target, optimize, test_filters);
+    mod_server.addImport("base", mod_base);
+    mod_server.addImport("json", mod_json);
+    mod_server.addImport("lsp", mod_lsp);
 
     // Testing module for snapshot tests
     const mod_testing = b.createModule(.{
@@ -46,6 +43,7 @@ pub fn build(b: *std.Build) void {
     });
     mod_testing.addImport("lsp", mod_lsp);
     mod_testing.addImport("base", mod_base);
+    mod_testing.addImport("server", mod_server);
 
     const testing_lib = b.addLibrary(.{
         .linkage = .static,
