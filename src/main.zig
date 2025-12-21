@@ -1,9 +1,12 @@
 //! TODO: Handle init/shutdown
 
 const std = @import("std");
-const builtin = @import("builtin");
-const lsp = @import("lsp");
 const Alloc = std.mem.Allocator;
+const builtin = @import("builtin");
+
+const lsp = @import("lsp");
+
+const documents = @import("documents.zig");
 
 pub const std_options: std.Options = .{
     .log_level = std.log.default_level, // Customize the log level here
@@ -30,13 +33,7 @@ pub fn main() !void {
 
     try wait_for_init(gpa, transport);
 
-    // keep track of opened documents
-    var documents: std.StringArrayHashMapUnmanaged([]const u8) = .empty;
-    defer {
-        for (documents.keys()) |uri| gpa.free(uri);
-        for (documents.values()) |source| gpa.free(source);
-        documents.deinit(gpa);
-    }
+    documents.init();
 
     while (true) {
         // read the unparsed JSON-RPC message
@@ -77,21 +74,25 @@ pub fn main() !void {
                 .initialized => {},
                 .exit => return,
                 .@"textDocument/didOpen" => |params| {
-                    // The client has given us a document. We must use it over what is actually located on the file system.
-
-                    const duped_uri = try gpa.dupe(u8, params.textDocument.uri);
-                    errdefer gpa.free(duped_uri);
-                    const duped_text = try gpa.dupe(u8, params.textDocument.text);
-                    errdefer gpa.free(duped_text);
-
-                    const gop = try documents.getOrPutValue(gpa, duped_uri, duped_text);
-                    if (gop.found_existing) @panic("document opened twice");
+                    const doc = params.textDocument;
+                    documents.open(gpa, doc.uri, doc.text, doc.version, doc.languageId) catch |err| switch (err) {
+                        error.OpenDocumentLimitReached => {
+                            std.log.err("Document limit reached. Could not open `{s}`", .{doc.uri});
+                        },
+                        error.DocumentAlreadyOpen => {
+                            std.log.warn("Asked to open `{s}`, but it was already open", .{doc.uri});
+                            continue;
+                        },
+                        error.OutOfMemory => @panic("OOM"),
+                    };
                 },
                 .@"textDocument/didChange" => |_| {},
                 .@"textDocument/didClose" => |params| {
-                    const old_entry = documents.fetchOrderedRemove(params.textDocument.uri) orelse continue;
-                    gpa.free(old_entry.key);
-                    gpa.free(old_entry.value);
+                    const closed = documents.close(params.textDocument.uri);
+                    if (!closed) {
+                        std.log.warn("Asked to close `{s}`, but it wasn't open", .{params.textDocument.uri});
+                        continue;
+                    }
                 },
                 .other => {},
             },
@@ -199,13 +200,17 @@ fn shutdown_received(
     gpa: Alloc,
     transport: *lsp.Transport,
 ) noreturn {
-    try transport.writeResponse(gpa, request_id, void, {}, .{});
+    transport.writeResponse(gpa, request_id, void, {}, .{}) catch |err| {
+        std.log.err("Failed to write shutdown response: {}", .{err});
+        std.process.exit(1);
+    };
 
     const ExitNotification = union(enum) {
         exit,
+        other: lsp.MethodWithParams,
     };
     const ExitRequest = union(enum) {
-        unexpected: lsp.MethodWithParams,
+        other: lsp.MethodWithParams,
     };
 
     const ExitMessage = lsp.Message(ExitRequest, ExitNotification, .{});
@@ -235,7 +240,7 @@ fn shutdown_received(
                 }
             },
             .request => |request| {
-                std.log.warn("{s} request received before initialization", .{request.params.unexpected.method});
+                std.log.warn("{s} request received while awaiting exit notification", .{request.params.other.method});
 
                 transport.writeErrorResponse(
                     gpa,

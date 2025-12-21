@@ -1,5 +1,5 @@
 .{
-    .name = "json-schema",
+    .name = .@"json-schema",
     .minimum_zig_version = "0.14.0",
     .paths = ".",
 }
