@@ -23,9 +23,16 @@ const Token_Kind = enum {
     err,
 };
 
+const Range = struct {
+    start: u32,
+    close: u32,
+    line_num: u32,
+    line_idx: u32,
+};
+
 const Token = struct {
     kind: Token_Kind,
-    value: []const u8,
+    range: Range,
 };
 
 pub fn parse(
@@ -41,8 +48,10 @@ pub fn parse(
 }
 
 fn lex(alloc: Allocator, contents: []const u8) ![]const Token {
-    var pos: usize = 0;
+    var pos: u32 = 0;
     var state: enum { none, string, number } = .none;
+    var line_num: u32 = 0;
+    var line_idx: u32 = 0;
 
     var tokens: std.ArrayList(Token) = .empty;
 
@@ -50,58 +59,66 @@ fn lex(alloc: Allocator, contents: []const u8) ![]const Token {
         const prev: ?*Token = if (tokens.items.len > 0) &tokens.items[tokens.items.len - 1] else null;
         switch (state) {
             .none => {
-                const value = contents[pos .. pos + 1];
+                const range = Range{
+                    .start = pos,
+                    .close = pos + 1,
+                    .line_idx = line_idx,
+                    .line_num = line_num,
+                };
                 switch (contents[pos]) {
                     '{' => {
-                        try tokens.append(alloc, .{ .kind = .l_curly, .value = value });
+                        try tokens.append(alloc, .{ .kind = .l_curly, .range = range });
                     },
                     '}' => {
-                        try tokens.append(alloc, .{ .kind = .r_curly, .value = value });
+                        try tokens.append(alloc, .{ .kind = .r_curly, .range = range });
                     },
                     '[' => {
-                        try tokens.append(alloc, .{ .kind = .l_bracket, .value = value });
+                        try tokens.append(alloc, .{ .kind = .l_bracket, .range = range });
                     },
                     ']' => {
-                        try tokens.append(alloc, .{ .kind = .r_bracket, .value = value });
+                        try tokens.append(alloc, .{ .kind = .r_bracket, .range = range });
                     },
                     ',' => {
-                        try tokens.append(alloc, .{ .kind = .comma, .value = value });
+                        try tokens.append(alloc, .{ .kind = .comma, .range = range });
                     },
                     ':' => {
-                        try tokens.append(alloc, .{ .kind = .colon, .value = value });
+                        try tokens.append(alloc, .{ .kind = .colon, .range = range });
                     },
                     '-', '+', '0'...'9' => {
                         state = .number;
-                        try tokens.append(alloc, .{ .kind = .number, .value = value });
+                        try tokens.append(alloc, .{ .kind = .number, .range = range });
                     },
                     '"' => {
                         state = .string;
-                        try tokens.append(alloc, .{ .kind = .string, .value = value });
+                        try tokens.append(alloc, .{ .kind = .string, .range = range });
                     },
                     'n' => {
                         const token = try tokens.addOne(alloc);
-                        keyword_or_err("null", .null, contents, pos, token);
+                        keyword_or_err("null", .null, contents, range, token);
                         state = .none;
                     },
                     't' => {
                         const token = try tokens.addOne(alloc);
-                        keyword_or_err("true", .true, contents, pos, token);
+                        keyword_or_err("true", .true, contents, range, token);
                         state = .none;
                     },
                     'f' => {
                         const token = try tokens.addOne(alloc);
-                        keyword_or_err("false", .false, contents, pos, token);
+                        keyword_or_err("false", .false, contents, range, token);
                         state = .none;
                     },
                     else => if (!std.ascii.isWhitespace(contents[pos])) {
-                        try tokens.append(alloc, .{ .kind = .err, .value = contents[pos .. pos + 1] });
+                        try tokens.append(alloc, .{ .kind = .err, .range = range });
+                    } else if (contents[pos] == '\n') {
+                        line_idx = pos;
+                        line_num += 1;
                     },
                 }
             },
             .number => {
                 switch (contents[pos]) {
                     'e', 'E', '0'...'9', '.' => {
-                        prev.?.value.len += 1;
+                        prev.?.range.close += 1;
                     },
                     else => {
                         state = .none;
@@ -110,23 +127,27 @@ fn lex(alloc: Allocator, contents: []const u8) ![]const Token {
                 }
             },
             .string => {
-                prev.?.value.len += 1;
+                prev.?.range.close += 1;
                 if (contents[pos] == '"') {
                     state = .none;
                 }
             },
         }
     }
+
     return tokens.items;
 }
 
-fn keyword_or_err(comptime keyword: str8, kind: Token_Kind, contents: str8, pos: usize, token: *Token) void {
+fn keyword_or_err(comptime keyword: str8, kind: Token_Kind, contents: str8, char_range: Range, token: *Token) void {
+    var range = char_range;
+    const pos = range.start;
     // todo: check in godbolt to see if mem.eql is optimized out
     const at_keyword = contents.len > pos + keyword.len - 1 and mem.eql(u8, contents[pos..][0..keyword.len], keyword);
     if (at_keyword) {
-        token.* = .{ .kind = kind, .value = contents[pos .. pos + keyword.len] };
+        range.close = pos + @as(u32, @intCast(keyword.len));
+        token.* = .{ .kind = kind, .range = range };
     } else {
-        token.* = .{ .kind = .err, .value = contents[pos .. pos + 1] };
+        token.* = .{ .kind = .err, .range = range };
     }
 }
 
@@ -148,16 +169,30 @@ pub const Tree_Root = struct {
 
 const Tree = struct {
     kind: Tree_Kind,
-    children: std.ArrayList(Child),
+    children: base.IntrusiveDoublyLinkedList(Child),
 
     fn empty(kind: Tree_Kind) Tree {
-        return .{ .kind = kind, .children = .empty };
+        return .{ .kind = kind, .children = .zero };
     }
 };
 
-const Child = union(enum) {
-    tree: Tree,
-    tok: Token,
+const Child = struct {
+    data: Data,
+    next: *Child,
+    prev: *Child,
+
+    const Data = union(enum) {
+        tree: Tree,
+        tok: Token,
+    };
+
+    fn init(child: *Child, data: Data) void {
+        child.* = .{
+            .data = data,
+            .next = child,
+            .prev = child,
+        };
+    }
 };
 
 const Parser = struct {
@@ -295,13 +330,18 @@ fn build_tree(parser: Parser) OOM!Tree_Root {
             // Pop it off the stack and append to a new current tree.
             .close => {
                 const tree = stack.pop().?;
-                try stack.items[stack.items.len - 1].children.append(alloc, .{ .tree = tree });
+                const sub_tree = try alloc.create(Child);
+                sub_tree.init(.{ .tree = tree });
+                stack.items[stack.items.len - 1].children.append(sub_tree);
             },
             // Consume a token and append it to the current tree
             .advance => {
                 const token = tokens[tok_pos];
                 tok_pos += 1;
-                try stack.items[stack.items.len - 1].children.append(alloc, .{ .tok = token });
+
+                const sub_tree = try alloc.create(Child);
+                sub_tree.init(.{ .tok = token });
+                stack.items[stack.items.len - 1].children.append(sub_tree);
             },
         }
     }
@@ -379,7 +419,7 @@ fn parse_array(p: *Parser) OOM!void {
     try p.close(m, .array);
 }
 
-pub fn dbg_print_tree(w: *std.io.Writer, tree: *const Tree, depth: usize) !void {
+pub fn dbg_print_tree(w: *std.io.Writer, tree: *const Tree, depth: usize, contents: []const u8) !void {
     const INDENTATION = 1;
     try w.splatByteAll(' ', depth * INDENTATION);
     try w.print("{t}:{s}\n", .{
@@ -391,10 +431,10 @@ pub fn dbg_print_tree(w: *std.io.Writer, tree: *const Tree, depth: usize) !void 
 
     for (tree.children.items) |child| {
         switch (child) {
-            .tree => try dbg_print_tree(w, &child.tree, depth + 1),
+            .tree => try dbg_print_tree(w, &child.tree, depth + 1, contents),
             .tok => {
                 try w.splatByteAll(' ', depth + 1 * INDENTATION);
-                try w.print("{t} [{s}]\n", .{ child.tok.kind, child.tok.value });
+                try w.print("{t} [{s}]\n", .{ child.tok.kind, contents[child.tok.range.start.byte..child.tok.range.close.byte] });
             },
         }
     }
@@ -404,35 +444,184 @@ pub const SyntaxError = struct {
     next: *SyntaxError,
     prev: *SyntaxError,
     message: []const u8,
+    start: u32,
+    close: u32,
+    line_start: u32,
+    line_close: u32,
+    line_start_idx: u32,
+    line_close_idx: u32,
 
     const zero = SyntaxError{
         .next = &zero,
         .prev = &zero,
         .message = "",
     };
+
+    // TODO: make general range type
+    pub fn line_and_char(err: *const SyntaxError, contents: []const u8) struct { start_char: UtfOffset, start_line: u32, close_char: UtfOffset, close_line: u32 } {
+        // PERF: yikes, entire file up to offset?
+        const start_line_offset = unicode_length(contents[0..err.line_start_idx]);
+        const close_line_offset = if (err.line_close_idx != err.line_start_idx) unicode_length(contents[0..err.line_close_idx]) else start_line_offset;
+        const start_char_offset = unicode_length(contents[err.line_start_idx..err.start]).add(start_line_offset);
+        const close_char_offset = if (err.line_close_idx != err.line_start_idx)
+            unicode_length(contents[err.line_close_idx..err.close]).add(close_line_offset)
+        else
+            unicode_length(contents[err.start..err.close]).add(start_char_offset);
+
+        return .{
+            .start_char = start_char_offset,
+            .start_line = err.line_start,
+            .close_char = close_char_offset,
+            .close_line = err.line_close,
+        };
+    }
 };
+
+const UtfOffset = struct {
+    utf8: u32,
+    utf16: u32,
+
+    fn add(self: UtfOffset, other: UtfOffset) UtfOffset {
+        return .{
+            .utf8 = self.utf8 + other.utf8,
+            .utf16 = self.utf16 + other.utf16,
+        };
+    }
+};
+
+fn unicode_length(slice: []const u8) UtfOffset {
+    var utf8_count: u32 = 0;
+    var utf16_count: u32 = 0;
+    var i: usize = 0;
+
+    while (i < slice.len) {
+        const byte = slice[i];
+        const seq_len = std.unicode.utf8ByteSequenceLength(byte) catch 1;
+
+        utf8_count += 1; // One code point
+
+        // UTF-16: supplementary characters (4-byte UTF-8) need 2 code units
+        if (seq_len == 4) {
+            utf16_count += 2;
+        } else {
+            utf16_count += 1;
+        }
+
+        i += seq_len;
+    }
+
+    return .{ .utf8 = utf8_count, .utf16 = utf16_count };
+}
+
+fn first_tree_token(tree: *const Tree) ?*const Token {
+    var first_child = tree.children.first;
+    while (first_child) |child| {
+        switch (child.data) {
+            .tok => |*tok| return tok,
+            .tree => |sub_tree| {
+                first_child = sub_tree.children.first;
+            },
+        }
+    }
+    return null;
+}
+
+fn last_tree_token(tree: *const Tree) ?*const Token {
+    var last_child = tree.children.last();
+    while (last_child) |child| {
+        switch (child.data) {
+            .tok => |*tok| return tok,
+            .tree => |sub_tree| {
+                last_child = sub_tree.children.last();
+            },
+        }
+    }
+    return null;
+}
+
+fn first_child_token(child: *const Child) ?*const Token {
+    switch (child.data) {
+        .tok => |*tok| return tok,
+        .tree => |sub_tree| {
+            return first_tree_token(&sub_tree);
+        },
+    }
+}
+
+fn last_child_token(child: *const Child) ?*const Token {
+    switch (child.data) {
+        .tok => |*tok| return tok,
+        .tree => |sub_tree| {
+            return last_tree_token(&sub_tree);
+        },
+    }
+}
 
 pub fn syntax_errors(arena: *Arena, tree: *const Tree) OOM!base.IntrusiveDoublyLinkedList(SyntaxError) {
     var result: base.IntrusiveDoublyLinkedList(SyntaxError) = .zero;
-    switch (tree.kind) {
-        .err => {
-            const e = try arena.create(SyntaxError);
-            e.message = tree.kind.err;
-
-            result.append(e);
-        },
-        else => {},
-    }
-    for (tree.children.items) |child| {
-        switch (child) {
-            .tree => {
-                const rest = try syntax_errors(arena, &child.tree);
-                result.concat(rest);
-            },
-            .tok => {},
-        }
-    }
+    const child = blk: {
+        var c: Child = undefined;
+        c.init(.{ .tree = tree.* });
+        break :blk c;
+    };
+    try syntax_errors_impl(arena, &child, &result);
     return result;
+}
+
+fn syntax_errors_impl(arena: *Arena, child: *const Child, result: *base.IntrusiveDoublyLinkedList(SyntaxError)) OOM!void {
+    if (std.meta.activeTag(child.data) != .tree) {
+        return;
+    }
+
+    if (child.data.tree.kind != .err) {
+        var iter = child.data.tree.children.iter();
+        while (iter.next()) |sub_child| {
+            try syntax_errors_impl(arena, sub_child, result);
+        }
+        return;
+    }
+    const error_message = child.data.tree.kind.err;
+
+    const first_token = first_child_token(child);
+    const last_token = last_child_token(child);
+    const prev_token = if (child.prev != child) last_child_token(child.prev) else null;
+    const next_token = if (child.next != child) first_child_token(child.next) else null;
+    var start: Range = .{
+        .close = 0,
+        .start = 0,
+        .line_idx = 0,
+        .line_num = 0,
+    };
+
+    if (first_token) |tok| {
+        start = tok.range;
+    } else if (prev_token) |tok| {
+        start = tok.range;
+        start.start = tok.range.close;
+    }
+
+    var close: Range = start;
+
+    if (last_token) |tok| {
+        close = tok.range;
+    } else if (next_token) |tok| {
+        close = tok.range;
+        close.close = tok.range.start;
+    }
+
+    const err = try arena.create(SyntaxError);
+    err.* = .{
+        .message = error_message,
+        .start = start.start - start.line_idx,
+        .close = close.close - close.line_idx,
+        .line_start = start.line_num,
+        .line_close = close.line_num,
+        .line_start_idx = start.line_idx,
+        .line_close_idx = close.line_idx,
+        .next = err,
+        .prev = err,
+    };
+    result.append(err);
 }
 
 test parse {
@@ -539,7 +728,7 @@ test parse {
 
         var actual_tree_writer: std.Io.Writer.Allocating = .init(scoped.arena.allocator());
         defer actual_tree_writer.deinit();
-        try dbg_print_tree(&actual_tree_writer.writer, &result.tree, 0);
+        try dbg_print_tree(&actual_tree_writer.writer, &result.tree, 0, input);
         const actual_tree = actual_tree_writer.written();
 
         try std.testing.expectEqualStrings(expected, actual_tree);

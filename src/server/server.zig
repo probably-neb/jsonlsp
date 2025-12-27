@@ -50,17 +50,18 @@ pub fn run(arena: *Arena, transport: *lsp.Transport) !void {
 
             var syntax_iter = document.syntax_errors.iter();
             while (syntax_iter.next()) |syntax_error| : (diag_idx += 1) {
+                const range = syntax_error.line_and_char(document.document.text);
                 diagnostics[diag_idx] = lsp.types.Diagnostic{
                     .severity = .Error,
                     .message = syntax_error.message,
                     .range = lsp.types.Range{
                         .start = lsp.types.Position{
-                            .character = 0,
-                            .line = 0,
+                            .character = range.start_char.utf16,
+                            .line = range.start_line,
                         },
                         .end = lsp.types.Position{
-                            .character = 0,
-                            .line = 1,
+                            .character = range.close_char.utf16,
+                            .line = range.close_line,
                         },
                     },
                 };

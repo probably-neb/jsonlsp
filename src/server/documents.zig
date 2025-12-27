@@ -8,7 +8,7 @@ const json = @import("json");
 const OOM = error{OutOfMemory};
 const DOCUMENTS_MAX: usize = 4096;
 
-const Document = struct {
+pub const Document = struct {
     next: usize,
     arena_state: ?Arena,
     uri: []const u8,
@@ -158,6 +158,9 @@ pub const DocumentStore = struct {
         }
     };
 
+    // WIP: fixing offset calculations
+    // - need to pass through negotiated offset encoding
+    // - in json.syntax_errors, use line + offset calculation to compute char offsets
     pub fn diagnostics(store: *DocumentStore, arena: *Arena) OOM![]const DiagnosticSet {
         var result = try arena.alloc(DiagnosticSet, store.documents_used);
         var it = store.iter();
