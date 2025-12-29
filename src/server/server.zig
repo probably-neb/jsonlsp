@@ -12,6 +12,8 @@ const lsp = @import("lsp");
 pub const documents = @import("documents.zig");
 const DocumentStore = documents.DocumentStore;
 
+const DIAGNOSTICS_BATCH_COUNT: usize = 512;
+
 test {
     std.testing.refAllDecls(@This());
 }
@@ -31,6 +33,7 @@ pub fn run(arena: *Arena, transport: *lsp.Transport) !void {
     }
 
     var doc_store = DocumentStore.init();
+    var diagnostics_buf = arena.alloc(lsp.types.Diagnostic, DIAGNOSTICS_BATCH_COUNT) catch @panic("OOM");
     defer doc_store.deinit();
 
     while (true) {
@@ -38,45 +41,24 @@ pub fn run(arena: *Arena, transport: *lsp.Transport) !void {
         defer frame_arena.release();
         const frame_alloc = frame_arena.arena.allocator();
 
-        for (try doc_store.diagnostics(frame_arena.arena)) |document| {
-            if (!document.has_diagnostics()) {
-                continue;
-            }
-            const diagnostic_count = document.syntax_errors.count();
-
-            std.log.info("Found {d} diagnostics for {s}", .{ diagnostic_count, document.document.uri });
-            var diagnostics = try frame_arena.arena.alloc(lsp.types.Diagnostic, diagnostic_count);
-            var diag_idx: u32 = 0;
-
-            var syntax_iter = document.syntax_errors.iter();
-            while (syntax_iter.next()) |syntax_error| : (diag_idx += 1) {
-                const range = syntax_error.line_and_char(document.document.text);
-                diagnostics[diag_idx] = lsp.types.Diagnostic{
-                    .severity = .Error,
-                    .message = syntax_error.message,
-                    .range = lsp.types.Range{
-                        .start = lsp.types.Position{
-                            .character = range.start_char.utf16,
-                            .line = range.start_line,
-                        },
-                        .end = lsp.types.Position{
-                            .character = range.close_char.utf16,
-                            .line = range.close_line,
-                        },
+        var document_iter = doc_store.iter();
+        while (document_iter.next()) |doc_idx| {
+            const document = doc_store.documents[doc_idx];
+            @memset(diagnostics_buf, std.mem.zeroInit(lsp.types.Diagnostic, .{}));
+            // TODO: Implement marking errors as handled, and make this if into a while
+            if (doc_store.diagnostics_for_uri(frame_arena.arena, document.uri, diagnostics_buf)) |diagnostics_count| {
+                try transport.writeNotification(
+                    frame_alloc,
+                    "textDocument/publishDiagnostics",
+                    lsp.types.PublishDiagnosticsParams,
+                    .{
+                        .uri = document.uri,
+                        .version = document.version,
+                        .diagnostics = diagnostics_buf[0..diagnostics_count],
                     },
-                };
+                    .{ .emit_null_optional_fields = true },
+                );
             }
-            try transport.writeNotification(
-                frame_alloc,
-                "textDocument/publishDiagnostics",
-                lsp.types.PublishDiagnosticsParams,
-                .{
-                    .uri = document.document.uri,
-                    .version = document.document.version,
-                    .diagnostics = diagnostics,
-                },
-                .{ .emit_null_optional_fields = true },
-            );
         }
 
         const json_message = try transport.readJsonMessage(frame_alloc);

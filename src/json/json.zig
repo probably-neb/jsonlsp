@@ -457,8 +457,7 @@ pub const SyntaxError = struct {
         .message = "",
     };
 
-    // TODO: make general range type
-    pub fn line_and_char(err: *const SyntaxError, contents: []const u8) struct { start_char: UtfOffset, start_line: u32, close_char: UtfOffset, close_line: u32 } {
+    pub fn line_and_char(err: *const SyntaxError, contents: []const u8) base.Range(struct { char: UtfOffset, line: u32 }) {
         // PERF: yikes, entire file up to offset?
         const start_line_offset = unicode_length(contents[0..err.line_start_idx]);
         const close_line_offset = if (err.line_close_idx != err.line_start_idx) unicode_length(contents[0..err.line_close_idx]) else start_line_offset;
@@ -469,10 +468,14 @@ pub const SyntaxError = struct {
             unicode_length(contents[err.start..err.close]).add(start_char_offset);
 
         return .{
-            .start_char = start_char_offset,
-            .start_line = err.line_start,
-            .close_char = close_char_offset,
-            .close_line = err.line_close,
+            .start = .{
+                .char = start_char_offset,
+                .line = err.line_start,
+            },
+            .close = .{
+                .char = close_char_offset,
+                .line = err.line_close,
+            },
         };
     }
 };

@@ -4,6 +4,7 @@ const Alloc = std.mem.Allocator;
 const base = @import("base");
 const Arena = base.Arena;
 const json = @import("json");
+const lsp = @import("lsp");
 
 const OOM = error{OutOfMemory};
 const DOCUMENTS_MAX: usize = 4096;
@@ -71,7 +72,7 @@ pub const DocumentStore = struct {
         return null;
     }
 
-    fn iter(store: *DocumentStore) Document_Iter {
+    pub fn iter(store: *DocumentStore) Document_Iter {
         return .{ .store = store, .idx = store.documents_open };
     }
 
@@ -79,7 +80,7 @@ pub const DocumentStore = struct {
         store: *DocumentStore,
         idx: usize,
 
-        fn next(it: *Document_Iter) ?usize {
+        pub fn next(it: *Document_Iter) ?usize {
             if (it.idx == DOCUMENTS_MAX) return null;
             const result = it.idx;
             it.idx = it.store.documents[result].next;
@@ -124,11 +125,9 @@ pub const DocumentStore = struct {
             arena_state.deinit();
         }
 
-        // Remove from open list
         if (store.documents_open == idx) {
             store.documents_open = doc.next;
         } else {
-            // Find the previous document that points to this one
             var prev_idx: ?usize = null;
             var it = store.iter();
             while (it.next()) |i| {
@@ -158,20 +157,38 @@ pub const DocumentStore = struct {
         }
     };
 
-    // WIP: fixing offset calculations
-    // - need to pass through negotiated offset encoding
-    // - in json.syntax_errors, use line + offset calculation to compute char offsets
-    pub fn diagnostics(store: *DocumentStore, arena: *Arena) OOM![]const DiagnosticSet {
-        var result = try arena.alloc(DiagnosticSet, store.documents_used);
-        var it = store.iter();
-        var result_idx: usize = 0;
+    pub fn diagnostics_for_uri(store: *DocumentStore, arena: *Arena, uri: []const u8, result: []lsp.types.Diagnostic) ?u32 {
+        const doc_idx = store.find(uri) orelse return null;
+        const doc = store.documents[doc_idx];
 
-        while (it.next()) |i| {
-            const doc = &store.documents[i];
-            result[result_idx].document = doc;
-            result[result_idx].syntax_errors = try json.syntax_errors(arena, &doc.tree.?.tree);
-            result_idx += 1;
+        if (doc.tree == null) return null;
+        const tree = &doc.tree.?.tree;
+
+        var diag_idx: u32 = 0;
+
+        const syntax_errors = json.syntax_errors(arena, tree) catch @panic("OOM");
+        var syntax_error_iter = syntax_errors.iter();
+
+        while (syntax_error_iter.next()) |syntax_error| : (diag_idx += 1) {
+            if (diag_idx >= result.len) {
+                break;
+            }
+            const range = syntax_error.line_and_char(doc.text);
+            result[diag_idx] = lsp.types.Diagnostic{
+                .severity = .Error,
+                .message = syntax_error.message,
+                .range = lsp.types.Range{
+                    .start = lsp.types.Position{
+                        .character = range.start.char.utf16,
+                        .line = range.start.line,
+                    },
+                    .end = lsp.types.Position{
+                        .character = range.close.char.utf16,
+                        .line = range.close.line,
+                    },
+                },
+            };
         }
-        return result;
+        return if (diag_idx == 0) null else diag_idx;
     }
 };

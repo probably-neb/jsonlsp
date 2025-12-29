@@ -12,3 +12,17 @@ pub const meta = @import("meta.zig");
 test {
     std.testing.refAllDecls(@This());
 }
+
+pub fn Range(comptime T: type) type {
+    return struct {
+        start: T,
+        close: T,
+
+        pub fn len(self: @This()) T {
+            if (@hasDecl(T, "sub")) {
+                return self.close.sub(self.start);
+            }
+            return self.close - self.start;
+        }
+    };
+}

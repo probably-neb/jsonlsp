@@ -16,7 +16,6 @@ pub fn main() void {
     var arena: Arena = Arena.init(.{}) catch {
         std.process.exit(1);
     };
-
     // Language servers can support multiple communication channels (e.g. stdio, pipes, sockets).
     // See https://microsoft.github.io/language-server-protocol/specifications/specification-current/#implementationConsiderations
     //
