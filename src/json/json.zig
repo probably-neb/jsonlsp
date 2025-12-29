@@ -429,12 +429,13 @@ pub fn dbg_print_tree(w: *std.io.Writer, tree: *const Tree, depth: usize, conten
         },
     });
 
-    for (tree.children.items) |child| {
-        switch (child) {
-            .tree => try dbg_print_tree(w, &child.tree, depth + 1, contents),
-            .tok => {
+    var child_iter = tree.children.iter();
+    while (child_iter.next()) |child| {
+        switch (child.data) {
+            .tree => |*sub_tree| try dbg_print_tree(w, sub_tree, depth + 1, contents),
+            .tok => |tok| {
                 try w.splatByteAll(' ', depth + 1 * INDENTATION);
-                try w.print("{t} [{s}]\n", .{ child.tok.kind, contents[child.tok.range.start.byte..child.tok.range.close.byte] });
+                try w.print("{t} [{s}]\n", .{ tok.kind, contents[tok.range.start..tok.range.close] });
             },
         }
     }
@@ -679,6 +680,28 @@ test parse {
         },
         .{
             \\{"key": "value" "foo": "bar",}
+            ,
+            \\obj:
+            \\ l_curly [{]
+            \\ kv:
+            \\  string ["key"]
+            \\  colon [:]
+            \\  string ["value"]
+            \\ err:expected comma
+            \\ kv:
+            \\  string ["foo"]
+            \\  colon [:]
+            \\  string ["bar"]
+            \\ comma [,]
+            \\ r_curly [}]
+            \\
+            ,
+        },
+        .{
+            \\{
+            \\  "key": "value"
+            \\  "foo": "bar",
+            \\}
             ,
             \\obj:
             \\ l_curly [{]
