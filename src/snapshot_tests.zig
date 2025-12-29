@@ -5,6 +5,8 @@ const builtin = @import("builtin");
 const build_options = @import("build_options");
 const testing = @import("testing");
 
+const process = std.process;
+
 const Allocator = std.mem.Allocator;
 const Snapshot = testing.snapshot.Snapshot;
 const Direction = testing.snapshot.Direction;
@@ -195,6 +197,17 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
+    var args_iter = try process.argsWithAllocator(allocator);
+    defer args_iter.deinit();
+
+    _ = args_iter.next(); // program name
+
+    const filter_opt: ?[]const u8 = args_iter.next();
+    if (args_iter.next() != null) {
+        std.debug.print("Usage: snapshot_tests [snapshot_path_or_basename]\n", .{});
+        return error.InvalidArguments;
+    }
+
     const snapshot_dir = "tests/snapshots";
 
     const snapshot_paths = try discover_snapshots(allocator, snapshot_dir);
@@ -208,13 +221,57 @@ pub fn main() !void {
         return;
     }
 
-    std.debug.print("Running {d} snapshot test(s)...\n\n", .{snapshot_paths.len});
+    var selected_paths: [][]const u8 = snapshot_paths;
+
+    if (filter_opt) |filter| {
+        var exact_match: ?[]const u8 = null;
+        for (snapshot_paths) |p| {
+            if (std.mem.eql(u8, p, filter)) {
+                exact_match = p;
+                break;
+            }
+        }
+
+        if (exact_match) |p| {
+            selected_paths = @constCast(&[_][]const u8{p});
+        } else {
+            var basename_match: ?[]const u8 = null;
+            for (snapshot_paths) |p| {
+                const base = std.fs.path.basename(p);
+
+                const matches_with_ext = std.mem.eql(u8, base, filter);
+
+                var matches_without_ext = false;
+                if (std.mem.endsWith(u8, base, ".txt")) {
+                    const stem = base[0 .. base.len - ".txt".len];
+                    matches_without_ext = std.mem.eql(u8, stem, filter);
+                }
+
+                if (matches_with_ext or matches_without_ext) {
+                    basename_match = p;
+                    break;
+                }
+            }
+
+            if (basename_match) |p| {
+                selected_paths = @constCast(&[_][]const u8{p});
+            } else {
+                std.debug.print("No snapshot matched '{s}'. Available snapshots:\n", .{filter});
+                for (snapshot_paths) |p| {
+                    std.debug.print("  {s}\n", .{p});
+                }
+                process.exit(1);
+            }
+        }
+    }
+
+    std.debug.print("Running {d} snapshot test(s)...\n\n", .{selected_paths.len});
 
     var passed: usize = 0;
     var failed: usize = 0;
     var updated: usize = 0;
 
-    for (snapshot_paths) |path| {
+    for (selected_paths) |path| {
         run_snapshot_test(allocator, path) catch |err| {
             if (err == error.TestFailed) {
                 failed += 1;
@@ -239,7 +296,7 @@ pub fn main() !void {
     }
 
     if (failed > 0) {
-        std.process.exit(1);
+        process.exit(1);
     }
 }
 

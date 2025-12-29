@@ -24,5 +24,67 @@
       "test:suite"
     ],
     "cwd": "$ZED_WORKTREE_ROOT"
+  },
+  {
+    "label": "test:snapshots",
+    "command": "zig",
+    "args": [
+      "build",
+      "test:snapshots"
+    ],
+    "cwd": "$ZED_WORKTREE_ROOT"
+  },
+  {
+    "label": "snapshots (build only)",
+    "command": "zig",
+    "args": [
+      "build",
+      "snapshots"
+    ],
+    "cwd": "$ZED_WORKTREE_ROOT"
+  },
+  {
+    "label": "snapshot: document_open",
+    "command": "zig",
+    "args": [
+      "build",
+      "test:snapshots",
+      "--",
+      "tests/snapshots/document_open.txt"
+    ],
+    "cwd": "$ZED_WORKTREE_ROOT"
+  },
+  {
+    "label": "snapshot: document_syntax_error",
+    "command": "zig",
+    "args": [
+      "build",
+      "test:snapshots",
+      "--",
+      "tests/snapshots/document_syntax_error.txt"
+    ],
+    "cwd": "$ZED_WORKTREE_ROOT"
+  },
+  {
+    "label": "snapshot: error_before_init",
+    "command": "zig",
+    "args": [
+      "build",
+      "test:snapshots",
+      "--",
+      "tests/snapshots/error_before_init.txt"
+    ],
+    "cwd": "$ZED_WORKTREE_ROOT"
+  },
+  {
+    "label": "snapshot: init_basic",
+    "command": "zig",
+    "args": [
+      "build",
+      "test:snapshots",
+      "--",
+      "tests/snapshots/init_basic.txt"
+    ],
+    "cwd": "$ZED_WORKTREE_ROOT"
   }
 ]

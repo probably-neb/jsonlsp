@@ -69,6 +69,7 @@ pub fn build(b: *std.Build) void {
     // Snapshot tests
     {
         const snapshot_test_step = b.step("test:snapshots", "Run snapshot tests");
+        const snapshot_build_step = b.step("snapshots", "Build snapshot test executable");
 
         const update_snapshots = b.option(bool, "update-snapshots", "Update snapshot files with actual outputs") orelse false;
 
@@ -88,9 +89,44 @@ pub fn build(b: *std.Build) void {
             .root_module = snapshot_test_mod,
         });
 
+        const install_snapshot_exe = b.addInstallArtifact(snapshot_test_exe, .{});
+        snapshot_build_step.dependOn(&install_snapshot_exe.step);
+
         const run_snapshot_tests = b.addRunArtifact(snapshot_test_exe);
         run_snapshot_tests.setCwd(b.path("."));
+
+        if (b.args) |args| {
+            run_snapshot_tests.addArgs(args);
+        }
+
         snapshot_test_step.dependOn(&run_snapshot_tests.step);
+    }
+
+    // Zed debug/task config generator
+    {
+        const debug_zed_step = b.step("debug:zed", "Generate Zed debug and task configurations");
+
+        const generator_mod = b.createModule(.{
+            .root_source_file = b.path("tools/generate_zed_config.zig"),
+            .target = b.graph.host,
+            .optimize = .Debug,
+        });
+
+        const generator_exe = b.addExecutable(.{
+            .name = "generate_zed_config",
+            .root_module = generator_mod,
+        });
+
+        const run_generator = b.addRunArtifact(generator_exe);
+        run_generator.setCwd(b.path("."));
+        const generated_dir = run_generator.addOutputDirectoryArg("zed-config-output");
+
+        const update_source_files = b.addUpdateSourceFiles();
+        update_source_files.addCopyFileToSource(generated_dir.path(b, "debug.json"), ".zed/debug.json");
+        update_source_files.addCopyFileToSource(generated_dir.path(b, "tasks.json"), ".zed/tasks.json");
+        update_source_files.step.dependOn(&run_generator.step);
+
+        debug_zed_step.dependOn(&update_source_files.step);
     }
 
     const exe = b.addExecutable(.{
