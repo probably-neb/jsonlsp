@@ -1,0 +1,8 @@
+- [ ] Handle incremental edits
+  - [ ] Make gap buffer data structure
+  - [ ] Make json parsing have a "feed" construct that feeds ranges of bytes into the parser
+  - [ ] handle incremental edit messages and just reparse the entire document
+- [ ] Integrate Json schema validation
+  - [ ] Cleanup json-schema.zig to use Arena + other base types
+  - [ ] Integrate it into the validation and diagnostics pipeline
+  - [ ] Finish implementing json-schema, including refs and remote refs
