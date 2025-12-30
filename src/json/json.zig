@@ -42,7 +42,7 @@ pub fn parse(
     arena: *Arena,
     contents: []const u8,
 ) ParseError!Tree_Root {
-    const tokens = try lex(arena.allocator(), contents);
+    const tokens = try lex(arena, contents);
 
     var parser: Parser = .init(arena, tokens);
     try parse_any(&parser);
@@ -50,13 +50,13 @@ pub fn parse(
     return build_tree(parser);
 }
 
-fn lex(alloc: Allocator, contents: []const u8) ParseError![]const Token {
+fn lex(arena: *Arena, contents: []const u8) ParseError![]const Token {
     var state: enum { none, string, number } = .none;
     var offset = std.mem.zeroes(Offset);
     var line_num: u32 = 0;
     var line_idx: u32 = 0;
 
-    var tokens: std.ArrayList(Token) = .empty;
+    var tokens: base.ArenaList(Token) = .empty;
 
     while (offset.byte < contents.len) {
         const next_offset = try offset.advance(contents[offset.byte]);
@@ -78,7 +78,7 @@ fn lex(alloc: Allocator, contents: []const u8) ParseError![]const Token {
                     }
                     continue;
                 }
-                var token = try tokens.addOne(alloc);
+                var token = try tokens.add_one(arena);
                 token.* = .{
                     .kind = .err,
                     .line = .{

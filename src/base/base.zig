@@ -5,6 +5,8 @@
 const std = @import("std");
 
 pub const Arena = @import("arena.zig");
+pub const ArenaList = @import("arena-list.zig").ArenaList;
+pub const ArenaListAligned = @import("arena-list.zig").ArenaListAligned;
 pub const IntrusiveLinkedList = @import("intrusive-linked-list.zig").IntrusiveLinkedList;
 pub const IntrusiveDoublyLinkedList = @import("intrusive-linked-list.zig").IntrusiveDoublyLinkedList;
 pub const meta = @import("meta.zig");
