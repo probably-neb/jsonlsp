@@ -88,7 +88,7 @@ pub const DocumentStore = struct {
         }
     };
 
-    pub const OpenError = error{ OpenDocumentLimitReached, DocumentAlreadyOpen } || Arena.InitError;
+    pub const OpenError = error{ OpenDocumentLimitReached, DocumentAlreadyOpen } || json.ParseError || Arena.InitError;
 
     pub fn open(store: *DocumentStore, uri: []const u8, contents: []const u8, version: i32, language_id: []const u8) OpenError!void {
         if (store.find(uri) != null) return error.DocumentAlreadyOpen;
@@ -173,18 +173,17 @@ pub const DocumentStore = struct {
             if (diag_idx >= result.len) {
                 break;
             }
-            const range = syntax_error.line_and_char(doc.text);
             result[diag_idx] = lsp.types.Diagnostic{
                 .severity = .Error,
                 .message = syntax_error.message,
                 .range = lsp.types.Range{
                     .start = lsp.types.Position{
-                        .character = range.start.char.utf16,
-                        .line = range.start.line,
+                        .character = syntax_error.range.start.char.utf16,
+                        .line = syntax_error.range.start.line.num,
                     },
                     .end = lsp.types.Position{
-                        .character = range.close.char.utf16,
-                        .line = range.close.line,
+                        .character = syntax_error.range.close.char.utf16,
+                        .line = syntax_error.range.close.line.num,
                     },
                 },
             };

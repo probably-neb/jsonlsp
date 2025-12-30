@@ -23,22 +23,25 @@ const Token_Kind = enum {
     err,
 };
 
-const Range = struct {
-    start: u32,
-    close: u32,
-    line_num: u32,
-    line_idx: u32,
+const Line = struct {
+    num: u32,
+    idx: u32,
 };
 
 const Token = struct {
     kind: Token_Kind,
     range: Range,
+    line: Line,
+
+    const Range = base.Range(Offset);
 };
+
+pub const ParseError = OOM || error{InvalidUtf8};
 
 pub fn parse(
     arena: *Arena,
     contents: []const u8,
-) OOM!Tree_Root {
+) ParseError!Tree_Root {
     const tokens = try lex(arena.allocator(), contents);
 
     var parser: Parser = .init(arena, tokens);
@@ -47,88 +50,102 @@ pub fn parse(
     return build_tree(parser);
 }
 
-fn lex(alloc: Allocator, contents: []const u8) ![]const Token {
-    var pos: u32 = 0;
+fn lex(alloc: Allocator, contents: []const u8) ParseError![]const Token {
     var state: enum { none, string, number } = .none;
+    var offset = std.mem.zeroes(Offset);
     var line_num: u32 = 0;
     var line_idx: u32 = 0;
 
     var tokens: std.ArrayList(Token) = .empty;
 
-    while (pos < contents.len) : (pos += 1) {
+    while (offset.byte < contents.len) {
+        const next_offset = try offset.advance(contents[offset.byte]);
+        var advance = true;
+        defer if (advance) {
+            offset = next_offset;
+        };
+
+        const bytes = contents[offset.byte..next_offset.byte];
+        const char = std.unicode.utf8Decode(bytes) catch unreachable;
+
         const prev: ?*Token = if (tokens.items.len > 0) &tokens.items[tokens.items.len - 1] else null;
         switch (state) {
             .none => {
-                const range = Range{
-                    .start = pos,
-                    .close = pos + 1,
-                    .line_idx = line_idx,
-                    .line_num = line_num,
+                if (bytes.len == 1 and std.ascii.isWhitespace(@truncate(char))) {
+                    if (char == '\n') {
+                        line_idx = offset.byte;
+                        line_num += 1;
+                    }
+                    continue;
+                }
+                var token = try tokens.addOne(alloc);
+                token.* = .{
+                    .kind = .err,
+                    .line = .{
+                        .idx = line_idx,
+                        .num = line_num,
+                    },
+                    .range = .{
+                        .start = offset,
+                        .close = next_offset,
+                    },
                 };
-                switch (contents[pos]) {
+                switch (char) {
                     '{' => {
-                        try tokens.append(alloc, .{ .kind = .l_curly, .range = range });
+                        token.kind = .l_curly;
                     },
                     '}' => {
-                        try tokens.append(alloc, .{ .kind = .r_curly, .range = range });
+                        token.kind = .r_curly;
                     },
                     '[' => {
-                        try tokens.append(alloc, .{ .kind = .l_bracket, .range = range });
+                        token.kind = .l_bracket;
                     },
                     ']' => {
-                        try tokens.append(alloc, .{ .kind = .r_bracket, .range = range });
+                        token.kind = .r_bracket;
                     },
                     ',' => {
-                        try tokens.append(alloc, .{ .kind = .comma, .range = range });
+                        token.kind = .comma;
                     },
                     ':' => {
-                        try tokens.append(alloc, .{ .kind = .colon, .range = range });
+                        token.kind = .colon;
                     },
                     '-', '+', '0'...'9' => {
                         state = .number;
-                        try tokens.append(alloc, .{ .kind = .number, .range = range });
+                        token.kind = .number;
                     },
                     '"' => {
                         state = .string;
-                        try tokens.append(alloc, .{ .kind = .string, .range = range });
+                        token.kind = .string;
                     },
                     'n' => {
-                        const token = try tokens.addOne(alloc);
-                        keyword_or_err("null", .null, contents, range, token);
+                        keyword_or_err("null", .null, contents, token);
                         state = .none;
                     },
                     't' => {
-                        const token = try tokens.addOne(alloc);
-                        keyword_or_err("true", .true, contents, range, token);
+                        keyword_or_err("true", .true, contents, token);
                         state = .none;
                     },
                     'f' => {
-                        const token = try tokens.addOne(alloc);
-                        keyword_or_err("false", .false, contents, range, token);
+                        keyword_or_err("false", .false, contents, token);
                         state = .none;
                     },
-                    else => if (!std.ascii.isWhitespace(contents[pos])) {
-                        try tokens.append(alloc, .{ .kind = .err, .range = range });
-                    } else if (contents[pos] == '\n') {
-                        line_idx = pos;
-                        line_num += 1;
-                    },
+                    else => {},
                 }
             },
             .number => {
-                switch (contents[pos]) {
+                switch (char) {
                     'e', 'E', '0'...'9', '.' => {
-                        prev.?.range.close += 1;
+                        prev.?.range.close = next_offset;
                     },
                     else => {
                         state = .none;
-                        pos -= 1;
+                        advance = false;
                     },
                 }
             },
             .string => {
-                prev.?.range.close += 1;
-                if (contents[pos] == '"') {
+                prev.?.range.close = next_offset;
+                if (contents[offset.byte] == '"') {
                     state = .none;
                 }
             },
@@ -138,16 +155,17 @@ fn lex(alloc: Allocator, contents: []const u8) ![]const Token {
     return tokens.items;
 }
 
-fn keyword_or_err(comptime keyword: str8, kind: Token_Kind, contents: str8, char_range: Range, token: *Token) void {
-    var range = char_range;
-    const pos = range.start;
+fn keyword_or_err(comptime keyword: str8, kind: Token_Kind, contents: str8, token: *Token) void {
+    const pos = token.range.start.byte;
     // todo: check in godbolt to see if mem.eql is optimized out
     const at_keyword = contents.len > pos + keyword.len - 1 and mem.eql(u8, contents[pos..][0..keyword.len], keyword);
     if (at_keyword) {
-        range.close = pos + @as(u32, @intCast(keyword.len));
-        token.* = .{ .kind = kind, .range = range };
-    } else {
-        token.* = .{ .kind = .err, .range = range };
+        token.kind = kind;
+        token.range.close = token.range.start.add(.{
+            .byte = @intCast(keyword.len),
+            .utf8 = @intCast(keyword.len),
+            .utf16 = @intCast(keyword.len),
+        });
     }
 }
 
@@ -435,7 +453,7 @@ pub fn dbg_print_tree(w: *std.io.Writer, tree: *const Tree, depth: usize, conten
             .tree => |*sub_tree| try dbg_print_tree(w, sub_tree, depth + 1, contents),
             .tok => |tok| {
                 try w.splatByteAll(' ', depth + 1 * INDENTATION);
-                try w.print("{t} [{s}]\n", .{ tok.kind, contents[tok.range.start..tok.range.close] });
+                try w.print("{t} [{s}]\n", .{ tok.kind, contents[tok.range.start.byte..tok.range.close.byte] });
             },
         }
     }
@@ -445,55 +463,46 @@ pub const SyntaxError = struct {
     next: *SyntaxError,
     prev: *SyntaxError,
     message: []const u8,
-    start: u32,
-    close: u32,
-    line_start: u32,
-    line_close: u32,
-    line_start_idx: u32,
-    line_close_idx: u32,
+    range: base.Range(struct { char: Offset, line: Line }),
 
     const zero = SyntaxError{
         .next = &zero,
         .prev = &zero,
         .message = "",
     };
-
-    pub fn line_and_char(err: *const SyntaxError, contents: []const u8) base.Range(struct { char: UtfOffset, line: u32 }) {
-        // PERF: yikes, entire file up to offset?
-        const start_line_offset = unicode_length(contents[0..err.line_start_idx]);
-        const close_line_offset = if (err.line_close_idx != err.line_start_idx) unicode_length(contents[0..err.line_close_idx]) else start_line_offset;
-        const start_char_offset = unicode_length(contents[err.line_start_idx..err.start]).add(start_line_offset);
-        const close_char_offset = if (err.line_close_idx != err.line_start_idx)
-            unicode_length(contents[err.line_close_idx..err.close]).add(close_line_offset)
-        else
-            unicode_length(contents[err.start..err.close]).add(start_char_offset);
-
-        return .{
-            .start = .{
-                .char = start_char_offset,
-                .line = err.line_start,
-            },
-            .close = .{
-                .char = close_char_offset,
-                .line = err.line_close,
-            },
-        };
-    }
 };
 
-const UtfOffset = struct {
+const Offset = struct {
+    byte: u32,
     utf8: u32,
     utf16: u32,
 
-    fn add(self: UtfOffset, other: UtfOffset) UtfOffset {
+    fn add(self: Offset, other: Offset) Offset {
         return .{
+            .byte = self.byte + other.byte,
             .utf8 = self.utf8 + other.utf8,
             .utf16 = self.utf16 + other.utf16,
         };
     }
+
+    fn advance(self: Offset, char: u8) error{InvalidUtf8}!Offset {
+        const byte_count = std.unicode.utf8ByteSequenceLength(char) catch return error.InvalidUtf8;
+        const utf8_count = 1; // One code point
+
+        // UTF-16: supplementary characters (4-byte UTF-8) need 2 code units
+        const utf16_count: u32 = if (byte_count == 4)
+            2
+        else
+            1;
+        return self.add(.{
+            .byte = byte_count,
+            .utf8 = utf8_count,
+            .utf16 = utf16_count,
+        });
+    }
 };
 
-fn unicode_length(slice: []const u8) UtfOffset {
+fn unicode_length(slice: []const u8) Offset {
     var utf8_count: u32 = 0;
     var utf16_count: u32 = 0;
     var i: usize = 0;
@@ -514,7 +523,7 @@ fn unicode_length(slice: []const u8) UtfOffset {
         i += seq_len;
     }
 
-    return .{ .utf8 = utf8_count, .utf16 = utf16_count };
+    return .{ .utf8 = utf8_count, .utf16 = utf16_count, .byte = @intCast(slice.len) };
 }
 
 fn first_tree_token(tree: *const Tree) ?*const Token {
@@ -590,38 +599,43 @@ fn syntax_errors_impl(arena: *Arena, child: *const Child, result: *base.Intrusiv
     const last_token = last_child_token(child);
     const prev_token = if (child.prev != child) last_child_token(child.prev) else null;
     const next_token = if (child.next != child) first_child_token(child.next) else null;
-    var start: Range = .{
-        .close = 0,
-        .start = 0,
-        .line_idx = 0,
-        .line_num = 0,
-    };
+    var start = std.mem.zeroes(Token.Range);
+    var start_line: Line = std.mem.zeroes(Line);
 
     if (first_token) |tok| {
         start = tok.range;
+        start_line = tok.line;
     } else if (prev_token) |tok| {
         start = tok.range;
+        start_line = tok.line;
         start.start = tok.range.close;
     }
 
-    var close: Range = start;
+    var close: Token.Range = start;
+    var close_line = start_line;
 
     if (last_token) |tok| {
         close = tok.range;
+        close_line = tok.line;
     } else if (next_token) |tok| {
         close = tok.range;
+        close_line = tok.line;
         close.close = tok.range.start;
     }
 
     const err = try arena.create(SyntaxError);
     err.* = .{
         .message = error_message,
-        .start = start.start - start.line_idx,
-        .close = close.close - close.line_idx,
-        .line_start = start.line_num,
-        .line_close = close.line_num,
-        .line_start_idx = start.line_idx,
-        .line_close_idx = close.line_idx,
+        .range = .{
+            .start = .{
+                .char = start.start,
+                .line = start_line,
+            },
+            .close = .{
+                .char = close.close,
+                .line = close_line,
+            },
+        },
         .next = err,
         .prev = err,
     };
