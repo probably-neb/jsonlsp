@@ -157,24 +157,24 @@ pub const DocumentStore = struct {
         }
     };
 
-    pub fn diagnostics_for_uri(store: *DocumentStore, arena: *Arena, uri: []const u8, result: []lsp.types.Diagnostic) ?u32 {
-        const doc_idx = store.find(uri) orelse return null;
+    pub fn diagnostics_for_uri(store: *DocumentStore, arena: *Arena, uri: []const u8, result: []lsp.types.Diagnostic) u32 {
+        const doc_idx = store.find(uri) orelse return 0;
         const doc = store.documents[doc_idx];
 
-        if (doc.tree == null) return null;
+        if (doc.tree == null) return 0;
         const tree = &doc.tree.?.tree;
 
-        var diag_idx: u32 = 0;
+        var diagnostic_index: u32 = 0;
 
         const syntax_errors = json.syntax_errors(arena, tree) catch @panic("OOM");
         var syntax_error_iter = syntax_errors.iter();
 
-        while (syntax_error_iter.next()) |syntax_error| : (diag_idx += 1) {
-            if (diag_idx >= result.len) {
+        while (syntax_error_iter.next()) |syntax_error| : (diagnostic_index += 1) {
+            if (diagnostic_index >= result.len) {
                 break;
             }
             const range = syntax_error.line_and_char(.utf16);
-            result[diag_idx] = lsp.types.Diagnostic{
+            result[diagnostic_index] = lsp.types.Diagnostic{
                 .severity = .Error,
                 .message = syntax_error.message,
                 .range = lsp.types.Range{
@@ -189,6 +189,6 @@ pub const DocumentStore = struct {
                 },
             };
         }
-        return if (diag_idx == 0) null else diag_idx;
+        return diagnostic_index;
     }
 };

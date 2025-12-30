@@ -46,19 +46,19 @@ pub fn run(arena: *Arena, transport: *lsp.Transport) !void {
             const document = doc_store.documents[doc_idx];
             @memset(diagnostics_buf, std.mem.zeroInit(lsp.types.Diagnostic, .{}));
             // TODO: Implement marking errors as handled, and make this if into a while
-            if (doc_store.diagnostics_for_uri(frame_arena.arena, document.uri, diagnostics_buf)) |diagnostics_count| {
-                try transport.writeNotification(
-                    frame_alloc,
-                    "textDocument/publishDiagnostics",
-                    lsp.types.PublishDiagnosticsParams,
-                    .{
-                        .uri = document.uri,
-                        .version = document.version,
-                        .diagnostics = diagnostics_buf[0..diagnostics_count],
-                    },
-                    .{ .emit_null_optional_fields = true },
-                );
-            }
+            const diagnostic_count = doc_store.diagnostics_for_uri(frame_arena.arena, document.uri, diagnostics_buf);
+            if (diagnostic_count == 0) continue;
+            try transport.writeNotification(
+                frame_alloc,
+                "textDocument/publishDiagnostics",
+                lsp.types.PublishDiagnosticsParams,
+                .{
+                    .uri = document.uri,
+                    .version = document.version,
+                    .diagnostics = diagnostics_buf[0..diagnostic_count],
+                },
+                .{ .emit_null_optional_fields = true },
+            );
         }
 
         const json_message = try transport.readJsonMessage(frame_alloc);
