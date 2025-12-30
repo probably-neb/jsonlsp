@@ -40,53 +40,100 @@ pub const ParseError = OOM || error{InvalidUtf8};
 
 pub fn parse(
     arena: *Arena,
-    contents: []const u8,
+    lexer: *const Lexer,
 ) ParseError!Tree_Root {
-    const tokens = try lex(arena, contents);
-
+    const tokens = lexer.tokens.items;
     var parser: Parser = .init(arena, tokens);
     try parse_any(&parser);
 
     return build_tree(parser);
 }
 
-fn lex(arena: *Arena, contents: []const u8) ParseError![]const Token {
-    var state: enum { none, string, number } = .none;
-    var offset = std.mem.zeroes(Offset);
-    var line_num: u32 = 0;
-    var line_idx = offset;
+pub const Lexer = struct {
+    state: State = .none,
+    offset: Offset = std.mem.zeroes(Offset),
+    line_num: u32 = 0,
+    line_idx: Offset = std.mem.zeroes(Offset),
+    tokens: base.ArenaList(Token) = .empty,
 
-    var tokens: base.ArenaList(Token) = .empty;
+    pub const zero: Lexer = .{};
 
-    while (offset.byte < contents.len) {
-        const next_offset = try offset.advance(contents[offset.byte]);
+    const State = union(enum) {
+        none,
+        string,
+        number,
+        keyword: KeywordState,
+    };
+
+    const KeywordState = struct {
+        expected: Keyword,
+        matched: u8,
+
+        const Keyword = enum {
+            null,
+            true,
+            false,
+
+            fn str(self: Keyword) []const u8 {
+                return switch (self) {
+                    .null => "null",
+                    .true => "true",
+                    .false => "false",
+                };
+            }
+
+            fn token_kind(self: Keyword) Token_Kind {
+                return switch (self) {
+                    .null => .null,
+                    .true => .true,
+                    .false => .false,
+                };
+            }
+        };
+    };
+};
+
+pub fn lex(lexer: *Lexer, arena: *Arena, contents: []const u8) ParseError!void {
+    var buf_idx: u32 = 0;
+
+    while (buf_idx < contents.len) {
+        const byte = contents[buf_idx];
+        const byte_len = std.unicode.utf8ByteSequenceLength(byte) catch return error.InvalidUtf8;
+        const next_buf_idx = buf_idx + byte_len;
+        const next_offset = lexer.offset.add(.{
+            .byte = byte_len,
+            .utf8 = 1,
+            .utf16 = if (byte_len == 4) 2 else 1,
+        });
+
         var advance = true;
         defer if (advance) {
-            offset = next_offset;
+            lexer.offset = next_offset;
+            buf_idx = next_buf_idx;
         };
 
-        const bytes = contents[offset.byte..next_offset.byte];
+        const bytes = contents[buf_idx..next_buf_idx];
         const char = std.unicode.utf8Decode(bytes) catch unreachable;
 
-        const prev: ?*Token = if (tokens.items.len > 0) &tokens.items[tokens.items.len - 1] else null;
-        switch (state) {
+        const prev: ?*Token = if (lexer.tokens.items.len > 0) &lexer.tokens.items[lexer.tokens.items.len - 1] else null;
+        switch (lexer.state) {
             .none => {
                 if (bytes.len == 1 and std.ascii.isWhitespace(@truncate(char))) {
                     if (char == '\n') {
-                        line_idx = offset;
-                        line_num += 1;
+                        lexer.line_idx = lexer.offset;
+                        lexer.line_num += 1;
                     }
                     continue;
                 }
-                var token = try tokens.add_one(arena);
+                var token = try lexer.tokens.add_one(arena);
                 token.* = .{
                     .kind = .err,
                     .line = .{
-                        .idx = line_idx,
-                        .num = line_num,
+                        .idx = lexer.line_idx,
+                        .num = lexer.line_num,
                     },
                     .range = .{
-                        .start = offset,
+                        .start = lexer.offset,
                         .close = next_offset,
                     },
                 };
@@ -110,24 +157,21 @@ fn lex(arena: *Arena, contents: []const u8) ParseError![]const Token {
                         token.kind = .colon;
                     },
                     '-', '+', '0'...'9' => {
-                        state = .number;
+                        lexer.state = .number;
                         token.kind = .number;
                     },
                     '"' => {
-                        state = .string;
+                        lexer.state = .string;
                         token.kind = .string;
                     },
                     'n' => {
-                        keyword_or_err("null", .null, contents, token);
-                        state = .none;
+                        lexer.state = .{ .keyword = .{ .expected = .null, .matched = 1 } };
                     },
                     't' => {
-                        keyword_or_err("true", .true, contents, token);
-                        state = .none;
+                        lexer.state = .{ .keyword = .{ .expected = .true, .matched = 1 } };
                     },
                     'f' => {
-                        keyword_or_err("false", .false, contents, token);
-                        state = .none;
+                        lexer.state = .{ .keyword = .{ .expected = .false, .matched = 1 } };
                     },
                     else => {},
                 }
@@ -138,34 +182,32 @@ fn lex(arena: *Arena, contents: []const u8) ParseError![]const Token {
                         prev.?.range.close = next_offset;
                     },
                     else => {
-                        state = .none;
+                        lexer.state = .none;
                         advance = false;
                     },
                 }
             },
             .string => {
                 prev.?.range.close = next_offset;
-                if (contents[offset.byte] == '"') {
-                    state = .none;
+                if (byte == '"') {
+                    lexer.state = .none;
+                }
+            },
+            .keyword => |*kw| {
+                const expected_str = kw.expected.str();
+                if (kw.matched < expected_str.len and byte == expected_str[kw.matched]) {
+                    kw.matched += 1;
+                    prev.?.range.close = next_offset;
+                    if (kw.matched == expected_str.len) {
+                        prev.?.kind = kw.expected.token_kind();
+                        lexer.state = .none;
+                    }
+                } else {
+                    lexer.state = .none;
+                    advance = false;
                 }
             },
         }
-    }
-
-    return tokens.items;
-}
-
-fn keyword_or_err(comptime keyword: str8, kind: Token_Kind, contents: str8, token: *Token) void {
-    const pos = token.range.start.byte;
-    // todo: check in godbolt to see if mem.eql is optimized out
-    const at_keyword = contents.len > pos + keyword.len - 1 and mem.eql(u8, contents[pos..][0..keyword.len], keyword);
-    if (at_keyword) {
-        token.kind = kind;
-        token.range.close = token.range.start.add(.{
-            .byte = @intCast(keyword.len),
-            .utf8 = @intCast(keyword.len),
-            .utf16 = @intCast(keyword.len),
-        });
     }
 }
 
@@ -327,7 +369,7 @@ const Parser = struct {
     }
 };
 
-fn build_tree(parser: Parser) OOM!Tree_Root {
+pub fn build_tree(parser: Parser) OOM!Tree_Root {
     var p = parser;
     const tokens = p.tokens;
     var tok_pos: usize = 0;
@@ -683,25 +725,42 @@ fn syntax_errors_impl(arena: *Arena, child: *const Child, result: *base.Intrusiv
 }
 
 test parse {
-    const table: []const [2][]const u8 = &.{
+    const Case = struct { []const []const u8, []const u8 };
+    const table: []const Case = &.{
         .{
-            "{}",
+            &.{
+                \\{}
+            },
             \\obj:
             \\ l_curly [{]
             \\ r_curly [}]
             \\
-            ,
         },
         .{
-            "[]",
+            &.{
+                \\{
+                ,
+                \\}
+                ,
+            },
+            \\obj:
+            \\ l_curly [{]
+            \\ r_curly [}]
+            \\
+        },
+        .{
+            &.{
+                \\[]
+            },
             \\array:
             \\ l_bracket [[]
             \\ r_bracket []]
             \\
-            ,
         },
         .{
-            "[1, 2, 3]",
+            &.{
+                \\[1, 2, 3]
+            },
             \\array:
             \\ l_bracket [[]
             \\ number [1]
@@ -711,11 +770,28 @@ test parse {
             \\ number [3]
             \\ r_bracket []]
             \\
-            ,
         },
         .{
-            \\{"key": "value", "foo": "bar",}
-            ,
+            &.{
+                \\[1, 2
+                ,
+                \\, 3]
+                ,
+            },
+            \\array:
+            \\ l_bracket [[]
+            \\ number [1]
+            \\ comma [,]
+            \\ number [2]
+            \\ comma [,]
+            \\ number [3]
+            \\ r_bracket []]
+            \\
+        },
+        .{
+            &.{
+                \\{"key": "value", "foo": "bar",}
+            },
             \\obj:
             \\ l_curly [{]
             \\ kv:
@@ -730,11 +806,33 @@ test parse {
             \\ comma [,]
             \\ r_curly [}]
             \\
-            ,
         },
         .{
-            \\{"key": "value" "foo": "bar",}
-            ,
+            &.{
+                \\{"key": "val
+                ,
+                \\ue", "foo": "bar",}
+                ,
+            },
+            \\obj:
+            \\ l_curly [{]
+            \\ kv:
+            \\  string ["key"]
+            \\  colon [:]
+            \\  string ["value"]
+            \\ comma [,]
+            \\ kv:
+            \\  string ["foo"]
+            \\  colon [:]
+            \\  string ["bar"]
+            \\ comma [,]
+            \\ r_curly [}]
+            \\
+        },
+        .{
+            &.{
+                \\{"key": "value" "foo": "bar",}
+            },
             \\obj:
             \\ l_curly [{]
             \\ kv:
@@ -749,14 +847,15 @@ test parse {
             \\ comma [,]
             \\ r_curly [}]
             \\
-            ,
         },
         .{
-            \\{
-            \\  "key": "value"
-            \\  "foo": "bar",
-            \\}
-            ,
+            &.{
+                \\{
+                \\  "key": "value"
+                \\  "foo": "bar",
+                \\}
+                ,
+            },
             \\obj:
             \\ l_curly [{]
             \\ kv:
@@ -771,40 +870,86 @@ test parse {
             \\ comma [,]
             \\ r_curly [}]
             \\
-            ,
         },
         .{
-            "[,]",
+            &.{
+                \\[,]
+            },
             \\array:
             \\ l_bracket [[]
             \\ err:expected value
             \\ comma [,]
             \\ r_bracket []]
             \\
-            ,
         },
         .{
-            \\{,}
-            ,
+            &.{
+                \\{,}
+            },
             \\obj:
             \\ l_curly [{]
             \\ err:expected key: value
             \\ comma [,]
             \\ r_curly [}]
             \\
-            ,
+        },
+        .{
+            &.{
+                \\{"a": tr
+                ,
+                \\ue, "b": fal
+                ,
+                \\se, "c": nu
+                ,
+                \\ll}
+                ,
+            },
+            \\obj:
+            \\ l_curly [{]
+            \\ kv:
+            \\  string ["a"]
+            \\  colon [:]
+            \\  true [true]
+            \\ comma [,]
+            \\ kv:
+            \\  string ["b"]
+            \\  colon [:]
+            \\  false [false]
+            \\ comma [,]
+            \\ kv:
+            \\  string ["c"]
+            \\  colon [:]
+            \\  null [null]
+            \\ r_curly [}]
+            \\
         },
     };
 
     var arena = Arena.init(.{}) catch @panic("OOM");
     defer arena.deinit();
     for (table) |test_case| {
-        const input, const expected = test_case;
+        const input_parts, const expected = test_case;
 
         var scoped = arena.scoped();
         defer scoped.release();
 
-        const result = try parse(scoped.arena, input);
+        var lexer = Lexer{};
+        for (input_parts) |part| {
+            try lex(&lexer, scoped.arena, part);
+        }
+
+        var parser: Parser = .init(scoped.arena, lexer.tokens.items);
+        try parse_any(&parser);
+        const result = try build_tree(parser);
+
+        var input_len: usize = 0;
+        for (input_parts) |part| input_len += part.len;
+        const input = try scoped.arena.allocator().alloc(u8, input_len);
+        var offset: usize = 0;
+        for (input_parts) |part| {
+            @memcpy(input[offset..][0..part.len], part);
+            offset += part.len;
+        }
 
         var actual_tree_writer: std.Io.Writer.Allocating = .init(scoped.arena.allocator());
         defer actual_tree_writer.deinit();

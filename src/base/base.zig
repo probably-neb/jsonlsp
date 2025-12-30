@@ -20,8 +20,10 @@ pub fn Range(comptime T: type) type {
         start: T,
         close: T,
 
+        pub const zero = std.mem.zeroes(@This());
+
         pub fn len(self: @This()) T {
-            if (@hasDecl(T, "sub")) {
+            if (std.meta.hasMethod(T, "sub")) {
                 return self.close.sub(self.start);
             }
             return self.close - self.start;

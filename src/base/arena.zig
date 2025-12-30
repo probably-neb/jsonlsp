@@ -81,6 +81,12 @@ pub fn push_zero_aligned(arena: *Arena, size: usize, alignment: usize) AllocErro
     return slice;
 }
 
+pub fn dupe(arena: *Arena, comptime T: type, src: []const u8) AllocError![]T {
+    const dst = try arena.alloc(T, src.len);
+    @memcpy(dst, src);
+    return dst;
+}
+
 pub fn create(arena: *Arena, comptime T: type) AllocError!*T {
     const slice = try arena.push_zero_aligned(@sizeOf(T), @alignOf(T));
     return @ptrCast(@alignCast(slice.ptr));

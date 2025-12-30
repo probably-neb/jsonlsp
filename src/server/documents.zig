@@ -5,6 +5,7 @@ const base = @import("base");
 const Arena = base.Arena;
 const json = @import("json");
 const lsp = @import("lsp");
+const GapBuffer = @import("gap-buffer.zig").GapBuffer;
 
 const OOM = error{OutOfMemory};
 const DOCUMENTS_MAX: usize = 4096;
@@ -14,7 +15,7 @@ pub const Document = struct {
     arena_state: ?Arena,
     uri: []const u8,
     version: i32,
-    text: []const u8,
+    text: GapBuffer,
     language_id: []const u8,
     tree: ?json.Tree_Root,
 
@@ -23,7 +24,7 @@ pub const Document = struct {
         .arena_state = null,
         .uri = "",
         .version = 0,
-        .text = "",
+        .text = .empty,
         .language_id = "",
         .tree = null,
     };
@@ -98,19 +99,22 @@ pub const DocumentStore = struct {
 
         const doc = &store.documents[store.documents_free];
         const next_free = doc.next;
-        var arena_state: Arena = try .init(.{});
-        const alloc = arena_state.allocator();
+        var arena: Arena = try .init(.{});
+        const buf = try arena.alloc(u8, contents.len * 2);
+        @memcpy(buf[0..contents.len], contents);
         doc.* = .{
             .next = store.documents_open,
-            .uri = try alloc.dupe(u8, uri),
-            .text = try alloc.dupe(u8, contents),
+            .uri = try arena.dupe(u8, uri),
+            .text = GapBuffer.init(buf, contents.len),
             .version = version,
-            .language_id = try alloc.dupe(u8, language_id),
+            .language_id = try arena.dupe(u8, language_id),
             .arena_state = null,
             .tree = null,
         };
-        doc.tree = try json.parse(&arena_state, doc.text);
-        doc.arena_state = arena_state;
+        var lexer: json.Lexer = .zero;
+        try json.lex(&lexer, &arena, buf[0..contents.len]);
+        doc.tree = try json.parse(&arena, &lexer);
+        doc.arena_state = arena;
 
         store.documents_open = store.documents_free;
         store.documents_free = next_free;
