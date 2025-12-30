@@ -25,7 +25,7 @@ const Token_Kind = enum {
 
 const Line = struct {
     num: u32,
-    idx: u32,
+    idx: Offset,
 };
 
 const Token = struct {
@@ -54,7 +54,7 @@ fn lex(arena: *Arena, contents: []const u8) ParseError![]const Token {
     var state: enum { none, string, number } = .none;
     var offset = std.mem.zeroes(Offset);
     var line_num: u32 = 0;
-    var line_idx: u32 = 0;
+    var line_idx = offset;
 
     var tokens: base.ArenaList(Token) = .empty;
 
@@ -73,7 +73,7 @@ fn lex(arena: *Arena, contents: []const u8) ParseError![]const Token {
             .none => {
                 if (bytes.len == 1 and std.ascii.isWhitespace(@truncate(char))) {
                     if (char == '\n') {
-                        line_idx = offset.byte;
+                        line_idx = offset;
                         line_num += 1;
                     }
                     continue;
@@ -459,6 +459,11 @@ pub fn dbg_print_tree(w: *std.io.Writer, tree: *const Tree, depth: usize, conten
     }
 }
 
+pub const Encoding = enum {
+    utf8,
+    utf16,
+};
+
 pub const SyntaxError = struct {
     next: *SyntaxError,
     prev: *SyntaxError,
@@ -470,6 +475,41 @@ pub const SyntaxError = struct {
         .prev = &zero,
         .message = "",
     };
+
+    pub fn line_and_char(err: *const SyntaxError, encoding: Encoding) base.Range(struct { line: u32, char: u32 }) {
+        const start_char, const start_line_idx, const close_char, const close_line_idx = switch (encoding) {
+            .utf8 => .{
+                err.range.start.char.utf8,
+                err.range.start.line.idx.utf8,
+                err.range.close.char.utf8,
+                err.range.close.line.idx.utf8,
+            },
+            .utf16 => .{
+                err.range.start.char.utf16,
+                err.range.start.line.idx.utf16,
+                err.range.close.char.utf16,
+                err.range.close.line.idx.utf16,
+            },
+        };
+        const start_char_rel = if (err.range.start.line.num == 0)
+            start_char
+        else
+            start_char - start_line_idx - 1;
+        const close_char_rel = if (err.range.close.line.num == 0)
+            close_char
+        else
+            close_char - close_line_idx - 1;
+        return .{
+            .start = .{
+                .char = start_char_rel,
+                .line = err.range.start.line.num,
+            },
+            .close = .{
+                .char = close_char_rel,
+                .line = err.range.close.line.num,
+            },
+        };
+    }
 };
 
 const Offset = struct {

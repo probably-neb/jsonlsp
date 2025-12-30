@@ -173,17 +173,18 @@ pub const DocumentStore = struct {
             if (diag_idx >= result.len) {
                 break;
             }
+            const range = syntax_error.line_and_char(.utf16);
             result[diag_idx] = lsp.types.Diagnostic{
                 .severity = .Error,
                 .message = syntax_error.message,
                 .range = lsp.types.Range{
                     .start = lsp.types.Position{
-                        .character = syntax_error.range.start.char.utf16,
-                        .line = syntax_error.range.start.line.num,
+                        .character = range.start.char,
+                        .line = range.start.line,
                     },
                     .end = lsp.types.Position{
-                        .character = syntax_error.range.close.char.utf16,
-                        .line = syntax_error.range.close.line.num,
+                        .character = range.close.char,
+                        .line = range.close.line,
                     },
                 },
             };
