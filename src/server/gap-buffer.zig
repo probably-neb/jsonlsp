@@ -5,14 +5,19 @@ pub const GapBuffer = struct {
     data: []u8,
     gap: base.Range(usize),
 
+    pub const empty = GapBuffer{
+        .data = &.{},
+        .gap = .zero,
+    };
+
     pub const Error = error{
         OutOfMemory,
         InvalidRange,
         OutOfBounds,
     };
 
-    pub fn init(buffer: []u8, text_len: usize) Error!GapBuffer {
-        if (text_len > buffer.len) return error.OutOfBounds;
+    pub fn init(buffer: []u8, text_len: usize) GapBuffer {
+        if (text_len > buffer.len) @panic("invalid initial text size");
 
         return .{
             .data = buffer,
@@ -23,18 +28,20 @@ pub const GapBuffer = struct {
         };
     }
 
-    pub fn new_from_smaller(prev: *const GapBuffer, new_buffer: []u8) Error!GapBuffer {
-        if (new_buffer.len < prev.data.len) return error.OutOfMemory;
-        if (prev.gap.start > prev.gap.close) return error.InvalidRange;
-        if (prev.gap.close > prev.data.len) return error.InvalidRange;
+    pub fn new_from_smaller(prev: *const GapBuffer, new_buffer: []u8) GapBuffer {
+        std.debug.assert(new_buffer.len > prev.data.len);
+        std.debug.assert(prev.gap.start <= prev.gap.close);
+        std.debug.assert(prev.gap.close <= prev.data.len);
 
         const old_prefix_len = prev.gap.start;
         const old_suffix_len = prev.data.len - prev.gap.close;
 
+        std.debug.assert(old_prefix_len + old_suffix_len <= new_buffer.len);
+
         const new_gap_start = old_prefix_len;
         const new_gap_close = new_buffer.len - old_suffix_len;
 
-        if (new_gap_close < new_gap_start) return error.OutOfMemory;
+        std.debug.assert(new_gap_close >= new_gap_start);
 
         @memcpy(new_buffer[0..old_prefix_len], prev.data[0..old_prefix_len]);
         @memcpy(new_buffer[new_gap_close..], prev.data[prev.gap.close..]);
@@ -168,7 +175,7 @@ test "basic insert and read" {
     var storage: [128]u8 = undefined;
     @memcpy(storage[0.."hello world".len], "hello world");
 
-    var buf = try GapBuffer.init(storage[0..], "hello world".len);
+    var buf = GapBuffer.init(storage[0..], "hello world".len);
 
     try std.testing.expectEqual(@as(usize, 11), buf.len());
 
@@ -181,12 +188,14 @@ test "insert in middle" {
     var storage: [128]u8 = undefined;
     @memcpy(storage[0.."helloworld".len], "helloworld");
 
-    var buf = try GapBuffer.init(storage[0..], "helloworld".len);
+    var buf = GapBuffer.init(storage[0..], "helloworld".len);
 
     try buf.insert(5, " ");
 
     const s = buf.slices();
-    try std.testing.expectEqualStrings("hello world", try collect(&buf, std.testing.allocator));
+    const got = try collect(&buf, std.testing.allocator);
+    defer std.testing.allocator.free(got);
+    try std.testing.expectEqualStrings("hello world", got);
     _ = s;
 }
 
@@ -194,34 +203,40 @@ test "delete" {
     var storage: [128]u8 = undefined;
     @memcpy(storage[0.."hello world".len], "hello world");
 
-    var buf = try GapBuffer.init(storage[0..], "hello world".len);
+    var buf = GapBuffer.init(storage[0..], "hello world".len);
 
     try buf.delete(5, 1);
 
-    try std.testing.expectEqualStrings("helloworld", try collect(&buf, std.testing.allocator));
+    const got = try collect(&buf, std.testing.allocator);
+    defer std.testing.allocator.free(got);
+    try std.testing.expectEqualStrings("helloworld", got);
 }
 
 test "replace" {
     var storage: [128]u8 = undefined;
     @memcpy(storage[0.."hello world".len], "hello world");
 
-    var buf = try GapBuffer.init(storage[0..], "hello world".len);
+    var buf = GapBuffer.init(storage[0..], "hello world".len);
 
     try buf.replace(6, 11, "zig");
 
-    try std.testing.expectEqualStrings("hello zig", try collect(&buf, std.testing.allocator));
+    const got = try collect(&buf, std.testing.allocator);
+    defer std.testing.allocator.free(got);
+    try std.testing.expectEqualStrings("hello zig", got);
 }
 
 test "slices" {
     var storage: [128]u8 = undefined;
     @memcpy(storage[0.."hello world".len], "hello world");
 
-    var buf = try GapBuffer.init(storage[0..], "hello world".len);
+    var buf = GapBuffer.init(storage[0..], "hello world".len);
 
     try buf.insert(5, "");
 
     const s = buf.slices();
-    try std.testing.expectEqualStrings("hello world", try collect(&buf, std.testing.allocator));
+    const got = try collect(&buf, std.testing.allocator);
+    defer std.testing.allocator.free(got);
+    try std.testing.expectEqualStrings("hello world", got);
     _ = s;
 }
 
@@ -229,28 +244,21 @@ test "new_from_smaller expands gap and preserves content" {
     var old_storage: [64]u8 = undefined;
     @memcpy(old_storage[0.."hello world".len], "hello world");
 
-    var prev = try GapBuffer.init(old_storage[0..], "hello world".len);
-    try prev.insert(5, "");
+    var prev = GapBuffer.init(old_storage[0..], "hello world".len);
+    try prev.insert(5, ""); // no-op
+    try prev.delete(5, 1); // create a non-empty gap between "hello" and "world"
 
     var new_storage: [128]u8 = undefined;
-    var grown = try GapBuffer.new_from_smaller(&prev, new_storage[0..]);
+    var grown = GapBuffer.new_from_smaller(&prev, new_storage[0..]);
 
     try std.testing.expectEqual(prev.gap.start, grown.gap.start);
     try std.testing.expectEqual(prev.data.len - prev.gap.close, grown.data.len - grown.gap.close);
 
-    try std.testing.expectEqualStrings("hello world", try collect(&grown, std.testing.allocator));
+    const got = try collect(&grown, std.testing.allocator);
+    defer std.testing.allocator.free(got);
+    try std.testing.expectEqualStrings("helloworld", got);
     try std.testing.expectEqualStrings("hello", grown.slices().prefix);
-    try std.testing.expectEqualStrings(" world", grown.slices().suffix);
-}
-
-test "new_from_smaller returns OutOfMemory when new buffer is smaller" {
-    var old_storage: [64]u8 = undefined;
-    @memcpy(old_storage[0.."hello world".len], "hello world");
-
-    var prev = try GapBuffer.init(old_storage[0..], "hello world".len);
-
-    var new_storage: [32]u8 = undefined;
-    try std.testing.expectError(error.OutOfMemory, GapBuffer.new_from_smaller(&prev, new_storage[0..]));
+    try std.testing.expectEqualStrings("world", grown.slices().suffix);
 }
 
 fn collect(buf: *const GapBuffer, allocator: std.mem.Allocator) ![]u8 {
