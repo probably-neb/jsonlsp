@@ -12,13 +12,14 @@ pub fn build(b: *std.Build) void {
     });
 
     const test_step = b.step("test", "Run unit tests");
+    const check_step = b.step("check", "Check if jsonls compiles");
     const test_filters = b.option([]const []const u8, "test-filter", "Filter tests") orelse &.{};
 
-    const mod_base = subsystem(b, "base", exe_mod, test_step, target, optimize, test_filters);
-    const mod_json = subsystem(b, "json", exe_mod, test_step, target, optimize, test_filters);
+    const mod_base = subsystem(b, "base", exe_mod, test_step, check_step, target, optimize, test_filters);
+    const mod_json = subsystem(b, "json", exe_mod, test_step, check_step, target, optimize, test_filters);
     mod_json.addImport("base", mod_base);
 
-    const mod_json_schema = subsystem(b, "json-schema", exe_mod, test_step, target, optimize, test_filters);
+    const mod_json_schema = subsystem(b, "json-schema", exe_mod, test_step, check_step, target, optimize, test_filters);
     mod_json_schema.addImport("base", mod_base);
 
     const pcre_pkg = b.dependency("libpcre_zig", .{ .optimize = optimize, .target = target });
@@ -30,7 +31,7 @@ pub fn build(b: *std.Build) void {
     exe_mod.addImport("lsp", mod_lsp);
 
     // Server subsystem
-    const mod_server = subsystem(b, "server", exe_mod, test_step, target, optimize, test_filters);
+    const mod_server = subsystem(b, "server", exe_mod, test_step, check_step, target, optimize, test_filters);
     mod_server.addImport("base", mod_base);
     mod_server.addImport("json", mod_json);
     mod_server.addImport("lsp", mod_lsp);
@@ -56,6 +57,7 @@ pub fn build(b: *std.Build) void {
         .root_module = mod_testing,
         .filters = test_filters,
     });
+    check_step.dependOn(&testing_tests.step);
     const run_testing_tests = b.addRunArtifact(testing_tests);
     test_step.dependOn(&run_testing_tests.step);
 
@@ -63,6 +65,7 @@ pub fn build(b: *std.Build) void {
         .root_module = exe_mod,
         .filters = test_filters,
     });
+    check_step.dependOn(&exe_unit_tests.step);
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
     test_step.dependOn(&run_exe_unit_tests.step);
 
@@ -143,8 +146,7 @@ pub fn build(b: *std.Build) void {
             .name = "jsonls",
             .root_module = exe_mod,
         });
-        const check = b.step("check", "Check if jsonls compiles");
-        check.dependOn(&exe_check.step);
+        check_step.dependOn(&exe_check.step);
     }
 
     // Run step
@@ -222,7 +224,7 @@ pub fn build(b: *std.Build) void {
     }
 }
 
-fn subsystem(b: *std.Build, name: []const u8, exe: *std.Build.Module, test_step: *std.Build.Step, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, test_filters: []const []const u8) *std.Build.Module {
+fn subsystem(b: *std.Build, name: []const u8, exe: *std.Build.Module, test_step: *std.Build.Step, check_step: *std.Build.Step, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, test_filters: []const []const u8) *std.Build.Module {
     const lib_mod = b.createModule(.{
         .root_source_file = b.path(b.fmt("src/{s}/{s}.zig", .{ name, name })),
         .optimize = optimize,
@@ -243,6 +245,7 @@ fn subsystem(b: *std.Build, name: []const u8, exe: *std.Build.Module, test_step:
         .root_module = lib_mod,
         .filters = test_filters,
     });
+    check_step.dependOn(&lib_tests.step);
 
     const run_lib_unit_tests = b.addRunArtifact(lib_tests);
     test_step.dependOn(&run_lib_unit_tests.step);
