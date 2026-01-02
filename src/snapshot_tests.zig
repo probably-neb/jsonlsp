@@ -202,10 +202,19 @@ pub fn main() !void {
 
     _ = args_iter.next(); // program name
 
-    const filter_opt: ?[]const u8 = args_iter.next();
-    if (args_iter.next() != null) {
-        std.debug.print("Usage: snapshot_tests [snapshot_path_or_basename]\n", .{});
-        return error.InvalidArguments;
+    var positive_filters: std.ArrayList([]const u8) = .empty;
+    defer positive_filters.deinit(allocator);
+    var negative_filters: std.ArrayList([]const u8) = .empty;
+    defer negative_filters.deinit(allocator);
+
+    while (args_iter.next()) |arg| {
+        if (std.mem.startsWith(u8, arg, "-")) {
+            if (arg.len > 1) {
+                try negative_filters.append(allocator, arg[1..]);
+            }
+        } else {
+            try positive_filters.append(allocator, arg);
+        }
     }
 
     const snapshot_dir = "tests/snapshots";
@@ -221,48 +230,45 @@ pub fn main() !void {
         return;
     }
 
-    var selected_paths: [][]const u8 = snapshot_paths;
+    var selected_paths_list: std.ArrayList([]const u8) = .empty;
+    defer selected_paths_list.deinit(allocator);
 
-    if (filter_opt) |filter| {
-        var exact_match: ?[]const u8 = null;
+    for (snapshot_paths) |p| {
+        const base = std.fs.path.basename(p);
+        const stem = if (std.mem.endsWith(u8, base, ".txt")) base[0 .. base.len - ".txt".len] else base;
+
+        // Check positive filters (if any specified, path must match at least one)
+        const passes_positive = if (positive_filters.items.len == 0) true else blk: {
+            for (positive_filters.items) |filter| {
+                if (std.mem.eql(u8, p, filter) or std.mem.eql(u8, base, filter) or std.mem.eql(u8, stem, filter)) {
+                    break :blk true;
+                }
+            }
+            break :blk false;
+        };
+
+        if (!passes_positive) continue;
+
+        // Check negative filters (path must not match any)
+        const excluded = for (negative_filters.items) |filter| {
+            if (std.mem.eql(u8, p, filter) or std.mem.eql(u8, base, filter) or std.mem.eql(u8, stem, filter)) {
+                break true;
+            }
+        } else false;
+
+        if (excluded) continue;
+
+        try selected_paths_list.append(allocator, p);
+    }
+
+    const selected_paths = selected_paths_list.items;
+
+    if (selected_paths.len == 0 and (positive_filters.items.len > 0 or negative_filters.items.len > 0)) {
+        std.debug.print("No snapshots matched the filter criteria. Available snapshots:\n", .{});
         for (snapshot_paths) |p| {
-            if (std.mem.eql(u8, p, filter)) {
-                exact_match = p;
-                break;
-            }
+            std.debug.print("  {s}\n", .{p});
         }
-
-        if (exact_match) |p| {
-            selected_paths = @constCast(&[_][]const u8{p});
-        } else {
-            var basename_match: ?[]const u8 = null;
-            for (snapshot_paths) |p| {
-                const base = std.fs.path.basename(p);
-
-                const matches_with_ext = std.mem.eql(u8, base, filter);
-
-                var matches_without_ext = false;
-                if (std.mem.endsWith(u8, base, ".txt")) {
-                    const stem = base[0 .. base.len - ".txt".len];
-                    matches_without_ext = std.mem.eql(u8, stem, filter);
-                }
-
-                if (matches_with_ext or matches_without_ext) {
-                    basename_match = p;
-                    break;
-                }
-            }
-
-            if (basename_match) |p| {
-                selected_paths = @constCast(&[_][]const u8{p});
-            } else {
-                std.debug.print("No snapshot matched '{s}'. Available snapshots:\n", .{filter});
-                for (snapshot_paths) |p| {
-                    std.debug.print("  {s}\n", .{p});
-                }
-                process.exit(1);
-            }
-        }
+        process.exit(1);
     }
 
     std.debug.print("Running {d} snapshot test(s)...\n\n", .{selected_paths.len});
