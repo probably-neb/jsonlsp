@@ -14,6 +14,14 @@ pos: usize,
 committed: usize,
 commit_size: usize,
 
+pub const zero = Arena{
+    .capacity = 0,
+    .commit_size = 0,
+    .committed = 0,
+    .memory = &.{},
+    .pos = 0,
+};
+
 pub const InitOptions = struct {
     reserve_size: usize = RESERVE_SIZE_DEFAULT,
     commit_size: usize = COMMIT_GRANULARITY_DEFAULT,
@@ -47,8 +55,10 @@ pub fn init(options: InitOptions) InitError!Arena {
 }
 
 pub fn deinit(self: *Arena) void {
-    virtualfree(self.memory[0..self.capacity]);
-    self.* = undefined;
+    if (self.capacity > 0) {
+        virtualfree(self.memory[0..self.capacity]);
+    }
+    self.* = .zero;
 }
 
 pub fn push(arena: *Arena, size: usize) AllocError![]u8 {

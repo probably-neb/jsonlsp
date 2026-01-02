@@ -23,17 +23,17 @@ const Token_Kind = enum {
     err,
 };
 
-const Line = struct {
+pub const Line = struct {
     num: u32,
     idx: Offset,
 };
 
-const Token = struct {
+pub const Token = struct {
     kind: Token_Kind,
     range: Range,
     line: Line,
 
-    const Range = base.Range(Offset);
+    pub const Range = base.Range(Offset);
 };
 
 pub const ParseError = OOM || error{InvalidUtf8};
@@ -225,6 +225,7 @@ const Tree_Kind = union(enum) {
 pub const Tree_Root = struct {
     tree: Tree,
     arena: *Arena,
+    tokens: []const Token,
 };
 
 const Tree = struct {
@@ -415,6 +416,7 @@ pub fn build_tree(parser: Parser) OOM!Tree_Root {
         // TODO: remove arena, just pass around trees
         .arena = p.arena,
         .tree = stack.pop().?,
+        .tokens = tokens,
     };
 }
 
@@ -554,7 +556,7 @@ pub const SyntaxError = struct {
     }
 };
 
-const Offset = struct {
+pub const Offset = struct {
     byte: u32,
     utf8: u32,
     utf16: u32,

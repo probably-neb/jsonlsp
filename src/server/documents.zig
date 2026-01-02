@@ -12,7 +12,7 @@ const DOCUMENTS_MAX: usize = 4096;
 
 pub const Document = struct {
     next: usize,
-    arena_state: ?Arena,
+    arena: Arena,
     uri: []const u8,
     version: i32,
     text: GapBuffer,
@@ -21,17 +21,13 @@ pub const Document = struct {
 
     const zero = Document{
         .next = 0,
-        .arena_state = null,
+        .arena = .zero,
         .uri = "",
         .version = 0,
         .text = .empty,
         .language_id = "",
         .tree = null,
     };
-
-    fn arena(doc: *Document) Alloc {
-        return doc.arena_state.?.allocator();
-    }
 };
 
 pub const DocumentStore = struct {
@@ -58,9 +54,7 @@ pub const DocumentStore = struct {
         var it = store.iter();
         while (it.next()) |i| {
             const doc = &store.documents[i];
-            if (doc.arena_state) |*arena_state| {
-                arena_state.deinit();
-            }
+            doc.arena.deinit();
         }
         store.* = undefined;
     }
@@ -108,13 +102,13 @@ pub const DocumentStore = struct {
             .text = GapBuffer.init(buf, contents.len),
             .version = version,
             .language_id = try arena.dupe(u8, language_id),
-            .arena_state = null,
+            .arena = .zero,
             .tree = null,
         };
         var lexer: json.Lexer = .zero;
         try json.lex(&lexer, &arena, buf[0..contents.len]);
         doc.tree = try json.parse(&arena, &lexer);
-        doc.arena_state = arena;
+        doc.arena = arena;
 
         store.documents_open = store.documents_free;
         store.documents_free = next_free;
@@ -125,9 +119,7 @@ pub const DocumentStore = struct {
         const idx = store.find(uri) orelse return false;
 
         const doc = &store.documents[idx];
-        if (doc.arena_state) |*arena_state| {
-            arena_state.deinit();
-        }
+        doc.arena.deinit();
 
         if (store.documents_open == idx) {
             store.documents_open = doc.next;
@@ -150,6 +142,39 @@ pub const DocumentStore = struct {
         store.documents_free = idx;
         store.documents_used -= 1;
         return true;
+    }
+
+    pub const EditError = error{ DocumentNotFound, OutOfMemory } || GapBuffer.Error;
+
+    // WIP:
+    // working on edits
+    // position_to_offset is slow
+    // nothing is freed, infinite memory usage! (probably time to use free-list)
+    // should think about using gap buffer to store tokens, so that token edits can be applied the same way as text edits?
+    pub fn edit(store: *DocumentStore, uri: []const u8, version: i32, range: lsp.types.Range, text: []const u8) EditError!void {
+        const doc_idx = store.find(uri) orelse return error.DocumentNotFound;
+        const doc = &store.documents[doc_idx];
+
+        // PERF: can use one offset to find the next
+        const start_offset = position_to_offset(doc, range.start.line, range.start.character);
+        const end_offset = position_to_offset(doc, range.end.line, range.end.character);
+
+        try doc.text.replace(start_offset, end_offset, text);
+        doc.version = version;
+
+        const arena = &doc.arena;
+
+        var lexer: json.Lexer = .zero;
+        const text_slices = doc.text.slices();
+        json.lex(&lexer, arena, text_slices.prefix) catch {
+            doc.tree = null;
+            return;
+        };
+        json.lex(&lexer, arena, text_slices.suffix) catch {
+            doc.tree = null;
+            return;
+        };
+        doc.tree = json.parse(arena, &lexer) catch null;
     }
 
     pub const DiagnosticSet = struct {
@@ -196,3 +221,84 @@ pub const DocumentStore = struct {
         return diagnostic_index;
     }
 };
+
+/// Convert LSP line/character position to byte offset using binary search on tokens.
+/// LSP uses UTF-16 code units for character offsets.
+pub fn position_to_offset(doc: *const Document, line: u32, character: u32) usize {
+    const tokens = if (doc.tree) |tree| tree.tokens else &[_]json.Token{};
+    if (tokens.len == 0) {
+        return scan_to_char(doc, scan_to_line(doc, 0, 0, line), character);
+    }
+
+    // Binary search for a token on or near the target line
+    var left: usize = 0;
+    var right: usize = tokens.len;
+    while (left < right) {
+        const mid = left + (right - left) / 2;
+        if (tokens[mid].line.num < line) {
+            left = mid + 1;
+        } else {
+            right = mid;
+        }
+    }
+
+    // Find the line start offset
+    const line_start_byte: u32 = blk: {
+        if (left < tokens.len and tokens[left].line.num == line) {
+            break :blk tokens[left].line.idx.byte;
+        } else if (left > 0) {
+            // Use previous token to find line start
+            const prev_token = tokens[left - 1];
+            if (prev_token.line.num == line) {
+                break :blk prev_token.line.idx.byte;
+            }
+            // Need to scan from previous token's line to target line
+            // Fall back to linear scan from that point
+            break :blk scan_to_line(doc, prev_token.line.idx.byte, prev_token.line.num, line);
+        } else {
+            break :blk 0;
+        }
+    };
+
+    // Now scan from line start to find the character offset
+    return scan_to_char(doc, line_start_byte, character);
+}
+
+fn scan_to_line(doc: *const Document, start_byte: u32, start_line: u32, target_line: u32) u32 {
+    var byte_offset: u32 = start_byte;
+    var current_line = start_line;
+    var it = doc.text.iterator();
+    it.pos = start_byte;
+
+    while (it.next()) |byte| {
+        if (current_line == target_line) {
+            return byte_offset;
+        }
+        if (byte == '\n') {
+            current_line += 1;
+        }
+        byte_offset = @intCast(it.pos);
+    }
+    return byte_offset;
+}
+
+fn scan_to_char(doc: *const Document, line_start: u32, target_char: u32) usize {
+    var current_char: u32 = 0;
+    var it = doc.text.iterator();
+    it.pos = line_start;
+
+    while (it.next()) |byte| {
+        if (current_char == target_char or byte == '\n') {
+            return it.pos - 1;
+        }
+        const byte_len = std.unicode.utf8ByteSequenceLength(byte) catch 1;
+        const utf16_len: u32 = if (byte_len == 4) 2 else 1;
+        current_char += utf16_len;
+        // Skip continuation bytes
+        var skip: usize = 1;
+        while (skip < byte_len) : (skip += 1) {
+            _ = it.next();
+        }
+    }
+    return it.pos;
+}

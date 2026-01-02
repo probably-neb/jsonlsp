@@ -1,0 +1,234 @@
+>>>
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "initialize",
+  "params": {
+    "processId": 1234,
+    "clientInfo": {
+      "name": "test-client",
+      "version": "1.0.0"
+    },
+    "rootUri": "file:///test/project",
+    "capabilities": {
+      "textDocument": {
+        "synchronization": {
+          "dynamicRegistration": false,
+          "willSave": false,
+          "willSaveWaitUntil": false,
+          "didSave": true
+        }
+      }
+    }
+  }
+}
+
+<<<
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "capabilities": {
+      "textDocumentSync": {
+        "openClose": true,
+        "change": 2
+      }
+    },
+    "serverInfo": {
+      "name": "json-lsp",
+      "version": "0.0.0"
+    }
+  }
+}
+
+>>>
+{
+  "jsonrpc": "2.0",
+  "method": "initialized",
+  "params": {}
+}
+
+>>>
+{
+  "jsonrpc": "2.0",
+  "method": "textDocument/didOpen",
+  "params": {
+    "textDocument": {
+      "uri": "file:///test/project/config.json",
+      "languageId": "json",
+      "version": 1,
+      "text": "{\"name\": \"test\"}"
+    }
+  }
+}
+
+>>>
+{
+  "jsonrpc": "2.0",
+  "method": "textDocument/didChange",
+  "params": {
+    "textDocument": {
+      "uri": "file:///test/project/config.json",
+      "version": 2
+    },
+    "contentChanges": [
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 14
+          },
+          "end": {
+            "line": 0,
+            "character": 14
+          }
+        },
+        "text": ", \"value\": 42"
+      }
+    ]
+  }
+}
+
+>>>
+{
+  "jsonrpc": "2.0",
+  "method": "textDocument/didChange",
+  "params": {
+    "textDocument": {
+      "uri": "file:///test/project/config.json",
+      "version": 3
+    },
+    "contentChanges": [
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 8
+          },
+          "end": {
+            "line": 0,
+            "character": 14
+          }
+        },
+        "text": "\"updated\""
+      }
+    ]
+  }
+}
+
+>>>
+{
+  "jsonrpc": "2.0",
+  "method": "textDocument/didChange",
+  "params": {
+    "textDocument": {
+      "uri": "file:///test/project/config.json",
+      "version": 4
+    },
+    "contentChanges": [
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 8
+          },
+          "end": {
+            "line": 0,
+            "character": 18
+          }
+        },
+        "text": "broken"
+      }
+    ]
+  }
+}
+
+<<<
+{
+  "jsonrpc": "2.0",
+  "method": "textDocument/publishDiagnostics",
+  "params": {
+    "uri": "file:///test/project/config.json",
+    "version": 4,
+    "diagnostics": [
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 8
+          },
+          "end": {
+            "line": 0,
+            "character": 14
+          }
+        },
+        "severity": 1,
+        "code": null,
+        "codeDescription": null,
+        "source": null,
+        "message": "expected colon",
+        "tags": null,
+        "relatedInformation": null,
+        "data": null
+      }
+    ]
+  }
+}
+
+>>>
+{
+  "jsonrpc": "2.0",
+  "method": "textDocument/didChange",
+  "params": {
+    "textDocument": {
+      "uri": "file:///test/project/config.json",
+      "version": 5
+    },
+    "contentChanges": [
+      {
+        "range": {
+          "start": {
+            "line": 0,
+            "character": 8
+          },
+          "end": {
+            "line": 0,
+            "character": 14
+          }
+        },
+        "text": "\"fixed\""
+      }
+    ]
+  }
+}
+
+<<<
+{
+  "jsonrpc": "2.0",
+  "method": "textDocument/publishDiagnostics",
+  "params": {
+    "uri": "file:///test/project/config.json",
+    "version": 5,
+    "diagnostics": []
+  }
+}
+
+>>>
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "shutdown"
+}
+
+<<<
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": null
+}
+
+>>>
+{
+  "jsonrpc": "2.0",
+  "method": "exit"
+}

@@ -113,7 +113,22 @@ pub fn run(arena: *Arena, transport: *lsp.Transport) !void {
                         }
                     };
                 },
-                .@"textDocument/didChange" => |_| {},
+                .@"textDocument/didChange" => |params| {
+                    const uri = params.textDocument.uri;
+                    const version = params.textDocument.version;
+                    for (params.contentChanges) |change| {
+                        switch (change) {
+                            .literal_0 => |incremental| {
+                                doc_store.edit(uri, version, incremental.range, incremental.text) catch |err| {
+                                    std.log.err("Failed to apply edit to `{s}`: {}", .{ uri, err });
+                                };
+                            },
+                            .literal_1 => |_| {
+                                std.log.warn("Received full document change for `{s}` (full sync not supported)", .{uri});
+                            },
+                        }
+                    }
+                },
                 .@"textDocument/didClose" => |params| {
                     const closed = doc_store.close(params.textDocument.uri);
                     if (!closed) {
@@ -179,7 +194,7 @@ fn wait_for_init(arena: *Arena, transport: *lsp.Transport) !void {
                                     .textDocumentSync = .{
                                         .TextDocumentSyncOptions = .{
                                             .openClose = true,
-                                            .change = .None,
+                                            .change = .Incremental,
                                         },
                                     },
                                 },

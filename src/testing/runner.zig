@@ -164,7 +164,7 @@ test "run simple init/shutdown/exit" {
         \\{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}
         \\
         \\<<<
-        \\{"jsonrpc":"2.0","id":1,"result":{"capabilities":{"textDocumentSync":{"openClose":true,"change":0}},"serverInfo":{"name":"json-lsp","version":"0.0.0"}}}
+        \\{"jsonrpc":"2.0","id":1,"result":{"capabilities":{"textDocumentSync":{"openClose":true,"change":2}},"serverInfo":{"name":"json-lsp","version":"0.0.0"}}}
         \\
         \\>>>
         \\{"jsonrpc":"2.0","method":"initialized","params":{}}
