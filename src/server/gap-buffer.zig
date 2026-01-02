@@ -81,7 +81,7 @@ pub const GapBuffer = struct {
             const shift_len = pos - gap_start;
             const src = gap_buf.data[gap_close .. gap_close + shift_len];
             const dst = gap_buf.data[gap_start .. gap_start + shift_len];
-            @memcpy(dst, src);
+            std.mem.copyForwards(u8, dst, src);
 
             gap_buf.gap.start = pos;
             gap_buf.gap.close = gap_close + shift_len;
