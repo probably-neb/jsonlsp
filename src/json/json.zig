@@ -222,6 +222,7 @@ const Tree_Kind = union(enum) {
     }
 };
 
+// TODO: don't store Arena, and create zero value
 pub const Tree_Root = struct {
     tree: Tree,
     arena: *Arena,
@@ -350,10 +351,14 @@ const Parser = struct {
         }
         const m = try p.open();
         const error_message = try std.fmt.allocPrint(p.arena.allocator(), "expected {t}", .{kind});
+        try p.skip_consecutive_errors();
         try p.close(m, .err_value(error_message));
+    }
 
-        // // TODO: Error reporting.
-        // eprintln!("expected {kind:?}");
+    fn skip_consecutive_errors(p: *Parser) OOM!void {
+        while (p.at(.err)) {
+            try p.advance();
+        }
     }
 
     fn explicit_error(p: *Parser, err: []const u8) OOM!void {
@@ -433,6 +438,11 @@ fn parse_any(p: *Parser) OOM!void {
             try p.advance();
         },
         .eof => return,
+        .err => {
+            const m = try p.open();
+            try p.skip_consecutive_errors();
+            try p.close(m, .err_value("unexpected token"));
+        },
         else => {
             try p.advance_with_error("unexpected token");
         },
