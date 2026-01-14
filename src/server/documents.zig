@@ -12,19 +12,23 @@ const DOCUMENTS_MAX: usize = 4096;
 
 pub const Document = struct {
     next: usize,
-    arena: Arena,
     uri: []const u8,
     version: i32,
-    text: GapBuffer,
+    buf: GapBuffer,
+    buf_arena: Arena,
     language_id: []const u8,
     tree: ?json.Tree_Root,
+    lex_arena: Arena,
+    tree_arena: Arena,
 
     const zero = Document{
         .next = 0,
-        .arena = .zero,
+        .lex_arena = .zero,
+        .tree_arena = .zero,
+        .buf_arena = .zero,
         .uri = "",
         .version = 0,
-        .text = .empty,
+        .buf = .empty,
         .language_id = "",
         .tree = null,
     };
@@ -54,7 +58,7 @@ pub const DocumentStore = struct {
         var it = store.iter();
         while (it.next()) |i| {
             const doc = &store.documents[i];
-            doc.arena.deinit();
+            _ = store.close(doc.uri);
         }
         store.* = undefined;
     }
@@ -93,22 +97,33 @@ pub const DocumentStore = struct {
 
         const doc = &store.documents[store.documents_free];
         const next_free = doc.next;
-        var arena: Arena = try .init(.{});
-        const buf = try arena.alloc(u8, contents.len * 2);
+
+        var buf_arena: Arena = try .init(.{});
+        const language_id_owned = try buf_arena.dupe(u8, language_id);
+        const buf = try buf_arena.alloc(u8, contents.len * 2);
         @memcpy(buf[0..contents.len], contents);
+        const gap_buf = GapBuffer.init(buf, contents.len);
+
+        var lex_arena: Arena = try .init(.{});
+        var lexer: json.Lexer = .zero;
+        const slices = gap_buf.slices();
+        try json.lex(&lexer, &lex_arena, slices.prefix);
+        try json.lex(&lexer, &lex_arena, slices.suffix);
+
+        var tree_arena: Arena = try .init(.{});
+        const tree = try json.parse(&tree_arena, &lexer);
+
         doc.* = .{
             .next = store.documents_open,
-            .uri = try arena.dupe(u8, uri),
-            .text = GapBuffer.init(buf, contents.len),
+            .uri = try buf_arena.dupe(u8, uri),
+            .buf = gap_buf,
             .version = version,
-            .language_id = try arena.dupe(u8, language_id),
-            .arena = .zero,
-            .tree = null,
+            .language_id = language_id_owned,
+            .buf_arena = buf_arena,
+            .tree = tree,
+            .lex_arena = lex_arena,
+            .tree_arena = tree_arena,
         };
-        var lexer: json.Lexer = .zero;
-        try json.lex(&lexer, &arena, buf[0..contents.len]);
-        doc.tree = try json.parse(&arena, &lexer);
-        doc.arena = arena;
 
         store.documents_open = store.documents_free;
         store.documents_free = next_free;
@@ -119,7 +134,9 @@ pub const DocumentStore = struct {
         const idx = store.find(uri) orelse return false;
 
         const doc = &store.documents[idx];
-        doc.arena.deinit();
+        doc.buf_arena.release();
+        doc.lex_arena.release();
+        doc.tree_arena.release();
 
         if (store.documents_open == idx) {
             store.documents_open = doc.next;
@@ -159,22 +176,33 @@ pub const DocumentStore = struct {
         const start_offset = position_to_offset(doc, range.start.line, range.start.character);
         const end_offset = position_to_offset(doc, range.end.line, range.end.character);
 
-        try doc.text.replace(start_offset, end_offset, text);
+        const buf_range: base.Range(usize) = .range(start_offset, end_offset);
+
+        if (!doc.buf.will_fit(buf_range, text)) {
+            const new_buf = try doc.buf_arena.expand(u8, doc.buf.data, doc.buf.data.len * 2);
+            doc.buf.expand(new_buf);
+        }
+        doc.buf.replace(buf_range, text) catch |err| {
+            switch (err) {
+                error.OutOfMemory => unreachable,
+                else => return err,
+            }
+        };
         doc.version = version;
 
-        const arena = &doc.arena;
-
+        doc.lex_arena.clear();
         var lexer: json.Lexer = .zero;
-        const text_slices = doc.text.slices();
-        json.lex(&lexer, arena, text_slices.prefix) catch {
+        const text_slices = doc.buf.slices();
+        json.lex(&lexer, &doc.lex_arena, text_slices.prefix) catch {
             doc.tree = null;
             return;
         };
-        json.lex(&lexer, arena, text_slices.suffix) catch {
+        json.lex(&lexer, &doc.lex_arena, text_slices.suffix) catch {
             doc.tree = null;
             return;
         };
-        doc.tree = json.parse(arena, &lexer) catch null;
+        doc.tree_arena.clear();
+        doc.tree = json.parse(&doc.tree_arena, &lexer) catch null;
     }
 
     pub const DiagnosticSet = struct {
@@ -267,7 +295,7 @@ pub fn position_to_offset(doc: *const Document, line: u32, character: u32) usize
 fn scan_to_line(doc: *const Document, start_byte: u32, start_line: u32, target_line: u32) u32 {
     var byte_offset: u32 = start_byte;
     var current_line = start_line;
-    var it = doc.text.iterator();
+    var it = doc.buf.iterator();
     it.pos = start_byte;
 
     while (it.next()) |byte| {
@@ -284,7 +312,7 @@ fn scan_to_line(doc: *const Document, start_byte: u32, start_line: u32, target_l
 
 fn scan_to_char(doc: *const Document, line_start: u32, target_char: u32) usize {
     var current_char: u32 = 0;
-    var it = doc.text.iterator();
+    var it = doc.buf.iterator();
     it.pos = line_start;
 
     while (it.next()) |byte| {

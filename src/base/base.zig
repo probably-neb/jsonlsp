@@ -28,5 +28,13 @@ pub fn Range(comptime T: type) type {
             }
             return self.close - self.start;
         }
+
+        pub fn range(start: anytype, close: @TypeOf(start)) Range(@TypeOf(start)) {
+            return .{ .start = start, .close = close };
+        }
+
+        pub fn range_of(comptime R: type, start: R, close: R) Range(R) {
+            return .{ .start = start, .close = close };
+        }
     };
 }

@@ -54,6 +54,10 @@ pub fn init(options: InitOptions) InitError!Arena {
     };
 }
 
+pub fn release(self: *Arena) void {
+    self.deinit();
+}
+
 pub fn deinit(self: *Arena) void {
     if (self.capacity > 0) {
         virtualfree(self.memory[0..self.capacity]);
@@ -79,6 +83,33 @@ pub fn push_aligned(arena: *Arena, size: usize, alignment: usize) AllocError![]u
 
     arena.pos = new_pos;
     return arena.memory[aligned_pos..new_pos];
+}
+
+pub fn expand(arena: *Arena, comptime T: type, slice: []T, new_len: usize) AllocError![]T {
+    if (new_len <= slice.len) return slice[0..new_len];
+    if (@intFromPtr(slice.ptr) % @alignOf(T) != 0) return error.OutOfMemory;
+
+    const old_byte_len, const old_overflow = @mulWithOverflow(@sizeOf(T), slice.len);
+    if (old_overflow != 0) return error.OutOfMemory;
+
+    const new_byte_len, const new_overflow = @mulWithOverflow(@sizeOf(T), new_len);
+    if (new_overflow != 0) return error.OutOfMemory;
+
+    const slice_start = @intFromPtr(slice.ptr);
+    const arena_start = @intFromPtr(arena.memory);
+    const arena_end = arena_start + arena.pos;
+
+    if (slice_start + old_byte_len != arena_end) return error.OutOfMemory;
+
+    const new_pos = arena.pos + (new_byte_len - old_byte_len);
+    if (new_pos > arena.capacity) return error.OutOfMemory;
+
+    if (new_pos > arena.committed) {
+        try arena.commit_up_to(new_pos);
+    }
+
+    arena.pos = new_pos;
+    return slice.ptr[0..new_len];
 }
 
 pub fn push_zero(arena: *Arena, size: usize) AllocError![]u8 {
@@ -484,6 +515,25 @@ test "scratch arenas: conflict avoidance" {
 
     scratch2.release();
     scratch1.release();
+}
+
+test "Arena: expand respects last allocation and sizes" {
+    var arena = try Arena.init(.{ .reserve_size = 1024 * 1024 });
+    defer arena.deinit();
+
+    const first = try arena.alloc(u8, 8);
+    try std.testing.expectEqual(@as(usize, 8), first.len);
+
+    const last = try arena.alloc(u16, 4);
+    try std.testing.expectEqual(@as(usize, 4), last.len);
+
+    const expanded = try arena.expand(u16, last, 10);
+    try std.testing.expectEqual(@as(usize, 10), expanded.len);
+    try std.testing.expectEqual(@as(usize, 8 + 10 * @sizeOf(u16)), arena.get_pos());
+
+    _ = try arena.alloc(u8, 1);
+
+    try std.testing.expectError(error.OutOfMemory, arena.expand(u16, expanded, 12));
 }
 
 test "FreeList: basic allocation and reuse" {

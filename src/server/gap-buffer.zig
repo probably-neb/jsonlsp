@@ -28,6 +28,18 @@ pub const GapBuffer = struct {
         };
     }
 
+    pub fn expand(gap_buf: *GapBuffer, new_buf: []u8) void {
+        std.debug.assert(new_buf.len > gap_buf.data.len);
+        std.debug.assert(new_buf.ptr == gap_buf.data.ptr);
+
+        const old_len = gap_buf.data.len;
+        const new_len = new_buf.len;
+        const diff = new_len - old_len;
+        gap_buf.data = new_buf;
+        std.mem.copyForwards(u8, gap_buf.data[gap_buf.gap.close + diff ..], gap_buf.data[gap_buf.gap.close..old_len]);
+        gap_buf.gap.close += diff;
+    }
+
     pub fn new_from_smaller(prev: *const GapBuffer, new_buffer: []u8) GapBuffer {
         std.debug.assert(new_buffer.len > prev.data.len);
         std.debug.assert(prev.gap.start <= prev.gap.close);
@@ -112,26 +124,32 @@ pub const GapBuffer = struct {
         gap_buf.gap.close += count;
     }
 
-    pub fn replace(gap_buf: *GapBuffer, start: usize, end: usize, text: []const u8) Error!void {
-        if (start > end) return error.InvalidRange;
+    pub fn will_fit(gap_buf: *const GapBuffer, range: base.Range(usize), text: []const u8) bool {
+        if (range.len() >= text.len) return true;
+        return text.len - range.len() <= gap_buf.gap.len();
+    }
+
+    pub fn replace(gap_buf: *GapBuffer, range: base.Range(usize), text: []const u8) Error!void {
+        if (range.start > range.close) return error.InvalidRange;
 
         const content_len = gap_buf.len();
-        if (end > content_len) return error.OutOfBounds;
+        if (range.close > content_len) return error.OutOfBounds;
 
-        const delete_len = end - start;
+        const delete_len = range.close - range.start;
 
         if (delete_len == text.len) {
-            try gap_buf.move_gap_to(end);
-            @memcpy(gap_buf.data[start..end], text);
+            try gap_buf.move_gap_to(range.start);
+            @memcpy(gap_buf.data[range.start .. range.start + text.len], text);
             return;
         }
 
         const gap_len = gap_buf.gap.len();
         if (gap_len + delete_len < text.len) return error.OutOfMemory;
 
-        try gap_buf.move_gap_to(end);
+        try gap_buf.move_gap_to(range.start);
+        if (gap_buf.gap.close + delete_len > gap_buf.data.len) return error.InvalidRange;
 
-        gap_buf.gap.start -= delete_len;
+        gap_buf.gap.close += delete_len;
 
         @memcpy(gap_buf.data[gap_buf.gap.start .. gap_buf.gap.start + text.len], text);
         gap_buf.gap.start += text.len;
@@ -218,7 +236,7 @@ test "replace" {
 
     var buf = GapBuffer.init(storage[0..], "hello world".len);
 
-    try buf.replace(6, 11, "zig");
+    try buf.replace(.range_of(usize, 6, 11), "zig");
 
     const got = try collect(&buf, std.testing.allocator);
     defer std.testing.allocator.free(got);
