@@ -2,7 +2,7 @@ const std = @import("std");
 const JSONSchema = @import("json-schema");
 
 fn check_valid(schema_str: []const u8, case: []const u8, is_valid: bool) !void {
-    const schema = JSONSchema.parse(schema_str) catch |err| std.debug.panic("Failed to parse JSON schema: {}\n", .{err});
+    const schema = JSONSchema.parseWithRevision(schema_str, .draft2020_12) catch |err| std.debug.panic("Failed to parse JSON schema: {}\n", .{err});
     if (schema.is_valid(case) == is_valid) return;
     std.debug.print("\nReason:\nExpected Schema:\n{s}\nTo {s} Case:\n{s}\nBut it was {s}!\n", .{
         schema_str,

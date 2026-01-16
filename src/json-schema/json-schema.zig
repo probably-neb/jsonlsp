@@ -12,16 +12,33 @@
 
 const std = @import("std");
 const mem = std.mem;
-const Arena = std.heap.ArenaAllocator;
+const base = @import("base");
+const Arena = base.Arena;
 
 const str8 = []const u8;
 pub const OOM = error{OutOfMemory};
 
 const pcre = @import("pcre");
 
+pub const Revision = enum {
+    draft3,
+    draft4,
+    draft6,
+    draft7,
+    draft2019_09,
+    draft2020_12,
+    draft_next,
+    unknown,
+};
+
 pub const Schema = struct {
     root: *const Constraint,
     arena: Arena,
+
+    pub const PatternProperty = struct {
+        pattern: pcre.Regex,
+        constraint: *Constraint,
+    };
 
     pub const Constraint = struct {
         next: ?*Constraint,
@@ -49,10 +66,17 @@ pub const Schema = struct {
             max_f64_exclusive: f64,
             max_items: u64,
             min_items: u64,
+            max_properties: u64,
+            min_properties: u64,
             items: *Constraint,
+            tuple_items: ?struct {
+                items: []*Constraint,
+                additional_items: ?*Constraint,
+            },
             properties: struct {
                 first_property: ?*Constraint,
                 additional: *Constraint,
+                pattern_properties: []PatternProperty,
             },
             // todo: just store in slice, not actual constraint
             property: struct {
@@ -73,7 +97,8 @@ pub const Schema = struct {
     };
 
     pub fn is_valid(schema: *const Schema, input: str8) bool {
-        var arena_state = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+        var arena_state = Arena.init(.{}) catch unreachable;
+        defer arena_state.deinit();
         const arena = arena_state.allocator();
         var json = std.json.parseFromSlice(std.json.Value, arena, input, .{
             .allocate = .alloc_if_needed,
@@ -172,6 +197,26 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *std.json.V
             }
             return true;
         },
+        .tuple_items => |tuple_info| {
+            const ti = tuple_info orelse return true;
+            if (value.* != .array) {
+                return true;
+            }
+
+            // Validate each array item against its corresponding schema
+            for (value.array.items, 0..) |*item, i| {
+                if (i >= ti.items.len) {
+                    // Check additional items
+                    if (ti.additional_items) |additional_schema| {
+                        if (!try check(arena, additional_schema, item)) return false;
+                    }
+                    // If no additional_items constraint, extra items are allowed
+                    continue;
+                }
+                if (!try check(arena, ti.items[i], item)) return false;
+            }
+            return true;
+        },
         .min_len => |min_len| {
             return value.* != .string or (std.unicode.utf8CountCodepoints(value.string) catch 0) >= min_len;
         },
@@ -183,6 +228,12 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *std.json.V
         },
         .min_items => |min_items| {
             return value.* != .array or value.array.items.len >= min_items;
+        },
+        .max_properties => |max_properties| {
+            return value.* != .object or value.object.count() <= max_properties;
+        },
+        .min_properties => |min_properties| {
+            return value.* != .object or value.object.count() >= min_properties;
         },
         .max_i64 => |max_int| {
             return switch (value.*) {
@@ -261,10 +312,26 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *std.json.V
                     return false;
                 }
             }
+            // Check all properties against patternProperties and additionalProperties
             var obj_iter = value.object.iterator();
             while (obj_iter.next()) |entry| {
-                if (checked_properties.contains(entry.key_ptr.*)) continue;
-                if (!try check(arena, properties.additional, entry.value_ptr)) return false;
+                // Check if property matches any patternProperties (applies to ALL properties)
+                var matched_pattern = false;
+                for (properties.pattern_properties) |pattern_prop| {
+                    const matches = try pattern_prop.pattern.matches(entry.key_ptr.*, .{});
+                    if (matches != null) {
+                        matched_pattern = true;
+                        // Validate against the pattern's constraint
+                        if (!try check(arena, pattern_prop.constraint, entry.value_ptr)) {
+                            return false;
+                        }
+                    }
+                }
+
+                // Only check additionalProperties if not in properties AND no pattern matched
+                if (!checked_properties.contains(entry.key_ptr.*) and !matched_pattern) {
+                    if (!try check(arena, properties.additional, entry.value_ptr)) return false;
+                }
             }
             return true;
         },
@@ -294,7 +361,10 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *std.json.V
                 .number_string => 0.0, // todo: handle?
                 else => 0.0,
             };
-            return @rem(float_val, multiple_of) <= std.math.floatEps(f64);
+            // Check if value/multiple_of is close to an integer to handle floating-point precision
+            const quotient = float_val / multiple_of;
+            const diff = @abs(quotient - @round(quotient));
+            return diff < 1e-9;
         },
         .multiple_of_i64 => |multiple_of| {
             if (multiple_of == 0) return false;
@@ -315,7 +385,11 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *std.json.V
 }
 
 pub fn parse(schema_contents: str8) !Schema {
-    var arena_state = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    return parseWithRevision(schema_contents, null);
+}
+
+pub fn parseWithRevision(schema_contents: str8, revision: ?Revision) !Schema {
+    var arena_state = try Arena.init(.{});
     const arena = arena_state.allocator();
     const parsed_schema = try std.json.parseFromSlice(std.json.Value, arena, schema_contents, .{
         .allocate = .alloc_if_needed,
@@ -324,7 +398,8 @@ pub fn parse(schema_contents: str8) !Schema {
         .duplicate_field_behavior = .use_last,
         .max_value_len = 1024,
     });
-    const root = try parse_constraint(&arena_state, parsed_schema.value);
+    const ctx = if (revision) |rev| ParseContext{ .revision = rev } else ParseContext.detect(parsed_schema.value);
+    const root = try parse_constraint(&arena_state, ctx, parsed_schema.value);
     return Schema{
         .root = root,
         .arena = arena_state,
@@ -333,7 +408,39 @@ pub fn parse(schema_contents: str8) !Schema {
 
 const ParseError = OOM || error{UnrecognizedSchemaType};
 
-fn parse_constraint(arena: *Arena, schema: std.json.Value) ParseError!*Schema.Constraint {
+const ParseContext = struct {
+    revision: Revision,
+
+    fn detect(schema: std.json.Value) ParseContext {
+        if (schema != .object) return .{ .revision = .unknown };
+        const schema_uri = schema.object.get("$schema") orelse return .{ .revision = .unknown };
+        if (schema_uri != .string) return .{ .revision = .unknown };
+
+        const uri = schema_uri.string;
+        if (mem.indexOf(u8, uri, "draft-03") != null or mem.indexOf(u8, uri, "draft3") != null) {
+            return .{ .revision = .draft3 };
+        } else if (mem.indexOf(u8, uri, "draft-04") != null or mem.indexOf(u8, uri, "draft4") != null) {
+            return .{ .revision = .draft4 };
+        } else if (mem.indexOf(u8, uri, "draft-06") != null or mem.indexOf(u8, uri, "draft6") != null) {
+            return .{ .revision = .draft6 };
+        } else if (mem.indexOf(u8, uri, "draft-07") != null or mem.indexOf(u8, uri, "draft7") != null) {
+            return .{ .revision = .draft7 };
+        } else if (mem.indexOf(u8, uri, "draft/2019-09") != null or mem.indexOf(u8, uri, "draft2019-09") != null) {
+            return .{ .revision = .draft2019_09 };
+        } else if (mem.indexOf(u8, uri, "draft/2020-12") != null or mem.indexOf(u8, uri, "draft2020-12") != null) {
+            return .{ .revision = .draft2020_12 };
+        } else if (mem.indexOf(u8, uri, "draft/next") != null or mem.indexOf(u8, uri, "draft-next") != null) {
+            return .{ .revision = .draft_next };
+        }
+        return .{ .revision = .unknown };
+    }
+
+    fn is_draft3(ctx: ParseContext) bool {
+        return ctx.revision == .draft3;
+    }
+};
+
+fn parse_constraint(arena: *Arena, ctx: ParseContext, schema: std.json.Value) ParseError!*Schema.Constraint {
     const constraint = try arena.allocator().create(Schema.Constraint);
     constraint.next = null;
     constraint.kind = .true;
@@ -377,6 +484,12 @@ fn parse_constraint(arena: *Arena, schema: std.json.Value) ParseError!*Schema.Co
             if (parse_validation__max_items(&obj)) |max_items| {
                 try chain_with(arena, constraint, max_items);
             }
+            if (parse_validation__min_properties(&obj)) |min_properties| {
+                try chain_with(arena, constraint, min_properties);
+            }
+            if (parse_validation__max_properties(&obj)) |max_properties| {
+                try chain_with(arena, constraint, max_properties);
+            }
             if (parse_validation__const(&obj)) |@"const"| {
                 try chain_with(arena, constraint, @"const");
             }
@@ -386,25 +499,25 @@ fn parse_constraint(arena: *Arena, schema: std.json.Value) ParseError!*Schema.Co
             if (parse_validation__unique_items(&obj)) |unique_items| {
                 try chain_with(arena, constraint, unique_items);
             }
-            if (parse_applicitor__items(arena, &obj) catch null) |items| {
+            if (parse_applicitor__items(arena, ctx, &obj) catch null) |items| {
                 try chain_with(arena, constraint, items);
             }
-            if (parse_applicitor__properties(arena, &obj) catch null) |properties| {
+            if (parse_applicitor__properties(arena, ctx, &obj) catch null) |properties| {
                 try chain_with(arena, constraint, properties);
             }
-            if (parse_validation__required_properties(arena, &obj) catch null) |required_properties| {
+            if (parse_validation__required_properties(arena, ctx, &obj) catch null) |required_properties| {
                 try chain_with(arena, constraint, required_properties);
             }
-            if (parse_applicator_not(arena, &obj) catch null) |not| {
+            if (parse_applicator_not(arena, ctx, &obj) catch null) |not| {
                 try chain_with(arena, constraint, not);
             }
-            if (parse_applicitor__all_of(arena, &obj) catch null) |all| {
+            if (parse_applicitor__all_of(arena, ctx, &obj) catch null) |all| {
                 try chain_with(arena, constraint, all);
             }
-            if (parse_applicitor__any_of(arena, &obj) catch null) |all| {
+            if (parse_applicitor__any_of(arena, ctx, &obj) catch null) |all| {
                 try chain_with(arena, constraint, all);
             }
-            if (parse_applicitor__one_of(arena, &obj) catch null) |all| {
+            if (parse_applicitor__one_of(arena, ctx, &obj) catch null) |all| {
                 try chain_with(arena, constraint, all);
             }
             if (parse_validation__multiple_of(&obj)) |multiple_of| {
@@ -667,6 +780,32 @@ fn parse_validation__max_items(obj: *const std.json.ObjectMap) ?Schema.Constrain
     }
 }
 
+fn parse_validation__min_properties(obj: *const std.json.ObjectMap) ?Schema.Constraint.Kind {
+    const min_properties = obj.get("minProperties") orelse return null;
+    switch (min_properties) {
+        .integer => |int_val| {
+            return .{ .min_properties = std.math.lossyCast(u64, int_val) };
+        },
+        .float => |flt_val| {
+            return .{ .min_properties = std.math.lossyCast(u64, flt_val) };
+        },
+        else => return null,
+    }
+}
+
+fn parse_validation__max_properties(obj: *const std.json.ObjectMap) ?Schema.Constraint.Kind {
+    const max_properties = obj.get("maxProperties") orelse return null;
+    switch (max_properties) {
+        .integer => |int_val| {
+            return .{ .max_properties = std.math.lossyCast(u64, int_val) };
+        },
+        .float => |flt_val| {
+            return .{ .max_properties = std.math.lossyCast(u64, flt_val) };
+        },
+        else => return null,
+    }
+}
+
 fn parse_validation__const(obj: *const std.json.ObjectMap) ?Schema.Constraint.Kind {
     const value = obj.getPtr("const") orelse return null;
     return .{ .@"const" = .hash_value(value) };
@@ -693,59 +832,146 @@ fn parse_validation__unique_items(obj: *const std.json.ObjectMap) ?Schema.Constr
     return .unique_items;
 }
 
-fn parse_applicitor__items(arena: *Arena, obj: *const std.json.ObjectMap) !?Schema.Constraint.Kind {
+fn parse_applicitor__items(arena: *Arena, ctx: ParseContext, obj: *const std.json.ObjectMap) !?Schema.Constraint.Kind {
     const items_sub_schema = obj.get("items") orelse return null;
-    return .{ .items = try parse_constraint(arena, items_sub_schema) };
+    // items can be either a single schema (applies to all items) or an array of schemas (tuple validation)
+    if (items_sub_schema == .array) {
+        const item_schemas = try arena.allocator().alloc(*Schema.Constraint, items_sub_schema.array.items.len);
+        for (items_sub_schema.array.items, 0..) |item_schema, i| {
+            item_schemas[i] = try parse_constraint(arena, ctx, item_schema);
+        }
+        // Parse additionalItems
+        const additional_items: ?*Schema.Constraint = blk: {
+            const additional_items_value = obj.get("additionalItems") orelse break :blk null;
+            break :blk try parse_constraint(arena, ctx, additional_items_value);
+        };
+        return .{ .tuple_items = .{
+            .items = item_schemas,
+            .additional_items = additional_items,
+        } };
+    }
+    return .{ .items = try parse_constraint(arena, ctx, items_sub_schema) };
 }
 
-fn parse_applicitor__properties(arena: *Arena, obj: *const std.json.ObjectMap) !?Schema.Constraint.Kind {
-    const properties_value = obj.get("properties") orelse return null;
-    if (properties_value != .object) return null;
-    var property_iter = properties_value.object.iterator();
-    var property_constraints = try arena.allocator().alloc(Schema.Constraint, properties_value.object.count());
-    var index: u64 = 0;
-    while (property_iter.next()) |entry| : (index += 1) {
-        if (index > 0) {
-            property_constraints[index - 1].next = &property_constraints[index];
+fn parse_applicitor__properties(arena: *Arena, ctx: ParseContext, obj: *const std.json.ObjectMap) !?Schema.Constraint.Kind {
+    const properties_value = obj.get("properties");
+    const pattern_properties_value = obj.get("patternProperties");
+    const additional_properties_value = obj.get("additionalProperties");
+
+    // Return null if none of the three property-related keywords are present
+    if (properties_value == null and pattern_properties_value == null and additional_properties_value == null) {
+        return null;
+    }
+
+    // Parse properties
+    var first_property: ?*Schema.Constraint = null;
+    if (properties_value) |props| {
+        if (props == .object) {
+            var property_iter = props.object.iterator();
+            var property_constraints = try arena.allocator().alloc(Schema.Constraint, props.object.count());
+            var index: u64 = 0;
+            while (property_iter.next()) |entry| : (index += 1) {
+                if (index > 0) {
+                    property_constraints[index - 1].next = &property_constraints[index];
+                }
+                property_constraints[index] = .{
+                    .next = null,
+                    .kind = .{
+                        .property = .{
+                            .name = try arena.allocator().dupe(u8, entry.key_ptr.*),
+                            .constraint = try parse_constraint(arena, ctx, entry.value_ptr.*),
+                        },
+                    },
+                };
+            }
+            if (property_constraints.len > 0) {
+                first_property = &property_constraints[0];
+            }
         }
-        property_constraints[index] = .{
-            .next = null,
-            .kind = .{
-                .property = .{
-                    .name = try arena.allocator().dupe(u8, entry.key_ptr.*),
-                    .constraint = try parse_constraint(arena, entry.value_ptr.*),
-                },
-            },
+    }
+
+    // Parse patternProperties
+    const PatternProperty = Schema.PatternProperty;
+    var pattern_properties: []PatternProperty = &.{};
+    if (pattern_properties_value) |pattern_props| {
+        if (pattern_props == .object) {
+            var pattern_property_list = try arena.allocator().alloc(PatternProperty, pattern_props.object.count());
+            var pattern_iter = pattern_props.object.iterator();
+            var pattern_index: usize = 0;
+            while (pattern_iter.next()) |entry| {
+                const pattern_c = try arena.allocator().dupeZ(u8, entry.key_ptr.*);
+                const re = pcre.Regex.compile(pattern_c, .{
+                    .Dotall = true,
+                    .JavascriptCompat = true,
+                    .Utf8 = true,
+                }) catch continue; // Skip invalid patterns
+                pattern_property_list[pattern_index] = .{
+                    .pattern = re,
+                    .constraint = try parse_constraint(arena, ctx, entry.value_ptr.*),
+                };
+                pattern_index += 1;
+            }
+            pattern_properties = pattern_property_list[0..pattern_index];
+        }
+    }
+
+    return .{
+        .properties = .{
+            .first_property = first_property,
+            .additional = if (additional_properties_value) |additional| try parse_constraint(arena, ctx, additional) else @constCast(&Schema.Constraint.zero),
+            .pattern_properties = pattern_properties,
+        },
+    };
+}
+
+fn parse_validation__required_properties(arena: *Arena, ctx: ParseContext, obj: *const std.json.ObjectMap) !?Schema.Constraint.Kind {
+    if (ctx.is_draft3()) {
+        // Draft3 style: "required": true inside each property definition
+        const properties_value = obj.get("properties") orelse return null;
+        if (properties_value != .object) return null;
+
+        var required_properties: std.ArrayList(ValueHash) = .empty;
+        var property_iter = properties_value.object.iterator();
+        while (property_iter.next()) |entry| {
+            if (entry.value_ptr.* != .object) continue;
+            const required_field = entry.value_ptr.object.get("required") orelse continue;
+            if (required_field != .bool) continue;
+            if (required_field.bool) {
+                // This property has "required": true, so add its name to the required list
+                const name_value: std.json.Value = .{ .string = entry.key_ptr.* };
+                try required_properties.append(arena.allocator(), .hash_value(@constCast(&name_value)));
+            }
+        }
+
+        if (required_properties.items.len == 0) return null;
+        return .{
+            .required = required_properties.items,
         };
     }
 
-    return .{ .properties = .{
-        .first_property = if (property_constraints.len > 0) &property_constraints[0] else null,
-        .additional = if (obj.get("additionalProperties")) |additional| try parse_constraint(arena, additional) else @constCast(&Schema.Constraint.zero),
-    } };
-}
-
-fn parse_validation__required_properties(arena: *Arena, obj: *const std.json.ObjectMap) !?Schema.Constraint.Kind {
+    // Draft4+ style: "required" is an array of property names at the object level
     const required_properties_value = obj.get("required") orelse return null;
     if (required_properties_value != .array) return null;
+
     var required_properties: std.ArrayList(ValueHash) = try .initCapacity(arena.allocator(), required_properties_value.array.items.len);
     for (required_properties_value.array.items) |required_property| {
         if (required_property != .string) continue;
         required_properties.appendAssumeCapacity(.hash_value(@constCast(&required_property)));
     }
+    if (required_properties.items.len == 0) return null;
     return .{
         .required = required_properties.items,
     };
 }
 
-fn parse_applicator_not(arena: *Arena, obj: *const std.json.ObjectMap) !?Schema.Constraint.Kind {
+fn parse_applicator_not(arena: *Arena, ctx: ParseContext, obj: *const std.json.ObjectMap) !?Schema.Constraint.Kind {
     const sub_schema = obj.get("not") orelse return null;
     return .{
-        .not = try parse_constraint(arena, sub_schema),
+        .not = try parse_constraint(arena, ctx, sub_schema),
     };
 }
 
-fn parse_applicitor__all_of(arena: *Arena, obj: *const std.json.ObjectMap) !?Schema.Constraint.Kind {
+fn parse_applicitor__all_of(arena: *Arena, ctx: ParseContext, obj: *const std.json.ObjectMap) !?Schema.Constraint.Kind {
     const items = obj.get("allOf") orelse return null;
     if (items != .array) return null;
     var all_of_constraint = Schema.Constraint.Kind{
@@ -753,14 +979,14 @@ fn parse_applicitor__all_of(arena: *Arena, obj: *const std.json.ObjectMap) !?Sch
     };
     var prev_next_ptr = &all_of_constraint.all;
     for (items.array.items) |item| {
-        const sub_schema = try parse_constraint(arena, item);
+        const sub_schema = try parse_constraint(arena, ctx, item);
         prev_next_ptr.* = sub_schema;
         prev_next_ptr = &sub_schema.next;
     }
     return all_of_constraint;
 }
 
-fn parse_applicitor__any_of(arena: *Arena, obj: *const std.json.ObjectMap) !?Schema.Constraint.Kind {
+fn parse_applicitor__any_of(arena: *Arena, ctx: ParseContext, obj: *const std.json.ObjectMap) !?Schema.Constraint.Kind {
     const items = obj.get("anyOf") orelse return null;
     if (items != .array) return null;
     var any_of_constraint = Schema.Constraint.Kind{
@@ -768,14 +994,14 @@ fn parse_applicitor__any_of(arena: *Arena, obj: *const std.json.ObjectMap) !?Sch
     };
     var prev_next_ptr = &any_of_constraint.any;
     for (items.array.items) |item| {
-        const sub_schema = try parse_constraint(arena, item);
+        const sub_schema = try parse_constraint(arena, ctx, item);
         prev_next_ptr.* = sub_schema;
         prev_next_ptr = &sub_schema.next;
     }
     return any_of_constraint;
 }
 
-fn parse_applicitor__one_of(arena: *Arena, obj: *const std.json.ObjectMap) !?Schema.Constraint.Kind {
+fn parse_applicitor__one_of(arena: *Arena, ctx: ParseContext, obj: *const std.json.ObjectMap) !?Schema.Constraint.Kind {
     const items = obj.get("oneOf") orelse return null;
     if (items != .array) return null;
     var one_of_constraint = Schema.Constraint.Kind{
@@ -783,7 +1009,7 @@ fn parse_applicitor__one_of(arena: *Arena, obj: *const std.json.ObjectMap) !?Sch
     };
     var prev_next_ptr = &one_of_constraint.one;
     for (items.array.items) |item| {
-        const sub_schema = try parse_constraint(arena, item);
+        const sub_schema = try parse_constraint(arena, ctx, item);
         prev_next_ptr.* = sub_schema;
         prev_next_ptr = &sub_schema.next;
     }
@@ -849,7 +1075,7 @@ test ValueHash {
 
 test "boolean schema - true schema accepts everything" {
     const schema_str = "true";
-    const schema = try parse(schema_str);
+    var schema = try parse(schema_str);
     defer schema.arena.deinit();
 
     // True schema should accept any valid JSON
@@ -864,7 +1090,7 @@ test "boolean schema - true schema accepts everything" {
 
 test "boolean schema - false schema rejects everything" {
     const schema_str = "false";
-    const schema = try parse(schema_str);
+    var schema = try parse(schema_str);
     defer schema.arena.deinit();
 
     // False schema should reject any JSON
@@ -879,7 +1105,7 @@ test "boolean schema - false schema rejects everything" {
 
 test "empty object schema - accepts everything" {
     const schema_str = "{}";
-    const schema = try parse(schema_str);
+    var schema = try parse(schema_str);
     defer schema.arena.deinit();
 
     // Empty object schema should accept any valid JSON
@@ -896,7 +1122,7 @@ test "type constraint - string" {
         \\  "type": "string"
         \\}
     ;
-    const schema = try parse(schema_str);
+    var schema = try parse(schema_str);
     defer schema.arena.deinit();
 
     // Should accept strings
@@ -918,7 +1144,7 @@ test "type constraint - number" {
         \\  "type": "number"
         \\}
     ;
-    const schema = try parse(schema_str);
+    var schema = try parse(schema_str);
     defer schema.arena.deinit();
 
     // Should accept numbers
@@ -942,7 +1168,7 @@ test "type constraint - integer" {
         \\  "type": "integer"
         \\}
     ;
-    const schema = try parse(schema_str);
+    var schema = try parse(schema_str);
     defer schema.arena.deinit();
 
     // Should accept integers
@@ -964,7 +1190,7 @@ test "type constraint - boolean" {
         \\  "type": "boolean"
         \\}
     ;
-    const schema = try parse(schema_str);
+    var schema = try parse(schema_str);
     defer schema.arena.deinit();
 
     // Should accept booleans
@@ -985,7 +1211,7 @@ test "type constraint - null" {
         \\  "type": "null"
         \\}
     ;
-    const schema = try parse(schema_str);
+    var schema = try parse(schema_str);
     defer schema.arena.deinit();
 
     // Should accept null
@@ -1005,7 +1231,7 @@ test "type constraint - array" {
         \\  "type": "array"
         \\}
     ;
-    const schema = try parse(schema_str);
+    var schema = try parse(schema_str);
     defer schema.arena.deinit();
 
     // Should accept arrays
@@ -1027,7 +1253,7 @@ test "type constraint - object" {
         \\  "type": "object"
         \\}
     ;
-    const schema = try parse(schema_str);
+    var schema = try parse(schema_str);
     defer schema.arena.deinit();
 
     // Should accept objects
@@ -1050,7 +1276,7 @@ test "string constraints - minLength and maxLength" {
         \\  "maxLength": 5
         \\}
     ;
-    const schema = try parse(schema_str);
+    var schema = try parse(schema_str);
     defer schema.arena.deinit();
 
     // Valid lengths
@@ -1074,7 +1300,7 @@ test "string constraints - pattern" {
         \\  "pattern": "^[a-z]+$"
         \\}
     ;
-    const schema = try parse(schema_str);
+    var schema = try parse(schema_str);
     defer schema.arena.deinit();
 
     // Matching pattern
@@ -1095,7 +1321,7 @@ test "number constraints - minimum and maximum" {
         \\  "maximum": 100
         \\}
     ;
-    const schema = try parse(schema_str);
+    var schema = try parse(schema_str);
     defer schema.arena.deinit();
 
     // Valid range
@@ -1118,7 +1344,7 @@ test "number constraints - exclusiveMinimum and exclusiveMaximum" {
         \\  "exclusiveMaximum": 100
         \\}
     ;
-    const schema = try parse(schema_str);
+    var schema = try parse(schema_str);
     defer schema.arena.deinit();
 
     // Valid range (exclusive)
@@ -1141,7 +1367,7 @@ test "array constraints - minItems and maxItems" {
         \\  "maxItems": 3
         \\}
     ;
-    const schema = try parse(schema_str);
+    var schema = try parse(schema_str);
     defer schema.arena.deinit();
 
     // Valid counts
@@ -1161,7 +1387,7 @@ test "array constraints - uniqueItems" {
         \\  "uniqueItems": true
         \\}
     ;
-    const schema = try parse(schema_str);
+    var schema = try parse(schema_str);
     defer schema.arena.deinit();
 
     // Unique items
@@ -1185,7 +1411,7 @@ test "object constraints - required properties" {
         \\  "required": ["name"]
         \\}
     ;
-    const schema = try parse(schema_str);
+    var schema = try parse(schema_str);
     defer schema.arena.deinit();
 
     // Has required property
@@ -1207,7 +1433,7 @@ test "object constraints - additionalProperties" {
         \\  "additionalProperties": false
         \\}
     ;
-    const schema = try parse(schema_str);
+    var schema = try parse(schema_str);
     defer schema.arena.deinit();
 
     // Only defined properties
@@ -1225,7 +1451,7 @@ test "enum constraint" {
         \\  "enum": ["red", "green", "blue", 42, null]
         \\}
     ;
-    const schema = try parse(schema_str);
+    var schema = try parse(schema_str);
     defer schema.arena.deinit();
 
     // Valid enum values
@@ -1247,7 +1473,7 @@ test "const constraint" {
         \\  "const": "fixed-value"
         \\}
     ;
-    const schema = try parse(schema_str);
+    var schema = try parse(schema_str);
     defer schema.arena.deinit();
 
     // Exact match
@@ -1269,7 +1495,7 @@ test "allOf combinator" {
         \\  ]
         \\}
     ;
-    const schema = try parse(schema_str);
+    var schema = try parse(schema_str);
     defer schema.arena.deinit();
 
     // Satisfies all constraints
@@ -1292,7 +1518,7 @@ test "anyOf combinator" {
         \\  ]
         \\}
     ;
-    const schema = try parse(schema_str);
+    var schema = try parse(schema_str);
     defer schema.arena.deinit();
 
     // Satisfies at least one
@@ -1314,7 +1540,7 @@ test "oneOf combinator" {
         \\  ]
         \\}
     ;
-    const schema = try parse(schema_str);
+    var schema = try parse(schema_str);
     defer schema.arena.deinit();
 
     // Satisfies exactly one
@@ -1337,7 +1563,7 @@ test "not combinator" {
         \\  }
         \\}
     ;
-    const schema = try parse(schema_str);
+    var schema = try parse(schema_str);
     defer schema.arena.deinit();
 
     // Not a string (valid)
@@ -1369,7 +1595,7 @@ test "nested object validation" {
         \\  "required": ["user"]
         \\}
     ;
-    const schema = try parse(schema_str);
+    var schema = try parse(schema_str);
     defer schema.arena.deinit();
 
     // Valid nested object
@@ -1405,7 +1631,7 @@ test "array items validation" {
         \\  }
         \\}
     ;
-    const schema = try parse(schema_str);
+    var schema = try parse(schema_str);
     defer schema.arena.deinit();
 
     // All items valid
@@ -1425,7 +1651,7 @@ test "multipleOf constraint" {
         \\  "multipleOf": 0.5
         \\}
     ;
-    const schema = try parse(schema_str);
+    var schema = try parse(schema_str);
     defer schema.arena.deinit();
 
     // Valid multiples
@@ -1438,4 +1664,31 @@ test "multipleOf constraint" {
     // Not multiples
     try std.testing.expectEqual(schema.is_valid("0.3"), false);
     try std.testing.expectEqual(schema.is_valid("1.7"), false);
+}
+
+test "object constraints - minProperties and maxProperties" {
+    const schema_str =
+        \\{
+        \\  "type": "object",
+        \\  "minProperties": 1,
+        \\  "maxProperties": 3
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    // Valid counts
+    try std.testing.expectEqual(schema.is_valid("{\"a\": 1}"), true);
+    try std.testing.expectEqual(schema.is_valid("{\"a\": 1, \"b\": 2}"), true);
+    try std.testing.expectEqual(schema.is_valid("{\"a\": 1, \"b\": 2, \"c\": 3}"), true);
+
+    // Too few properties
+    try std.testing.expectEqual(schema.is_valid("{}"), false);
+
+    // Too many properties
+    try std.testing.expectEqual(schema.is_valid("{\"a\": 1, \"b\": 2, \"c\": 3, \"d\": 4}"), false);
+
+    // Non-objects are not affected
+    try std.testing.expectEqual(schema.is_valid("[]"), false); // fails type check
+    try std.testing.expectEqual(schema.is_valid("\"string\""), false); // fails type check
 }

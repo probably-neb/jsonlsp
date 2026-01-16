@@ -2,11 +2,14 @@ const std = @import("std");
 const mem = std.mem;
 const debug = std.debug;
 const fs = std.fs;
+const base = @import("base");
+const Arena = base.Arena;
 
 const str8 = []const u8;
 
 pub fn main() !void {
-    var arena_state = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var arena_state = try Arena.init(.{});
+    defer arena_state.deinit();
     const arena = arena_state.allocator();
     const args = try std.process.argsAlloc(arena);
     if (args.len != 3) {
@@ -36,12 +39,14 @@ pub fn main() !void {
         const output = &output_writer.interface;
         defer output.flush() catch unreachable;
 
+        const revision = draftNameToRevision(draft_name);
+
         try output.print(
             \\ const std = @import("std");
             \\ const JSONSchema = @import("json-schema");
             \\
             \\ fn check_valid(schema_str: []const u8, case: []const u8, is_valid: bool) !void {{
-            \\     const schema = JSONSchema.parse(schema_str) catch |err| std.debug.panic("Failed to parse JSON schema: {{}}\n", .{{err}});
+            \\     const schema = JSONSchema.parseWithRevision(schema_str, .{s}) catch |err| std.debug.panic("Failed to parse JSON schema: {{}}\n", .{{err}});
             \\     if (schema.is_valid(case) == is_valid) return;
             \\     std.debug.print("\nReason:\nExpected Schema:\n{{s}}\nTo {{s}} Case:\n{{s}}\nBut it was {{s}}!\n", .{{
             \\         schema_str,
@@ -52,7 +57,7 @@ pub fn main() !void {
             \\     return error.FailedTest;
             \\ }}
         ,
-            .{},
+            .{revision},
         );
 
         while (try draft_dir_iter.next()) |test_case| {
@@ -139,6 +144,17 @@ const MultiLineStringFormat = struct {
         }
     }
 };
+
+fn draftNameToRevision(draft_name: str8) str8 {
+    if (mem.eql(u8, draft_name, "draft3")) return "draft3";
+    if (mem.eql(u8, draft_name, "draft4")) return "draft4";
+    if (mem.eql(u8, draft_name, "draft6")) return "draft6";
+    if (mem.eql(u8, draft_name, "draft7")) return "draft7";
+    if (mem.eql(u8, draft_name, "draft2019-09")) return "draft2019_09";
+    if (mem.eql(u8, draft_name, "draft2020-12")) return "draft2020_12";
+    if (mem.eql(u8, draft_name, "draft-next")) return "draft_next";
+    return "unknown";
+}
 
 const Test_File = struct {
     description: str8,

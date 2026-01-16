@@ -184,13 +184,15 @@ pub fn build(b: *std.Build) void {
             test_suite_step.addWatchInput(build_test_suite_path) catch std.debug.panic("OOM", .{});
             const test_suite = b.lazyDependency("json_schema_test_suite", .{}) orelse break :blk;
             const tests_path = test_suite.path("tests");
+            const tool_module = b.createModule(.{
+                .root_source_file = build_test_suite_path,
+                .target = b.graph.host,
+                .optimize = .Debug,
+            });
+            tool_module.addImport("base", mod_base);
             const tool = b.addExecutable(.{
                 .name = "generate_json_schema_test_suite",
-                .root_module = b.createModule(.{
-                    .root_source_file = build_test_suite_path,
-                    .target = b.graph.host,
-                    .optimize = .Debug,
-                }),
+                .root_module = tool_module,
             });
             const tool_step = b.addRunArtifact(tool);
             tool_step.addDirectoryArg(tests_path);
