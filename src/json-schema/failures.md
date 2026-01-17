@@ -34,7 +34,7 @@ Checklist of features/bug fixes derived from test suite failures.
 - [x] `additionalProperties` (31) — example: `draft3.test.additionalProperties.additionalProperties-being-false-does-not-allow-other-properties.patternProperties-are-not-additional-properties` — Expected acceptance, but it was rejected.
 - [x] `items` (38) — example: `draft3.test.items.an-array-of-schemas-for-items.wrong-types` — Expected rejection, but it was accepted.
 - [x] `properties` (14) — example: `draft3.test.properties.properties,-patternProperties,-additionalProperties-interaction.patternProperty-invalidates-property` — Expected rejection, but it was accepted.
-- [ ] `uniqueItems` (22) — example: `draft3.test.uniqueItems.uniqueItems-with-an-array-of-items-and-additionalItems=false.extra-items-are-invalid-even-if-unique` — Expected rejection, but it was accepted.
+- [x] `uniqueItems` (22) — example: `draft3.test.uniqueItems.uniqueItems-with-an-array-of-items-and-additionalItems=false.extra-items-are-invalid-even-if-unique` — Expected rejection, but it was accepted.
 - [x] `enum` (44) — example: `draft3.test.enum.enums-in-properties.missing-required-property-is-invalid` — Expected rejection, but it was accepted.
 - [ ] `const` (20) — example: `draft6.test.const.const-with-[false]-does-not-match-[0].[false]-is-valid` — Expected acceptance, but it was rejected.
 - [x] `required` (1) — example: `draft3.test.required.required-validation.non-present-required-property-is-invalid` — Expected rejection, but it was accepted.
