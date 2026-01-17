@@ -40,6 +40,15 @@ pub const Schema = struct {
         constraint: *Constraint,
     };
 
+    pub const Definition = struct {
+        path: str8,
+        constraint: *Constraint,
+
+        fn lessThan(_: void, a: Definition, b: Definition) bool {
+            return mem.order(u8, a.path, b.path) == .lt;
+        }
+    };
+
     pub const Constraint = struct {
         next: ?*Constraint,
         kind: Kind,
@@ -88,6 +97,7 @@ pub const Schema = struct {
             multiple_of_i64: i64,
             multiple_of_f64: f64,
             pattern: pcre.Regex,
+            ref: *Constraint,
         };
 
         pub const zero = Constraint{
@@ -387,6 +397,9 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *std.json.V
             const matches = try regex.matches(value.string, .{});
             return matches != null;
         },
+        .ref => |referenced_constraint| {
+            return check(arena, referenced_constraint, value);
+        },
     }
 }
 
@@ -404,7 +417,38 @@ pub fn parseWithRevision(schema_contents: str8, revision: ?Revision) !Schema {
         .duplicate_field_behavior = .use_last,
         .max_value_len = 1024,
     });
-    const ctx = if (revision) |rev| ParseContext{ .revision = rev } else ParseContext.detect(parsed_schema.value);
+    var ctx = if (revision) |rev| ParseContext{ .revision = rev } else ParseContext.detect(parsed_schema.value);
+
+    // Phase 1: Collect and pre-allocate definitions
+    ctx.defs = if (parsed_schema.value == .object) blk: {
+        const defs_obj = parsed_schema.value.object.get("$defs") orelse
+            parsed_schema.value.object.get("definitions");
+        if (defs_obj == null or defs_obj.? != .object) break :blk &.{};
+        const d = defs_obj.?.object;
+        const slice = try arena.alloc(Schema.Definition, d.count());
+        for (slice, d.keys()) |*def, key| {
+            const stub = try arena.create(Schema.Constraint);
+            stub.* = Schema.Constraint.zero;
+            def.* = .{ .path = key, .constraint = stub };
+        }
+        mem.sort(Schema.Definition, slice, {}, Schema.Definition.lessThan);
+        break :blk slice;
+    } else &.{};
+
+    // Phase 2: Parse each definition into its pre-allocated stub
+    if (parsed_schema.value == .object) {
+        const defs_obj = parsed_schema.value.object.get("$defs") orelse
+            parsed_schema.value.object.get("definitions");
+        if (defs_obj != null and defs_obj.? == .object) {
+            const d = defs_obj.?.object;
+            for (d.keys(), d.values()) |key, def_value| {
+                const def = find_def(ctx.defs, key) orelse continue;
+                try parse_into_constraint(&arena_state, ctx, def_value, def);
+            }
+        }
+    }
+
+    // Phase 3: Parse the root schema
     const root = try parse_constraint(&arena_state, ctx, parsed_schema.value);
     return Schema{
         .root = root,
@@ -412,10 +456,110 @@ pub fn parseWithRevision(schema_contents: str8, revision: ?Revision) !Schema {
     };
 }
 
+fn find_def(defs: []const Schema.Definition, path: str8) ?*Schema.Constraint {
+    var left: usize = 0;
+    var right: usize = defs.len;
+    while (left < right) {
+        const mid = left + (right - left) / 2;
+        const cmp = mem.order(u8, defs[mid].path, path);
+        switch (cmp) {
+            .lt => left = mid + 1,
+            .gt => right = mid,
+            .eq => return defs[mid].constraint,
+        }
+    }
+    return null;
+}
+
+fn parse_local_def_ref(ref: str8) ?str8 {
+    if (mem.startsWith(u8, ref, "#/$defs/")) {
+        return ref["#/$defs/".len..];
+    } else if (mem.startsWith(u8, ref, "#/definitions/")) {
+        return ref["#/definitions/".len..];
+    }
+    return null;
+}
+
+/// Unescape a JSON Pointer segment according to RFC 6901.
+/// - ~0 -> ~
+/// - ~1 -> /
+/// Also handles percent-encoding (e.g., %25 -> %)
+fn unescape_json_pointer(arena: *Arena, escaped: str8) OOM!str8 {
+    var needs_unescape = false;
+    for (escaped) |c| {
+        if (c == '~' or c == '%') {
+            needs_unescape = true;
+            break;
+        }
+    }
+    if (!needs_unescape) return escaped;
+
+    // Count the result length
+    var result_len: usize = 0;
+    var i: usize = 0;
+    while (i < escaped.len) {
+        if (escaped[i] == '~' and i + 1 < escaped.len) {
+            // ~0 or ~1
+            result_len += 1;
+            i += 2;
+        } else if (escaped[i] == '%' and i + 2 < escaped.len) {
+            // Percent encoding like %25
+            result_len += 1;
+            i += 3;
+        } else {
+            result_len += 1;
+            i += 1;
+        }
+    }
+
+    const result = try arena.alloc(u8, result_len);
+    var out_idx: usize = 0;
+    i = 0;
+    while (i < escaped.len) {
+        if (escaped[i] == '~' and i + 1 < escaped.len) {
+            result[out_idx] = switch (escaped[i + 1]) {
+                '0' => '~',
+                '1' => '/',
+                else => escaped[i + 1],
+            };
+            out_idx += 1;
+            i += 2;
+        } else if (escaped[i] == '%' and i + 2 < escaped.len) {
+            // Parse hex digits
+            const high = int_from_hex_digit(escaped[i + 1]);
+            const low = int_from_hex_digit(escaped[i + 2]);
+            if (high != null and low != null) {
+                result[out_idx] = (@as(u8, high.?) << 4) | @as(u8, low.?);
+                out_idx += 1;
+                i += 3;
+            } else {
+                result[out_idx] = escaped[i];
+                out_idx += 1;
+                i += 1;
+            }
+        } else {
+            result[out_idx] = escaped[i];
+            out_idx += 1;
+            i += 1;
+        }
+    }
+    return result[0..out_idx];
+}
+
+fn int_from_hex_digit(c: u8) ?u4 {
+    return switch (c) {
+        '0'...'9' => @intCast(c - '0'),
+        'a'...'f' => @intCast(c - 'a' + 10),
+        'A'...'F' => @intCast(c - 'A' + 10),
+        else => null,
+    };
+}
+
 const ParseError = OOM || error{UnrecognizedSchemaType};
 
 const ParseContext = struct {
     revision: Revision,
+    defs: []const Schema.Definition = &.{},
 
     fn detect(schema: std.json.Value) ParseContext {
         if (schema != .object) return .{ .revision = .unknown };
@@ -440,14 +584,9 @@ const ParseContext = struct {
         }
         return .{ .revision = .unknown };
     }
-
-    fn is_draft3(ctx: ParseContext) bool {
-        return ctx.revision == .draft3;
-    }
 };
 
-fn parse_constraint(arena: *Arena, ctx: ParseContext, schema: std.json.Value) ParseError!*Schema.Constraint {
-    const constraint = try arena.allocator().create(Schema.Constraint);
+fn parse_into_constraint(arena: *Arena, ctx: ParseContext, schema: std.json.Value, constraint: *Schema.Constraint) ParseError!void {
     constraint.next = null;
     constraint.kind = .true;
     parse: switch (schema) {
@@ -461,6 +600,23 @@ fn parse_constraint(arena: *Arena, ctx: ParseContext, schema: std.json.Value) Pa
             if (obj.count() == 0) {
                 constraint.kind = .true;
                 break :parse;
+            }
+            // Handle $ref first (in draft4-7, $ref overrides siblings)
+            if (obj.get("$ref")) |ref_val| {
+                if (ref_val == .string) {
+                    if (parse_local_def_ref(ref_val.string)) |name| {
+                        const unescaped_name = try unescape_json_pointer(arena, name);
+                        if (find_def(ctx.defs, unescaped_name)) |target| {
+                            constraint.kind = .{ .ref = target };
+                            // In draft4-7, $ref overrides all siblings, so return early
+                            if (ctx.revision != .draft2019_09 and ctx.revision != .draft2020_12 and ctx.revision != .draft_next) {
+                                return;
+                            }
+                            // In 2019-09+, $ref can combine with siblings, so chain it
+                            try chain_with(arena, constraint, .{ .ref = target });
+                        }
+                    }
+                }
             }
             // todo: error
             if (parse_validation__type(arena, &obj) catch null) |v_types| {
@@ -496,7 +652,7 @@ fn parse_constraint(arena: *Arena, ctx: ParseContext, schema: std.json.Value) Pa
             if (parse_validation__max_properties(&obj)) |max_properties| {
                 try chain_with(arena, constraint, max_properties);
             }
-            if (parse_validation__const(arena, &obj)) |@"const"| {
+            if (parse_validation__const(&obj)) |@"const"| {
                 try chain_with(arena, constraint, @"const");
             }
             if (parse_validation__enum(arena, &obj) catch null) |@"enum"| {
@@ -535,6 +691,11 @@ fn parse_constraint(arena: *Arena, ctx: ParseContext, schema: std.json.Value) Pa
         },
         else => return error.UnrecognizedSchemaType,
     }
+}
+
+fn parse_constraint(arena: *Arena, ctx: ParseContext, schema: std.json.Value) ParseError!*Schema.Constraint {
+    const constraint = try arena.allocator().create(Schema.Constraint);
+    try parse_into_constraint(arena, ctx, schema, constraint);
     return constraint;
 }
 
@@ -971,7 +1132,7 @@ fn parse_applicitor__properties(arena: *Arena, ctx: ParseContext, obj: *const st
 }
 
 fn parse_validation__required_properties(arena: *Arena, ctx: ParseContext, obj: *const std.json.ObjectMap) !?Schema.Constraint.Kind {
-    if (ctx.is_draft3()) {
+    if (ctx.revision == .draft3) {
         // Draft3 style: "required": true inside each property definition
         const properties_value = obj.get("properties") orelse return null;
         if (properties_value != .object) return null;
@@ -1979,4 +2140,94 @@ test "object constraints - minProperties and maxProperties" {
     // Non-objects are not affected
     try std.testing.expectEqual(schema.is_valid("[]"), false); // fails type check
     try std.testing.expectEqual(schema.is_valid("\"string\""), false); // fails type check
+}
+
+test "$ref with definitions" {
+    const schema_str =
+        \\{
+        \\  "definitions": {
+        \\    "positiveInteger": {
+        \\      "type": "integer",
+        \\      "minimum": 0
+        \\    }
+        \\  },
+        \\  "type": "object",
+        \\  "properties": {
+        \\    "count": { "$ref": "#/definitions/positiveInteger" }
+        \\  }
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("{\"count\": 5}"));
+    try std.testing.expect(schema.is_valid("{\"count\": 0}"));
+    try std.testing.expect(!schema.is_valid("{\"count\": -1}"));
+    try std.testing.expect(!schema.is_valid("{\"count\": \"five\"}"));
+}
+
+test "$ref with $defs (2019-09+ style)" {
+    const schema_str =
+        \\{
+        \\  "$defs": {
+        \\    "stringArray": {
+        \\      "type": "array",
+        \\      "items": { "type": "string" }
+        \\    }
+        \\  },
+        \\  "$ref": "#/$defs/stringArray"
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("[\"a\", \"b\", \"c\"]"));
+    try std.testing.expect(schema.is_valid("[]"));
+    try std.testing.expect(!schema.is_valid("[\"a\", 1]"));
+    try std.testing.expect(!schema.is_valid("\"not an array\""));
+}
+
+test "$ref nested refs" {
+    const schema_str =
+        \\{
+        \\  "definitions": {
+        \\    "a": { "type": "integer" },
+        \\    "b": { "$ref": "#/definitions/a" },
+        \\    "c": { "$ref": "#/definitions/b" }
+        \\  },
+        \\  "$ref": "#/definitions/c"
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("5"));
+    try std.testing.expect(schema.is_valid("-10"));
+    try std.testing.expect(!schema.is_valid("\"string\""));
+    try std.testing.expect(!schema.is_valid("1.5"));
+}
+
+test "$ref recursive schema" {
+    const schema_str =
+        \\{
+        \\  "definitions": {
+        \\    "node": {
+        \\      "type": "object",
+        \\      "properties": {
+        \\        "value": { "type": "integer" },
+        \\        "child": { "$ref": "#/definitions/node" }
+        \\      }
+        \\    }
+        \\  },
+        \\  "$ref": "#/definitions/node"
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("{\"value\": 1}"));
+    try std.testing.expect(schema.is_valid("{\"value\": 1, \"child\": {\"value\": 2}}"));
+    try std.testing.expect(schema.is_valid("{\"value\": 1, \"child\": {\"value\": 2, \"child\": {\"value\": 3}}}"));
+    try std.testing.expect(!schema.is_valid("{\"value\": \"not an int\"}"));
+    try std.testing.expect(!schema.is_valid("{\"value\": 1, \"child\": {\"value\": \"bad\"}}"));
 }
