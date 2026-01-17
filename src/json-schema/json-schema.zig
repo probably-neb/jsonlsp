@@ -164,13 +164,13 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *std.json.V
         .@"const" => |value_hash| {
             // perf: check type then hash
             // todo: make pr to zig to have .hash_value() work here
-            const input_hash = ValueHash.hash_value(arena, value);
+            const input_hash = ValueHash.hash_value(value);
             return value_hash == input_hash;
         },
         .@"enum" => |hashes| {
             // perf: check type then hash
             for (hashes) |hash| {
-                if (hash == ValueHash.hash_value(arena, value)) return true;
+                if (hash == ValueHash.hash_value(value)) return true;
             }
             return false;
         },
@@ -178,11 +178,13 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *std.json.V
             if (value.* != .array) {
                 return true;
             }
+            const scratch = Arena.get_scratch(&.{arena});
+            defer scratch.release();
             var hashes: std.AutoHashMapUnmanaged(ValueHash, void) = .empty;
-            defer hashes.deinit(arena.allocator());
-            try hashes.ensureTotalCapacity(arena.allocator(), @intCast(value.array.items.len));
+            defer hashes.deinit(scratch.arena.allocator());
+            try hashes.ensureTotalCapacity(scratch.arena.allocator(), @intCast(value.array.items.len));
             for (value.array.items) |*item| {
-                if (try hashes.fetchPut(arena.allocator(), .hash_value(arena, item), {})) |_| {
+                if (try hashes.fetchPut(scratch.arena.allocator(), .hash_value(item), {})) |_| {
                     return false;
                 }
             }
@@ -304,11 +306,14 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *std.json.V
             if (value.* != .object) {
                 return true;
             }
+            const scratch = Arena.get_scratch(&.{arena});
+            defer scratch.release();
             var current_property = properties.first_property;
             var checked_properties: std.StringArrayHashMapUnmanaged(void) = .empty;
+            defer checked_properties.deinit(scratch.arena.allocator());
             while (current_property) |property_constraint| : (current_property = property_constraint.next) {
                 const sub_value = value.object.getPtr(property_constraint.kind.property.name) orelse continue;
-                try checked_properties.put(arena.allocator(), property_constraint.kind.property.name, {});
+                try checked_properties.put(scratch.arena.allocator(), property_constraint.kind.property.name, {});
                 if (!try check(arena, property_constraint.kind.property.constraint, sub_value)) {
                     return false;
                 }
@@ -345,7 +350,7 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *std.json.V
             for (required_property_hashes) |required_property_hash| {
                 // perf: should be improved
                 for (value.object.keys()) |key| {
-                    const key_hash = ValueHash.hash_value(arena, @constCast(@as(*const std.json.Value, &.{ .string = key })));
+                    const key_hash = ValueHash.hash_value(@constCast(@as(*const std.json.Value, &.{ .string = key })));
                     if (key_hash == required_property_hash) break;
                 } else return false;
             }
@@ -557,7 +562,7 @@ const ValueHash = packed struct(u68) {
     kind: u4,
     hash: u64,
 
-    fn hash_value(arena: *Arena, json_value: *std.json.Value) ValueHash {
+    fn hash_value(json_value: *std.json.Value) ValueHash {
         var hasher = std.hash.Wyhash.init(0xdeadbeef);
         var fake_float_value: ?std.json.Value = null;
         if (json_value.* == .integer) {
@@ -567,11 +572,11 @@ const ValueHash = packed struct(u68) {
 
         return .{
             .kind = @intCast(@intFromEnum(value.*)),
-            .hash = top_level_value_hash(arena, &hasher, value),
+            .hash = top_level_value_hash(&hasher, value),
         };
     }
 
-    fn top_level_value_hash(arena: *Arena, hasher: *std.hash.Wyhash, value: *std.json.Value) u64 {
+    fn top_level_value_hash(hasher: *std.hash.Wyhash, value: *std.json.Value) u64 {
         switch (value.*) {
             .null => return 0,
             .bool => |val| return @intCast(@intFromBool(val)),
@@ -580,16 +585,16 @@ const ValueHash = packed struct(u68) {
             .number_string => |val| hasher.update(val),
             .string => |val| hasher.update(val),
             .array => {
-                hash_inner(arena, hasher, value);
+                hash_inner(hasher, value);
             },
             .object => {
-                hash_inner(arena, hasher, value);
+                hash_inner(hasher, value);
             },
         }
         return hasher.final();
     }
 
-    fn hash_inner(arena: *Arena, hasher: *std.hash.Wyhash, value: *std.json.Value) void {
+    fn hash_inner(hasher: *std.hash.Wyhash, value: *std.json.Value) void {
         switch (value.*) {
             .null => {
                 hasher.update(&[_]u8{0});
@@ -617,7 +622,7 @@ const ValueHash = packed struct(u68) {
             .array => |val| {
                 hasher.update(&[_]u8{5});
                 for (val.items) |*item| {
-                    hash_inner(arena, hasher, item);
+                    hash_inner(hasher, item);
                 }
             },
             .object => |val| {
@@ -626,16 +631,16 @@ const ValueHash = packed struct(u68) {
                 const values = val.values();
                 const n = keys.len;
 
-                // Use scoped arena for temporary allocation
-                const scoped = arena.scoped();
-                defer scoped.release();
+                // Use scratch arena for temporary allocation
+                const scratch = Arena.get_scratch(&.{});
+                defer scratch.release();
 
                 // Create temporary array of indices and sort by key
-                const indices = scoped.arena.allocator().alloc(usize, n) catch {
+                const indices = scratch.arena.allocator().alloc(usize, n) catch {
                     // Fallback: hash without sorting (produces consistent but order-dependent hash)
                     for (keys, values) |key, *v| {
                         hasher.update(key);
-                        hash_inner(arena, hasher, v);
+                        hash_inner(hasher, v);
                     }
                     return;
                 };
@@ -653,7 +658,7 @@ const ValueHash = packed struct(u68) {
                 // Hash in sorted order without mutating original
                 for (indices) |idx| {
                     hasher.update(keys[idx]);
-                    hash_inner(arena, hasher, @constCast(&values[idx]));
+                    hash_inner(hasher, @constCast(&values[idx]));
                 }
             },
         }
@@ -847,9 +852,9 @@ fn parse_validation__max_properties(obj: *const std.json.ObjectMap) ?Schema.Cons
     }
 }
 
-fn parse_validation__const(arena: *Arena, obj: *const std.json.ObjectMap) ?Schema.Constraint.Kind {
+fn parse_validation__const(obj: *const std.json.ObjectMap) ?Schema.Constraint.Kind {
     const value = obj.getPtr("const") orelse return null;
-    return .{ .@"const" = .hash_value(arena, value) };
+    return .{ .@"const" = .hash_value(value) };
 }
 
 fn parse_validation__enum(arena: *Arena, obj: *const std.json.ObjectMap) !?Schema.Constraint.Kind {
@@ -859,7 +864,7 @@ fn parse_validation__enum(arena: *Arena, obj: *const std.json.ObjectMap) !?Schem
     }
     var hashes: std.ArrayList(ValueHash) = try .initCapacity(arena.allocator(), value.array.items.len);
     for (value.array.items) |*item| {
-        hashes.appendAssumeCapacity(.hash_value(arena, item));
+        hashes.appendAssumeCapacity(.hash_value(item));
     }
     return .{
         .@"enum" = hashes.items,
@@ -980,7 +985,7 @@ fn parse_validation__required_properties(arena: *Arena, ctx: ParseContext, obj: 
             if (required_field.bool) {
                 // This property has "required": true, so add its name to the required list
                 const name_value: std.json.Value = .{ .string = entry.key_ptr.* };
-                try required_properties.append(arena.allocator(), .hash_value(arena, @constCast(&name_value)));
+                try required_properties.append(arena.allocator(), .hash_value(@constCast(&name_value)));
             }
         }
 
@@ -997,7 +1002,7 @@ fn parse_validation__required_properties(arena: *Arena, ctx: ParseContext, obj: 
     var required_properties: std.ArrayList(ValueHash) = try .initCapacity(arena.allocator(), required_properties_value.array.items.len);
     for (required_properties_value.array.items) |required_property| {
         if (required_property != .string) continue;
-        required_properties.appendAssumeCapacity(.hash_value(arena, @constCast(&required_property)));
+        required_properties.appendAssumeCapacity(.hash_value(@constCast(&required_property)));
     }
     if (required_properties.items.len == 0) return null;
     return .{
@@ -1105,44 +1110,38 @@ test ValueHash {
         }
 
         fn expect_hash_match(json: str8) !void {
-            var arena_a = try Arena.init(.{ .reserve_size = 1024 * 1024 });
-            defer arena_a.deinit();
-            var arena_b = try Arena.init(.{ .reserve_size = 1024 * 1024 });
-            defer arena_b.deinit();
+            var tmp = Arena.get_scratch(&.{});
+            defer tmp.release();
 
-            var value_a = try parse_value(&arena_a, json);
-            var value_b = try parse_value(&arena_b, json);
+            var value_a = try parse_value(tmp.arena, json);
+            var value_b = try parse_value(tmp.arena, json);
 
-            const hash_a: H = .hash_value(&arena_a, &value_a);
-            const hash_b: H = .hash_value(&arena_b, &value_b);
+            const hash_a: H = .hash_value(&value_a);
+            const hash_b: H = .hash_value(&value_b);
             try std.testing.expectEqual(hash_a, hash_b);
         }
 
         fn expect_hashes_match(left: str8, right: str8) !void {
-            var arena_a = try Arena.init(.{ .reserve_size = 1024 * 1024 });
-            defer arena_a.deinit();
-            var arena_b = try Arena.init(.{ .reserve_size = 1024 * 1024 });
-            defer arena_b.deinit();
+            var tmp = Arena.get_scratch(&.{});
+            defer tmp.release();
 
-            var value_a = try parse_value(&arena_a, left);
-            var value_b = try parse_value(&arena_b, right);
+            var value_a = try parse_value(tmp.arena, left);
+            var value_b = try parse_value(tmp.arena, right);
 
-            const hash_a: H = .hash_value(&arena_a, &value_a);
-            const hash_b: H = .hash_value(&arena_b, &value_b);
+            const hash_a: H = .hash_value(&value_a);
+            const hash_b: H = .hash_value(&value_b);
             try std.testing.expectEqual(hash_a, hash_b);
         }
 
         fn expect_hash_mismatch(left: str8, right: str8) !void {
-            var arena_a = try Arena.init(.{ .reserve_size = 1024 * 1024 });
-            defer arena_a.deinit();
-            var arena_b = try Arena.init(.{ .reserve_size = 1024 * 1024 });
-            defer arena_b.deinit();
+            var tmp = Arena.get_scratch(&.{});
+            defer tmp.release();
 
-            var value_a = try parse_value(&arena_a, left);
-            var value_b = try parse_value(&arena_b, right);
+            var value_a = try parse_value(tmp.arena, left);
+            var value_b = try parse_value(tmp.arena, right);
 
-            const hash_a: H = .hash_value(&arena_a, &value_a);
-            const hash_b: H = .hash_value(&arena_b, &value_b);
+            const hash_a: H = .hash_value(&value_a);
+            const hash_b: H = .hash_value(&value_b);
             try std.testing.expect(hash_a != hash_b);
         }
     };
