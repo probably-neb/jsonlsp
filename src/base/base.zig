@@ -10,6 +10,8 @@ pub const ArenaListAligned = @import("arena-list.zig").ArenaListAligned;
 pub const IntrusiveLinkedList = @import("intrusive-linked-list.zig").IntrusiveLinkedList;
 pub const IntrusiveDoublyLinkedList = @import("intrusive-linked-list.zig").IntrusiveDoublyLinkedList;
 pub const meta = @import("meta.zig");
+pub const Xar = @import("xar.zig").Xar;
+pub const XarMap = @import("xar-map.zig").XarMap;
 
 test {
     std.testing.refAllDecls(@This());
