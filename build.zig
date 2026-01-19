@@ -21,6 +21,7 @@ pub fn build(b: *std.Build) void {
 
     const mod_json_schema = subsystem(b, "json-schema", exe_mod, test_step, check_step, target, optimize, test_filters);
     mod_json_schema.addImport("base", mod_base);
+    mod_json_schema.addImport("json", mod_json);
 
     const pcre_pkg = b.dependency("libpcre_zig", .{ .optimize = optimize, .target = target });
     const pcre_mod = pcre_pkg.module("libpcre");

@@ -321,7 +321,143 @@ pub fn resolve_pointer(value: *const HashableJsonValue, pointer: []const u8) ?*c
 
 ---
 
-## Stage 3: Hash-Based Constraint Caching and Ref Resolution
+## Stage 3: Integrate HashableJsonValue into JSON Schema Parsing
+
+### Goal
+
+Before adding new caching features, integrate the `HashableJsonValue` type from `hashable-json.zig` into the existing `json-schema.zig` parsing code. This involves:
+
+1. Replacing `std.json.Value` with `HashableJsonValue` in parsing functions
+2. Removing the existing `ValueHash` implementation from `json-schema.zig` (moving tests to `hashable-json.zig`)
+3. Using the pre-computed hash from `HashableJsonValue` instead of computing hashes on-demand
+
+### Implementation Steps
+
+#### Step 3.1: Remove `ValueHash` from json-schema.zig
+
+The existing `ValueHash` packed struct (lines 739-844) computes hashes on `std.json.Value`. This should be removed since `HashableJsonValue` already computes hashes during parsing.
+
+**Delete:**
+
+- The `ValueHash` packed struct and all its methods (`hash_value`, `top_level_value_hash`, `hash_inner`)
+- The `test ValueHash` block (lines 1275-1539)
+
+#### Step 3.2: Move ValueHash tests to hashable-json.zig
+
+The tests from the `test ValueHash` block should be adapted and moved to `hashable-json.zig`. Most of these tests already have equivalents in `hashable-json.zig`:
+
+- `test "hash consistency - same value same hash"`
+- `test "hash consistency - different values different hash"`
+- `test "hash consistency - object key order independent"`
+- etc.
+
+Any missing test cases should be added to `hashable-json.zig`.
+
+#### Step 3.3: Update parseWithRevision to use HashableJsonValue
+
+**Current code uses `std.json.parseFromSlice`:**
+
+```zig
+const parsed_schema = try std.json.parseFromSlice(
+    std.json.Value,
+    parse_arena.allocator(),
+    schema_contents,
+    .{...}
+);
+```
+
+**New code uses `hashable_json.parse`:**
+
+```zig
+const root_json = try hashable_json.parse(parse_arena, schema_contents);
+```
+
+#### Step 3.4: Update parsing functions to accept HashableJsonValue
+
+All functions that currently take `*std.json.Value` or `std.json.Value` need to be updated:
+
+```zig
+// Before:
+fn parse_into_constraint(ctx: *ParseContext, value: *std.json.Value, constraint: *Schema.Constraint) ParseError!void
+
+// After:
+fn parse_into_constraint(ctx: *ParseContext, value: *const HashableJsonValue, constraint: *Schema.Constraint) ParseError!void
+```
+
+Key functions to update:
+
+- `parse_into_constraint`
+- `parse_constraint`
+- All `parse_validation__*` functions
+- All `parse_applicitor__*` functions
+
+#### Step 3.5: Update value access patterns
+
+Replace `std.json.Value` union access with `HashableJsonValue.Kind` access:
+
+**Before:**
+
+```zig
+switch (value.*) {
+    .object => |obj| {
+        if (obj.get("type")) |type_val| { ... }
+    },
+    .bool => |b| { ... },
+    ...
+}
+```
+
+**After:**
+
+```zig
+switch (value.kind) {
+    .object => |obj| {
+        if (obj.get("type")) |type_val| { ... }
+    },
+    .bool => |b| { ... },
+    ...
+}
+```
+
+#### Step 3.6: Use pre-computed hash for const/enum validation
+
+In `parse_validation__const` and `parse_validation__enum`, use the hash directly from `HashableJsonValue`:
+
+**Before (computing hash):**
+
+```zig
+fn parse_validation__const(value: *std.json.Value) Schema.Constraint.Kind {
+    const hash = ValueHash.hash_value(value);
+    return .{ .@"const" = hash };
+}
+```
+
+**After (using pre-computed hash):**
+
+```zig
+fn parse_validation__const(value: *const HashableJsonValue) Schema.Constraint.Kind {
+    return .{ .@"const" = value.hash };
+}
+```
+
+#### Step 3.7: Update constraint types to use u64 hash
+
+If `Schema.Constraint.Kind` uses `ValueHash`, update it to use `u64` directly since that's what `HashableJsonValue.hash` provides.
+
+### Deliverables
+
+- [ ] `ValueHash` struct removed from `json-schema.zig`
+- [ ] `test ValueHash` tests moved/merged into `hashable-json.zig`
+- [ ] `parseWithRevision` uses `hashable_json.parse` instead of `std.json.parseFromSlice`
+- [ ] All parsing functions updated to accept `*const HashableJsonValue`
+- [ ] Value access patterns updated for `HashableJsonValue.Kind` union
+- [ ] `const` and `enum` validations use pre-computed hash
+- [ ] All existing tests pass
+- [ ] No hash computation happens in `json-schema.zig` - all hashes come from `HashableJsonValue`
+
+---
+
+## Stage 4: Hash-Based Constraint Caching and Ref Resolution
 
 ### Goal
 
@@ -329,7 +465,7 @@ Use the JSON hash cache to automatically deduplicate constraints and resolve arb
 
 ### Implementation Steps
 
-#### Step 3.1: Add constraint cache to ParseContext
+#### Step 4.1: Add constraint cache to ParseContext
 
 ```zig
 const ParseContext = struct {
@@ -348,7 +484,7 @@ const ParseContext = struct {
 };
 ```
 
-#### Step 3.2: Collect $id declarations during JSON parse
+#### Step 4.2: Collect $id declarations during JSON parse
 
 When parsing JSON, track `$id` fields:
 
@@ -368,7 +504,7 @@ fn parseObject(p: *Parser, ctx: *ParseContext) !HashableJsonValue {
 }
 ```
 
-#### Step 3.3: Modify parse_constraint to use cache
+#### Step 4.3: Modify parse_constraint to use cache
 
 ```zig
 fn parse_constraint(ctx: *ParseContext, json: *const HashableJsonValue) ParseError!*Schema.Constraint {
@@ -391,7 +527,7 @@ fn parse_constraint(ctx: *ParseContext, json: *const HashableJsonValue) ParseErr
 }
 ```
 
-#### Step 3.4: Implement unified $ref resolution
+#### Step 4.4: Implement unified $ref resolution
 
 ```zig
 fn resolve_ref(ctx: *ParseContext, ref_string: []const u8) !?*Schema.Constraint {
@@ -427,7 +563,7 @@ fn resolve_ref(ctx: *ParseContext, ref_string: []const u8) !?*Schema.Constraint 
 }
 ```
 
-#### Step 3.5: Update $ref handling in parse_into_constraint
+#### Step 4.5: Update $ref handling in parse_into_constraint
 
 ```zig
 fn parse_into_constraint(ctx: *ParseContext, json: *const HashableJsonValue, constraint: *Schema.Constraint) ParseError!void {
@@ -461,7 +597,7 @@ fn parse_into_constraint(ctx: *ParseContext, json: *const HashableJsonValue, con
 }
 ```
 
-#### Step 3.6: Update main parse function
+#### Step 4.6: Update main parse function
 
 ```zig
 pub fn parseWithRevision(schema_contents: str8, revision: ?Revision) !Schema {
@@ -541,13 +677,140 @@ fn collectIdDeclarations(ctx: *ParseContext, json: *const HashableJsonValue) voi
 
 ---
 
+## Stage 5: Code Reorganization
+
+### Goal
+
+Reorganize the codebase to establish clearer module boundaries:
+
+1. Move `hashable-json.zig` from `json-schema/` to the `json/` subsystem
+2. Move JSON-schema-specific code (like JSON pointer resolution) from `hashable-json.zig` into `json-schema.zig`
+3. Establish `hashable-json` as a sibling to the existing lenient (error-recovering) parser, sharing the lexer
+
+### Implementation Steps
+
+#### Step 5.1: Identify code to move out of hashable-json.zig
+
+The following should be moved to `json-schema.zig` since they are JSON Schema specific:
+
+- `resolve_pointer` function - JSON pointers (RFC 6901) are used by JSON Schema `$ref`
+- `resolve_pointer_mut` function
+- `unescape_pointer_segment` function
+- Related tests for pointer resolution
+
+#### Step 5.2: Move hashable-json.zig to json subsystem
+
+Relocate the file:
+
+```
+src/json-schema/hashable-json.zig  →  src/json/hashable-json.zig
+```
+
+Update the import in `json-schema.zig`:
+
+```zig
+// Before:
+pub const hashable_json = @import("hashable-json.zig");
+
+// After:
+pub const hashable_json = @import("json").hashable;
+```
+
+#### Step 5.3: Update json subsystem exports
+
+In `src/json/json.zig`, add export for hashable parsing:
+
+```zig
+pub const hashable = @import("hashable-json.zig");
+
+// Entry points:
+pub const parse_lenient = @import("parse.zig").parse;  // existing error-recovering parser
+pub const parse_hashed = hashable.parse;                // new hashing parser
+```
+
+#### Step 5.4: Keep parsing implementations separate
+
+The two parsing approaches serve different purposes and should remain in separate files:
+
+- `src/json/parse.zig` (or existing file) - Lenient, error-recovering parsing for editor use
+- `src/json/hashable-json.zig` - Strict parsing with hash computation for schema validation
+
+Both share:
+
+- The lexer/tokenizer from `src/json/json.zig` (or `lexer.zig`)
+- Token types and definitions
+
+They differ in:
+
+- Error handling (lenient vs strict)
+- Output types (`json.Value` vs `HashableJsonValue`)
+- Hash computation (none vs incremental)
+
+#### Step 5.5: Move JSON pointer code to json-schema.zig
+
+Add to `json-schema.zig`:
+
+```zig
+const HashableJsonValue = hashable_json.HashableJsonValue;
+
+/// Resolve a JSON pointer (RFC 6901) relative to a HashableJsonValue.
+/// Used for $ref resolution in JSON Schema.
+pub fn resolve_json_pointer(
+    root: *const HashableJsonValue,
+    pointer: []const u8,
+) ?*const HashableJsonValue {
+    // Implementation moved from hashable-json.zig
+    // ...
+}
+
+fn unescape_pointer_segment(arena: *Arena, segment: []const u8) ![]const u8 {
+    // Implementation moved from hashable-json.zig
+    // ...
+}
+```
+
+#### Step 5.6: Update tests
+
+- Move JSON pointer tests from `hashable-json.zig` to `json-schema.zig`
+- Keep hash computation tests in `hashable-json.zig` (they test the JSON subsystem)
+- Keep JSON parsing tests in `hashable-json.zig`
+
+### Deliverables
+
+- [ ] `hashable-json.zig` moved to `src/json/` directory
+- [ ] JSON pointer resolution moved to `json-schema.zig`
+- [ ] `src/json/json.zig` exports both `parse_lenient` and `parse_hashed` entry points
+- [ ] Both parsers share the lexer but have separate implementations
+- [ ] `json-schema.zig` imports hashable JSON from `json` subsystem
+- [ ] All tests pass in their new locations
+- [ ] No circular dependencies between `json` and `json-schema` modules
+
+### File Structure After Reorganization
+
+```
+src/
+├── json/
+│   ├── json.zig              # Main entry point, exports lexer + both parsers
+│   ├── lexer.zig             # Shared tokenizer (if separate file)
+│   ├── parse.zig             # Lenient/error-recovering parser
+│   └── hashable-json.zig     # Strict parser with hash computation
+│
+└── json-schema/
+    ├── json-schema.zig       # Schema parsing, validation, JSON pointer resolution
+    └── hashing-plan.md       # This plan document
+```
+
+---
+
 ## Summary
 
-| Stage | Focus              | Key Changes                                                    |
-| ----- | ------------------ | -------------------------------------------------------------- |
-| 1     | Arena separation   | Two arenas, parse arena freed after parsing                    |
-| 2     | Custom JSON parser | HashableJsonValue with incremental hashing, pointer resolution |
-| 3     | Hash-based caching | XarMap cache, unified ref resolution, automatic dedup          |
+| Stage | Focus              | Key Changes                                                         |
+| ----- | ------------------ | ------------------------------------------------------------------- |
+| 1     | Arena separation   | Two arenas, parse arena freed after parsing                         |
+| 2     | Custom JSON parser | HashableJsonValue with incremental hashing, pointer resolution      |
+| 3     | Integration        | Replace std.json with HashableJsonValue, remove duplicate hash code |
+| 4     | Hash-based caching | XarMap cache, unified ref resolution, automatic dedup               |
+| 5     | Reorganization     | Move hashable-json to json subsystem, separate schema-specific code |
 
 ### Benefits of this approach
 

@@ -19,6 +19,7 @@ const str8 = []const u8;
 pub const OOM = error{OutOfMemory};
 
 const pcre = @import("pcre");
+pub const hashable_json = @import("hashable-json.zig");
 
 pub const Revision = enum {
     draft3,
@@ -2245,4 +2246,8 @@ test "$ref recursive schema" {
     try std.testing.expect(schema.is_valid("{\"value\": 1, \"child\": {\"value\": 2, \"child\": {\"value\": 3}}}"));
     try std.testing.expect(!schema.is_valid("{\"value\": \"not an int\"}"));
     try std.testing.expect(!schema.is_valid("{\"value\": 1, \"child\": {\"value\": \"bad\"}}"));
+}
+
+test {
+    std.testing.refAllDecls(hashable_json);
 }
