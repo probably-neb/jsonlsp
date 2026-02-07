@@ -249,6 +249,7 @@ pub fn XarMap(comptime K: type, comptime V: type, comptime prealloc_count: usize
             }
         };
 
+        // TODO: use at_type for const/non const pointers in entries
         pub fn const_iterator(map: *const Self) ConstIterator {
             return ConstIterator{
                 .map = map,
@@ -257,10 +258,10 @@ pub fn XarMap(comptime K: type, comptime V: type, comptime prealloc_count: usize
         }
 
         pub const KeyIterator = struct {
-            map: *Self,
+            map: *const Self,
             slot_idx: usize,
 
-            pub fn next(it: *KeyIterator) ?*K {
+            pub fn next(it: *KeyIterator) ?*const K {
                 while (it.slot_idx < it.map.slot_count) {
                     const idx = it.slot_idx;
                     it.slot_idx += 1;
@@ -274,7 +275,7 @@ pub fn XarMap(comptime K: type, comptime V: type, comptime prealloc_count: usize
             }
         };
 
-        pub fn key_iterator(map: *Self) KeyIterator {
+        pub fn key_iterator(map: *const Self) KeyIterator {
             return KeyIterator{
                 .map = map,
                 .slot_idx = 0,

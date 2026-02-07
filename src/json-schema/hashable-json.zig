@@ -94,28 +94,6 @@ pub const HashableJsonValue = struct {
         map: ObjectMap,
 
         pub const ObjectMap = base.XarMap(str8, *HashableJsonValue, 8);
-
-        pub fn get(obj: *const Object, key: str8) ?*const HashableJsonValue {
-            const ptr = obj.map.get_const(key) orelse return null;
-            return ptr.*;
-        }
-
-        pub fn get_mut(obj: *Object, key: str8) ?*HashableJsonValue {
-            const ptr = obj.map.get(key) orelse return null;
-            return ptr.*;
-        }
-
-        pub fn count(obj: *const Object) usize {
-            return obj.map.count();
-        }
-
-        pub fn key_iterator(obj: *const Object) ObjectMap.KeyIterator {
-            return obj.map.key_iterator();
-        }
-
-        pub fn iterator(obj: *const Object) ObjectMap.ConstIterator {
-            return obj.map.const_iterator();
-        }
     };
 
     /// Navigate a JSON pointer path (e.g., "#/properties/name/type")
@@ -147,7 +125,8 @@ pub const HashableJsonValue = struct {
 
             switch (current.kind) {
                 .object => |*obj| {
-                    current = obj.get(segment) orelse return null;
+                    const ptr = obj.map.get_const(segment) orelse return null;
+                    current = ptr.*;
                 },
                 .array => |*arr| {
                     const index = std.fmt.parseInt(usize, segment, 10) catch return null;
@@ -187,7 +166,8 @@ pub const HashableJsonValue = struct {
 
             switch (current.kind) {
                 .object => |*obj| {
-                    current = obj.get_mut(segment) orelse return null;
+                    const ptr = obj.map.get(segment) orelse return null;
+                    current = ptr.*;
                 },
                 .array => |*arr| {
                     const index = std.fmt.parseInt(usize, segment, 10) catch return null;
@@ -310,14 +290,14 @@ const Parser = struct {
             // Hash as float for consistency (42 == 42.0)
             const float_val: f64 = @floatFromInt(int_val);
             return .{
-                .hash = compute_float_hash(float_val),
+                .hash = compute_number_hash(float_val),
                 .kind = .{ .integer = int_val },
             };
         } else |_| {
             // Parse as float
             const float_val = std.fmt.parseFloat(f64, raw) catch return error.InvalidNumber;
             return .{
-                .hash = compute_float_hash(float_val),
+                .hash = compute_number_hash(float_val),
                 .kind = .{ .float = float_val },
             };
         }
@@ -393,7 +373,7 @@ const Parser = struct {
             parser.pos += 1;
             const obj = HashableJsonValue.Object{ .map = obj_map };
             return .{
-                .hash = compute_object_hash(&obj.map),
+                .hash = compute_object_hash(&obj),
                 .kind = .{ .object = obj },
             };
         }
@@ -448,7 +428,7 @@ const Parser = struct {
 
         const obj = HashableJsonValue.Object{ .map = obj_map };
         return .{
-            .hash = compute_object_hash(&obj.map),
+            .hash = compute_object_hash(&obj),
             .kind = .{ .object = obj },
         };
     }
@@ -578,97 +558,66 @@ fn unescape_string(arena: *Arena, input: str8) ParseError!str8 {
 // Hash computation functions
 // ============================================================================
 
-fn compute_null_hash() u64 {
-    var hasher = std.hash.Wyhash.init(hash_seed);
-    hasher.update(&[_]u8{@intFromEnum(.KindEnum.null)});
-    return hasher.final();
+// For JSON Schema, integer and float values that are numerically equal must hash equal
+// (e.g., 42 and 42.0 are the same value). We achieve this by:
+// 1. Using the same type tag for both integer and float
+// 2. Converting integers to float before hashing the bytes
+const hash_tag_number: u8 = @intFromEnum(HashableJsonValue.KindEnum.integer);
+
+fn hash_null_into(hasher: *std.hash.Wyhash) void {
+    hasher.update(&[_]u8{@intFromEnum(HashableJsonValue.KindEnum.null)});
 }
 
-fn compute_bool_hash(value: bool) u64 {
-    var hasher = std.hash.Wyhash.init(hash_seed);
-    hasher.update(&[_]u8{ @intFromEnum(.KindEnum.bool), @intFromBool(value) });
-    return hasher.final();
+fn hash_bool_into(hasher: *std.hash.Wyhash, value: bool) void {
+    hasher.update(&[_]u8{ @intFromEnum(HashableJsonValue.KindEnum.bool), @intFromBool(value) });
 }
 
-fn compute_string_hash(value: str8) u64 {
-    var hasher = std.hash.Wyhash.init(hash_seed);
-    hasher.update(&[_]u8{@intFromEnum(.KindEnum.string)});
+fn hash_string_into(hasher: *std.hash.Wyhash, value: str8) void {
+    hasher.update(&[_]u8{@intFromEnum(HashableJsonValue.KindEnum.string)});
     hasher.update(value);
-    return hasher.final();
 }
 
-fn compute_int_hash(value: i64) u64 {
-    var hasher = std.hash.Wyhash.init(hash_seed);
-    hasher.update(&[_]u8{@intFromEnum(.KindEnum.int)});
+fn hash_number_into(hasher: *std.hash.Wyhash, value: f64) void {
+    hasher.update(&[_]u8{hash_tag_number});
     hasher.update(mem.asBytes(&value));
-    return hasher.final();
 }
 
-fn compute_number_hash(value: f64) u64 {
-    var hasher = std.hash.Wyhash.init(hash_seed);
-    hasher.update(&[_]u8{@intFromEnum(.KindEnum.float)});
-    hasher.update(mem.asBytes(&value));
-    return hasher.final();
-}
-
-fn compute_array_hash(arr: *const HashableJsonValue.Array) u64 {
-    var hasher = std.hash.Wyhash.init(hash_seed);
-    hasher.update(&[_]u8{@intFromEnum(.KindEnum.array)});
+fn hash_array_into(hasher: *std.hash.Wyhash, arr: *const HashableJsonValue.Array) void {
+    hasher.update(&[_]u8{@intFromEnum(HashableJsonValue.KindEnum.array)});
     var iter = arr.iterator();
     while (iter.next()) |item| {
-        hash_value_into(&hasher, item);
+        hash_value_into(hasher, item);
     }
-    return hasher.final();
 }
 
-fn compute_object_hash(obj_map: *const HashableJsonValue.Object.ObjectMap) u64 {
-    var hasher = std.hash.Wyhash.init(hash_seed);
-    hasher.update(&[_]u8{@intFromEnum(.KindEnum.object)});
+fn hash_object_into(hasher: *std.hash.Wyhash, obj: *const HashableJsonValue.Object) void {
+    hasher.update(&[_]u8{@intFromEnum(HashableJsonValue.KindEnum.object)});
 
-    const n = obj_map.count();
-    if (n == 0) return hasher.final();
+    const n = obj.map.count();
+    if (n == 0) return;
 
-    // Get scratch arena for sorting
     const scratch = Arena.get_scratch(&.{});
     defer scratch.release();
 
-    // Extract keys and values from map
     const keys = scratch.arena.alloc(str8, n) catch {
-        // Fallback: hash without sorting (order-dependent)
-        var iter = obj_map.const_iterator();
-        while (iter.next()) |entry| {
-            hasher.update(entry.key_ptr.*);
-            hash_value_into(&hasher, entry.value_ptr.*);
-        }
-        return hasher.final();
+        hash_object_unsorted(hasher, obj);
+        return;
     };
     const values = scratch.arena.alloc(*const HashableJsonValue, n) catch {
-        var iter = obj_map.const_iterator();
-        while (iter.next()) |entry| {
-            hasher.update(entry.key_ptr.*);
-            hash_value_into(&hasher, entry.value_ptr.*);
-        }
-        return hasher.final();
+        hash_object_unsorted(hasher, obj);
+        return;
+    };
+    const indices = scratch.arena.alloc(usize, n) catch {
+        hash_object_unsorted(hasher, obj);
+        return;
     };
 
-    var iter = obj_map.const_iterator();
+    var iter = obj.map.const_iterator();
     var i: usize = 0;
     while (iter.next()) |entry| : (i += 1) {
         keys[i] = entry.key_ptr.*;
         values[i] = entry.value_ptr.*;
-    }
-
-    // Create array of indices
-    const indices = scratch.arena.alloc(usize, n) catch {
-        for (keys, values) |key, val| {
-            hasher.update(key);
-            hash_value_into(&hasher, val);
-        }
-        return hasher.final();
-    };
-
-    for (indices, 0..) |*idx, j| {
-        idx.* = j;
+        indices[i] = i;
     }
 
     // Sort indices by key for consistent hashing regardless of insertion order
@@ -678,48 +627,66 @@ fn compute_object_hash(obj_map: *const HashableJsonValue.Object.ObjectMap) u64 {
         }
     }.less_than);
 
-    // Hash in sorted order
     for (indices) |idx| {
         hasher.update(keys[idx]);
-        hash_value_into(&hasher, values[idx]);
+        hash_value_into(hasher, values[idx]);
     }
+}
 
-    return hasher.final();
+fn hash_object_unsorted(hasher: *std.hash.Wyhash, obj: *const HashableJsonValue.Object) void {
+    var iter = obj.map.const_iterator();
+    while (iter.next()) |entry| {
+        hasher.update(entry.key_ptr.*);
+        hash_value_into(hasher, entry.value_ptr.*);
+    }
 }
 
 fn hash_value_into(hasher: *std.hash.Wyhash, value: *const HashableJsonValue) void {
     switch (value.kind) {
-        .null => hasher.update(&[_]u8{0}),
-        .bool => |b| hasher.update(&[_]u8{ 1, @intFromBool(b) }),
-        .integer => |i| {
-            const f: f64 = @floatFromInt(i);
-            hasher.update(&[_]u8{2});
-            hasher.update(mem.asBytes(&f));
-        },
-        .float => |f| {
-            hasher.update(&[_]u8{3});
-            hasher.update(mem.asBytes(&f));
-        },
-        .string => |s| {
-            hasher.update(&[_]u8{4});
-            hasher.update(s);
-        },
-        .array => |*arr| {
-            hasher.update(&[_]u8{5});
-            var iter = arr.iterator();
-            while (iter.next()) |item| {
-                hash_value_into(hasher, item);
-            }
-        },
-        .object => |*obj| {
-            hasher.update(&[_]u8{6});
-            var iter = obj.map.const_iterator();
-            while (iter.next()) |entry| {
-                hasher.update(entry.key_ptr.*);
-                hash_value_into(hasher, entry.value_ptr.*);
-            }
-        },
+        .null => hash_null_into(hasher),
+        .bool => |b| hash_bool_into(hasher, b),
+        .integer => |i| hash_number_into(hasher, @floatFromInt(i)),
+        .float => |f| hash_number_into(hasher, f),
+        .string => |s| hash_string_into(hasher, s),
+        .array => |*arr| hash_array_into(hasher, arr),
+        .object => |*obj| hash_object_into(hasher, obj),
     }
+}
+
+fn compute_null_hash() u64 {
+    var hasher = std.hash.Wyhash.init(hash_seed);
+    hash_null_into(&hasher);
+    return hasher.final();
+}
+
+fn compute_bool_hash(value: bool) u64 {
+    var hasher = std.hash.Wyhash.init(hash_seed);
+    hash_bool_into(&hasher, value);
+    return hasher.final();
+}
+
+pub fn compute_string_hash(value: str8) u64 {
+    var hasher = std.hash.Wyhash.init(hash_seed);
+    hash_string_into(&hasher, value);
+    return hasher.final();
+}
+
+fn compute_number_hash(value: f64) u64 {
+    var hasher = std.hash.Wyhash.init(hash_seed);
+    hash_number_into(&hasher, value);
+    return hasher.final();
+}
+
+fn compute_array_hash(arr: *const HashableJsonValue.Array) u64 {
+    var hasher = std.hash.Wyhash.init(hash_seed);
+    hash_array_into(&hasher, arr);
+    return hasher.final();
+}
+
+fn compute_object_hash(obj: *const HashableJsonValue.Object) u64 {
+    var hasher = std.hash.Wyhash.init(hash_seed);
+    hash_object_into(&hasher, obj);
+    return hasher.final();
 }
 
 // ============================================================================
@@ -807,7 +774,7 @@ test "parse empty object" {
     defer arena.deinit();
 
     const result = try parse(&arena, "{}");
-    try std.testing.expectEqual(@as(usize, 0), result.kind.object.count());
+    try std.testing.expectEqual(@as(usize, 0), result.kind.object.map.count());
 }
 
 test "parse object with values" {
@@ -817,15 +784,13 @@ test "parse object with values" {
     const result = try parse(&arena,
         \\{"name": "test", "value": 42}
     );
-    try std.testing.expectEqual(@as(usize, 2), result.kind.object.count());
+    try std.testing.expectEqual(@as(usize, 2), result.kind.object.map.count());
 
-    const name = result.kind.object.get("name");
-    try std.testing.expect(name != null);
-    try std.testing.expectEqualStrings("test", name.?.kind.string);
+    const name = result.kind.object.map.get_const("name").?.*;
+    try std.testing.expectEqualStrings("test", name.kind.string);
 
-    const val = result.kind.object.get("value");
-    try std.testing.expect(val != null);
-    try std.testing.expectEqual(@as(i64, 42), val.?.kind.integer);
+    const val = result.kind.object.map.get_const("value").?.*;
+    try std.testing.expectEqual(@as(i64, 42), val.kind.integer);
 }
 
 test "parse nested structure" {
@@ -835,12 +800,12 @@ test "parse nested structure" {
     const result = try parse(&arena,
         \\{"arr": [1, {"nested": true}], "obj": {"a": "b"}}
     );
-    try std.testing.expectEqual(@as(usize, 2), result.kind.object.count());
+    try std.testing.expectEqual(@as(usize, 2), result.kind.object.map.count());
 
-    const arr = result.kind.object.get("arr").?;
+    const arr = result.kind.object.map.get_const("arr").?.*;
     try std.testing.expectEqual(@as(usize, 2), arr.kind.array.len);
     try std.testing.expectEqual(@as(i64, 1), arr.kind.array.get(0).?.kind.integer);
-    try std.testing.expectEqual(true, arr.kind.array.get(1).?.kind.object.get("nested").?.kind.bool);
+    try std.testing.expectEqual(true, arr.kind.array.get(1).?.kind.object.map.get_const("nested").?.*.kind.bool);
 }
 
 test "hash consistency - same value same hash" {
@@ -905,7 +870,7 @@ test "resolve_pointer - root" {
     );
     const resolved = value.resolve_pointer("");
     try std.testing.expect(resolved != null);
-    try std.testing.expectEqual(@as(usize, 1), resolved.?.kind.object.count());
+    try std.testing.expectEqual(@as(usize, 1), resolved.?.kind.object.map.count());
 }
 
 test "resolve_pointer - simple path" {
@@ -957,4 +922,198 @@ test "resolve_pointer - not found" {
 
     const resolved = value.resolve_pointer("/nonexistent");
     try std.testing.expect(resolved == null);
+}
+
+// ============================================================================
+// Additional hash consistency tests (moved from json-schema.zig ValueHash tests)
+// ============================================================================
+
+test "hash consistency - primitives" {
+    var arena = try Arena.init(.{});
+    defer arena.deinit();
+
+    // null
+    const null1 = try parse(&arena, "null");
+    const null2 = try parse(&arena, "null");
+    try std.testing.expectEqual(null1.hash, null2.hash);
+
+    // booleans
+    const true1 = try parse(&arena, "true");
+    const true2 = try parse(&arena, "true");
+    try std.testing.expectEqual(true1.hash, true2.hash);
+
+    const false1 = try parse(&arena, "false");
+    const false2 = try parse(&arena, "false");
+    try std.testing.expectEqual(false1.hash, false2.hash);
+
+    // different booleans have different hashes
+    try std.testing.expect(true1.hash != false1.hash);
+}
+
+test "hash consistency - numbers" {
+    var arena = try Arena.init(.{});
+    defer arena.deinit();
+
+    // integers
+    const int1 = try parse(&arena, "12345");
+    const int2 = try parse(&arena, "12345");
+    try std.testing.expectEqual(int1.hash, int2.hash);
+
+    // negative integers
+    const neg1 = try parse(&arena, "-9876");
+    const neg2 = try parse(&arena, "-9876");
+    try std.testing.expectEqual(neg1.hash, neg2.hash);
+
+    // floats
+    const float1 = try parse(&arena, "3.14159");
+    const float2 = try parse(&arena, "3.14159");
+    try std.testing.expectEqual(float1.hash, float2.hash);
+
+    // different numbers have different hashes
+    const one = try parse(&arena, "1");
+    const two = try parse(&arena, "2");
+    try std.testing.expect(one.hash != two.hash);
+}
+
+test "hash consistency - strings" {
+    var arena = try Arena.init(.{});
+    defer arena.deinit();
+
+    const str1 = try parse(&arena, "\"hello\"");
+    const str2 = try parse(&arena, "\"hello\"");
+    try std.testing.expectEqual(str1.hash, str2.hash);
+
+    // different strings have different hashes
+    const a = try parse(&arena, "\"a\"");
+    const b = try parse(&arena, "\"b\"");
+    try std.testing.expect(a.hash != b.hash);
+}
+
+test "hash consistency - arrays" {
+    var arena = try Arena.init(.{});
+    defer arena.deinit();
+
+    const arr1 = try parse(&arena, "[1, 2, 3, 4]");
+    const arr2 = try parse(&arena, "[1, 2, 3, 4]");
+    try std.testing.expectEqual(arr1.hash, arr2.hash);
+
+    // array order matters
+    const forward = try parse(&arena, "[1, 2, 3]");
+    const reverse = try parse(&arena, "[3, 2, 1]");
+    try std.testing.expect(forward.hash != reverse.hash);
+
+    // empty array vs empty object
+    const empty_arr = try parse(&arena, "[]");
+    const empty_obj = try parse(&arena, "{}");
+    try std.testing.expect(empty_arr.hash != empty_obj.hash);
+}
+
+test "hash consistency - objects with different key orders" {
+    var arena = try Arena.init(.{});
+    defer arena.deinit();
+
+    const obj1 = try parse(&arena,
+        \\{"a": 1, "b": 2, "c": 3}
+    );
+    const obj2 = try parse(&arena,
+        \\{"c": 3, "b": 2, "a": 1}
+    );
+    try std.testing.expectEqual(obj1.hash, obj2.hash);
+}
+
+test "hash consistency - nested objects with different key orders" {
+    var arena = try Arena.init(.{});
+    defer arena.deinit();
+
+    const obj1 = try parse(&arena,
+        \\{"outer": {"x": 1, "y": 2}, "z": 3}
+    );
+    const obj2 = try parse(&arena,
+        \\{"z": 3, "outer": {"y": 2, "x": 1}}
+    );
+    try std.testing.expectEqual(obj1.hash, obj2.hash);
+}
+
+test "hash consistency - complex nested structure" {
+    var arena = try Arena.init(.{});
+    defer arena.deinit();
+
+    const v1 = try parse(&arena,
+        \\{"nested": {"list": [1, 2, 3], "flag": true, "value": 42}, "name": "example"}
+    );
+    const v2 = try parse(&arena,
+        \\{"name": "example", "nested": {"value": 42, "flag": true, "list": [1, 2, 3]}}
+    );
+    try std.testing.expectEqual(v1.hash, v2.hash);
+}
+
+test "hash consistency - different object values produce different hashes" {
+    var arena = try Arena.init(.{});
+    defer arena.deinit();
+
+    const obj1 = try parse(&arena,
+        \\{"a": 1}
+    );
+    const obj2 = try parse(&arena,
+        \\{"a": 2}
+    );
+    try std.testing.expect(obj1.hash != obj2.hash);
+
+    const obj3 = try parse(&arena,
+        \\{"a": 1, "b": 2}
+    );
+    const obj4 = try parse(&arena,
+        \\{"a": 1, "b": 2, "c": 3}
+    );
+    try std.testing.expect(obj3.hash != obj4.hash);
+}
+
+test "hash consistency - nested object value differences" {
+    var arena = try Arena.init(.{});
+    defer arena.deinit();
+
+    const obj1 = try parse(&arena,
+        \\{"nested": {"x": 1, "y": 2}}
+    );
+    const obj2 = try parse(&arena,
+        \\{"nested": {"x": 1, "y": 3}}
+    );
+    try std.testing.expect(obj1.hash != obj2.hash);
+}
+
+test "hash consistency - type differences" {
+    var arena = try Arena.init(.{});
+    defer arena.deinit();
+
+    // null vs false
+    const null_val = try parse(&arena, "null");
+    const false_val = try parse(&arena, "false");
+    try std.testing.expect(null_val.hash != false_val.hash);
+
+    // true vs 1
+    const true_val = try parse(&arena, "true");
+    const one_val = try parse(&arena, "1");
+    try std.testing.expect(true_val.hash != one_val.hash);
+
+    // false vs 0
+    const zero_val = try parse(&arena, "0");
+    try std.testing.expect(false_val.hash != zero_val.hash);
+
+    // [false] vs [0]
+    const arr_false = try parse(&arena, "[false]");
+    const arr_zero = try parse(&arena, "[0]");
+    try std.testing.expect(arr_false.hash != arr_zero.hash);
+}
+
+test "hash consistency - mixed array" {
+    var arena = try Arena.init(.{});
+    defer arena.deinit();
+
+    const v1 = try parse(&arena,
+        \\{"mixed": [null, true, false, 0, 1.5, "text"]}
+    );
+    const v2 = try parse(&arena,
+        \\{"mixed": [null, true, false, 0, 1.5, "text"]}
+    );
+    try std.testing.expectEqual(v1.hash, v2.hash);
 }
