@@ -1,9 +1,49 @@
 const std = @import("std");
 
+const ModuleSpec = struct {
+    name: []const u8,
+    path: []const u8,
+    add_to_exe: bool = false,
+    install_lib: bool = false,
+    unit_tests: bool = false,
+};
+
+const ExternalModules = struct {
+    lsp: *std.Build.Module,
+    pcre: *std.Build.Module,
+};
+
+fn find_module_index(module_specs: []const ModuleSpec, name: []const u8) ?usize {
+    for (module_specs, 0..) |spec, i| {
+        if (std.mem.eql(u8, spec.name, name)) return i;
+    }
+    return null;
+}
+
+fn module_by_name(module_specs: []const ModuleSpec, modules: []const *std.Build.Module, name: []const u8) *std.Build.Module {
+    if (find_module_index(module_specs, name)) |index| {
+        return modules[index];
+    }
+    std.debug.panic("Unknown module: {s}", .{name});
+}
+
+fn add_module_tests(b: *std.Build, module: *std.Build.Module, test_step: *std.Build.Step, check_step: *std.Build.Step, test_filters: []const []const u8) void {
+    const module_tests = b.addTest(.{
+        .root_module = module,
+        .filters = test_filters,
+    });
+    check_step.dependOn(&module_tests.step);
+    const run_module_tests = b.addRunArtifact(module_tests);
+    test_step.dependOn(&run_module_tests.step);
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
-
     const optimize = b.standardOptimizeOption(.{});
+
+    const test_step = b.step("test", "Run unit tests");
+    const check_step = b.step("check", "Check if jsonls compiles");
+    const test_filters = b.option([]const []const u8, "test-filter", "Filter tests") orelse &.{};
 
     const exe_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
@@ -11,41 +51,95 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const test_step = b.step("test", "Run unit tests");
-    const check_step = b.step("check", "Check if jsonls compiles");
-    const test_filters = b.option([]const []const u8, "test-filter", "Filter tests") orelse &.{};
+    const module_specs = [_]ModuleSpec{
+        .{
+            .name = "base",
+            .path = "src/base/base.zig",
+            .add_to_exe = true,
+            .install_lib = true,
+            .unit_tests = true,
+        },
+        .{
+            .name = "json",
+            .path = "src/json/json.zig",
+            .add_to_exe = true,
+            .install_lib = true,
+            .unit_tests = true,
+        },
+        .{
+            .name = "json-schema",
+            .path = "src/json-schema/json-schema.zig",
+            .add_to_exe = true,
+            .install_lib = true,
+            .unit_tests = true,
+        },
+        .{
+            .name = "server",
+            .path = "src/server/server.zig",
+            .add_to_exe = true,
+            .install_lib = true,
+            .unit_tests = true,
+        },
+        .{
+            .name = "testing",
+            .path = "src/testing/testing.zig",
+            .install_lib = true,
+            .unit_tests = true,
+        },
+    };
 
-    const mod_base = subsystem(b, "base", exe_mod, test_step, check_step, target, optimize, test_filters);
-    const mod_json = subsystem(b, "json", exe_mod, test_step, check_step, target, optimize, test_filters);
-    mod_json.addImport("base", mod_base);
+    var modules: [module_specs.len]*std.Build.Module = undefined;
 
-    const mod_json_schema = subsystem(b, "json-schema", exe_mod, test_step, check_step, target, optimize, test_filters);
-    mod_json_schema.addImport("base", mod_base);
-    mod_json_schema.addImport("json", mod_json);
+    inline for (module_specs, 0..) |spec, i| {
+        modules[i] = b.createModule(.{
+            .root_source_file = b.path(spec.path),
+            .optimize = optimize,
+            .target = target,
+        });
+    }
 
     const pcre_pkg = b.dependency("libpcre_zig", .{ .optimize = optimize, .target = target });
-    const pcre_mod = pcre_pkg.module("libpcre");
-    mod_json_schema.addImport("pcre", pcre_mod);
-
     const lsp_kit_pkg = b.dependency("lsp_kit", .{ .optimize = optimize, .target = target });
-    const mod_lsp = lsp_kit_pkg.module("lsp");
-    exe_mod.addImport("lsp", mod_lsp);
+    const externals = ExternalModules{
+        .pcre = pcre_pkg.module("libpcre"),
+        .lsp = lsp_kit_pkg.module("lsp"),
+    };
 
-    // Server subsystem
-    const mod_server = subsystem(b, "server", exe_mod, test_step, check_step, target, optimize, test_filters);
-    mod_server.addImport("base", mod_base);
-    mod_server.addImport("json", mod_json);
-    mod_server.addImport("lsp", mod_lsp);
+    inline for (0..modules.len) |i| {
+        inline for (0..modules.len) |j| {
+            if (i == j) continue;
+            modules[i].addImport(module_specs[j].name, modules[j]);
+        }
+    }
 
-    // Testing module for snapshot tests
-    const mod_testing = b.createModule(.{
-        .root_source_file = b.path("src/testing/testing.zig"),
-        .optimize = optimize,
-        .target = target,
-    });
-    mod_testing.addImport("lsp", mod_lsp);
-    mod_testing.addImport("base", mod_base);
-    mod_testing.addImport("server", mod_server);
+    inline for (module_specs, 0..) |spec, i| {
+        if (!spec.install_lib) continue;
+        const lib = b.addLibrary(.{
+            .linkage = .static,
+            .name = spec.name,
+            .root_module = modules[i],
+        });
+        b.installArtifact(lib);
+    }
+
+    inline for (module_specs, 0..) |spec, i| {
+        if (!spec.add_to_exe) continue;
+        exe_mod.addImport(spec.name, modules[i]);
+    }
+    exe_mod.addImport("lsp", externals.lsp);
+
+    inline for (module_specs, 0..) |_, i| {
+        add_module_tests(b, modules[i], test_step, check_step, test_filters);
+    }
+
+    const mod_base = module_by_name(&module_specs, &modules, "base");
+    const mod_json_schema = module_by_name(&module_specs, &modules, "json-schema");
+    const mod_server = module_by_name(&module_specs, &modules, "server");
+    const mod_testing = module_by_name(&module_specs, &modules, "testing");
+
+    mod_json_schema.addImport("pcre", externals.pcre);
+    mod_server.addImport("lsp", externals.lsp);
+    mod_testing.addImport("lsp", externals.lsp);
 
     const testing_lib = b.addLibrary(.{
         .linkage = .static,
@@ -53,14 +147,6 @@ pub fn build(b: *std.Build) void {
         .root_module = mod_testing,
     });
     b.installArtifact(testing_lib);
-
-    const testing_tests = b.addTest(.{
-        .root_module = mod_testing,
-        .filters = test_filters,
-    });
-    check_step.dependOn(&testing_tests.step);
-    const run_testing_tests = b.addRunArtifact(testing_tests);
-    test_step.dependOn(&run_testing_tests.step);
 
     const exe_unit_tests = b.addTest(.{
         .root_module = exe_mod,
@@ -225,32 +311,4 @@ pub fn build(b: *std.Build) void {
             test_suite_step.dependOn(&run_test_suite.step);
         }
     }
-}
-
-fn subsystem(b: *std.Build, name: []const u8, exe: *std.Build.Module, test_step: *std.Build.Step, check_step: *std.Build.Step, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, test_filters: []const []const u8) *std.Build.Module {
-    const lib_mod = b.createModule(.{
-        .root_source_file = b.path(b.fmt("src/{s}/{s}.zig", .{ name, name })),
-        .optimize = optimize,
-        .target = target,
-    });
-
-    const lib = b.addLibrary(.{
-        .linkage = .static,
-        .name = name,
-        .root_module = lib_mod,
-    });
-
-    b.installArtifact(lib);
-
-    exe.addImport(name, lib_mod);
-
-    const lib_tests = b.addTest(.{
-        .root_module = lib_mod,
-        .filters = test_filters,
-    });
-    check_step.dependOn(&lib_tests.step);
-
-    const run_lib_unit_tests = b.addRunArtifact(lib_tests);
-    test_step.dependOn(&run_lib_unit_tests.step);
-    return lib_mod;
 }

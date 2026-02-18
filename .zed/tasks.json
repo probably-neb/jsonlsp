@@ -44,6 +44,17 @@
     "cwd": "$ZED_WORKTREE_ROOT"
   },
   {
+    "label": "snapshot: document_multiline_errors",
+    "command": "zig",
+    "args": [
+      "build",
+      "test:snapshots",
+      "--",
+      "tests/snapshots/document_multiline_errors.txt"
+    ],
+    "cwd": "$ZED_WORKTREE_ROOT"
+  },
+  {
     "label": "snapshot: document_open",
     "command": "zig",
     "args": [
@@ -73,6 +84,17 @@
       "test:snapshots",
       "--",
       "tests/snapshots/error_before_init.txt"
+    ],
+    "cwd": "$ZED_WORKTREE_ROOT"
+  },
+  {
+    "label": "snapshot: incremental_sync",
+    "command": "zig",
+    "args": [
+      "build",
+      "test:snapshots",
+      "--",
+      "tests/snapshots/incremental_sync.txt"
     ],
     "cwd": "$ZED_WORKTREE_ROOT"
   },
