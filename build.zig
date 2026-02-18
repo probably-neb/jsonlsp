@@ -27,16 +27,6 @@ fn module_by_name(module_specs: []const ModuleSpec, modules: []const *std.Build.
     std.debug.panic("Unknown module: {s}", .{name});
 }
 
-fn add_module_tests(b: *std.Build, module: *std.Build.Module, test_step: *std.Build.Step, check_step: *std.Build.Step, test_filters: []const []const u8) void {
-    const module_tests = b.addTest(.{
-        .root_module = module,
-        .filters = test_filters,
-    });
-    check_step.dependOn(&module_tests.step);
-    const run_module_tests = b.addRunArtifact(module_tests);
-    test_step.dependOn(&run_module_tests.step);
-}
-
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -129,7 +119,13 @@ pub fn build(b: *std.Build) void {
     exe_mod.addImport("lsp", externals.lsp);
 
     inline for (module_specs, 0..) |_, i| {
-        add_module_tests(b, modules[i], test_step, check_step, test_filters);
+        const module_tests = b.addTest(.{
+            .root_module = modules[i],
+            .filters = test_filters,
+        });
+        check_step.dependOn(&module_tests.step);
+        const run_module_tests = b.addRunArtifact(module_tests);
+        test_step.dependOn(&run_module_tests.step);
     }
 
     const mod_base = module_by_name(&module_specs, &modules, "base");
