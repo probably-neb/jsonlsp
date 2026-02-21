@@ -42,8 +42,8 @@ pub fn XarMap(comptime K: type, comptime V: type, comptime prealloc_count: usize
         pub const empty: Self = .{};
 
         pub const Entry = struct {
-            key_ptr: *K,
-            value_ptr: *V,
+            key_ptr: *const K,
+            value_ptr: *const V,
         };
 
         pub const ConstEntry = struct {
@@ -331,7 +331,7 @@ pub fn XarMap(comptime K: type, comptime V: type, comptime prealloc_count: usize
             return null;
         }
 
-        fn find_entry_index(map: *Self, key: K) ?usize {
+        fn find_entry_index(map: *const Self, key: K) ?usize {
             if (map.slot_count == 0) return null;
 
             const hash = hash_key(key);

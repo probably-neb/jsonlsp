@@ -65,6 +65,7 @@ pub fn deinit(self: *Arena) void {
     self.* = .zero;
 }
 
+// TODO: remove?
 pub fn push(arena: *Arena, size: usize) AllocError![]u8 {
     return arena.push_aligned(size, 1);
 }
@@ -122,7 +123,7 @@ pub fn push_zero_aligned(arena: *Arena, size: usize, alignment: usize) AllocErro
     return slice;
 }
 
-pub fn dupe(arena: *Arena, comptime T: type, src: []const u8) AllocError![]T {
+pub fn dupe(arena: *Arena, comptime T: type, src: []const T) AllocError![]T {
     const dst = try arena.alloc(T, src.len);
     @memcpy(dst, src);
     return dst;

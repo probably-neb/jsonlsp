@@ -19,8 +19,8 @@ const str8 = []const u8;
 pub const OOM = error{OutOfMemory};
 
 const pcre = @import("pcre");
-pub const hashable_json = @import("hashable-json.zig");
-const HashableJsonValue = hashable_json.HashableJsonValue;
+const json = @import("json");
+const HashableJsonValue = json.hashed.Value;
 
 pub const Revision = enum {
     draft3,
@@ -34,7 +34,7 @@ pub const Revision = enum {
 
     fn detect(schema: *const HashableJsonValue) Revision {
         if (schema.kind != .object) return .unknown;
-        const schema_uri = (schema.kind.object.map.get_const("$schema") orelse return .unknown).*;
+        const schema_uri = (schema.kind.object.get_const("$schema") orelse return .unknown).*;
         if (schema_uri.kind != .string) return .unknown;
 
         const uri = schema_uri.kind.string;
@@ -134,10 +134,14 @@ pub const Schema = struct {
 
     pub fn is_valid(schema: *const Schema, input: str8) bool {
         var arena = Arena.init(.{}) catch unreachable;
-        defer arena.deinit();
-        const json = hashable_json.parse(&arena, input) catch unreachable; // todo: error
-        // todo: oom error
-        return check(&arena, schema.root, &json) catch unreachable;
+        // _ = input;
+
+        const json_value = json.hashed.parse(&arena, input) catch return false;
+        // _ = input;
+        // const json_value: HashableJsonValue = undefined;
+        // WIP: need to parse here
+        // - cleaning up hashed json impl
+        return check(&arena, schema.root, json_value) catch return false;
     }
 };
 
@@ -207,8 +211,8 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
             defer scratch.release();
             var hashes: std.AutoHashMapUnmanaged(u64, void) = .empty;
             defer hashes.deinit(scratch.arena.allocator());
-            try hashes.ensureTotalCapacity(scratch.arena.allocator(), @intCast(value.kind.array.len));
-            var arr_iter = value.kind.array.iterator();
+            try hashes.ensureTotalCapacity(scratch.arena.allocator(), @intCast(value.kind.array.count()));
+            var arr_iter = value.kind.array.iter();
             while (arr_iter.next()) |item| {
                 if (try hashes.fetchPut(scratch.arena.allocator(), item.hash, {})) |_| {
                     return false;
@@ -221,7 +225,7 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
                 return true;
             }
 
-            var arr_iter = value.kind.array.iterator();
+            var arr_iter = value.kind.array.iter();
             while (arr_iter.next()) |item| {
                 if (!try check(arena, item_sub_schema, item)) return false;
             }
@@ -234,7 +238,7 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
             }
 
             // Validate each array item against its corresponding schema
-            var arr_iter = value.kind.array.iterator();
+            var arr_iter = value.kind.array.iter();
             var i: usize = 0;
             while (arr_iter.next()) |item| : (i += 1) {
                 if (i >= ti.items.len) {
@@ -256,16 +260,16 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
             return value.kind != .string or (std.unicode.utf8CountCodepoints(value.kind.string) catch 0) <= max_len;
         },
         .max_items => |max_items| {
-            return value.kind != .array or value.kind.array.len <= max_items;
+            return value.kind != .array or value.kind.array.count() <= max_items;
         },
         .min_items => |min_items| {
-            return value.kind != .array or value.kind.array.len >= min_items;
+            return value.kind != .array or value.kind.array.count() >= min_items;
         },
         .max_properties => |max_properties| {
-            return value.kind != .object or value.kind.object.map.count() <= max_properties;
+            return value.kind != .object or value.kind.object.count() <= max_properties;
         },
         .min_properties => |min_properties| {
-            return value.kind != .object or value.kind.object.map.count() >= min_properties;
+            return value.kind != .object or value.kind.object.count() >= min_properties;
         },
         .max_i64 => |max_int| {
             return switch (value.kind) {
@@ -333,14 +337,14 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
             var checked_properties: std.StringArrayHashMapUnmanaged(void) = .empty;
             defer checked_properties.deinit(scratch.arena.allocator());
             while (current_property) |property_constraint| : (current_property = property_constraint.next) {
-                const sub_value = (value.kind.object.map.get_const(property_constraint.kind.property.name) orelse continue).*;
+                const sub_value = (value.kind.object.get_const(property_constraint.kind.property.name) orelse continue).*;
                 try checked_properties.put(scratch.arena.allocator(), property_constraint.kind.property.name, {});
                 if (!try check(arena, property_constraint.kind.property.constraint, sub_value)) {
                     return false;
                 }
             }
             // Check all properties against patternProperties and additionalProperties
-            var obj_iter = value.kind.object.map.const_iterator();
+            var obj_iter = value.kind.object.const_iterator();
             while (obj_iter.next()) |entry| {
                 // Check if property matches any patternProperties (applies to ALL properties)
                 var matched_pattern = false;
@@ -370,10 +374,10 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
 
             for (required_property_hashes) |required_property_hash| {
                 // perf: should be improved - could store string hashes in a set
-                var key_iter = value.kind.object.map.key_iterator();
+                var key_iter = value.kind.object.key_iterator();
                 while (key_iter.next()) |key_ptr| {
                     // Hash the key string to compare
-                    const key_hash = hashable_json.compute_string_hash(key_ptr.*);
+                    const key_hash = json.hashed.compute_string_hash(key_ptr.*);
                     if (key_hash == required_property_hash) break;
                 } else return false;
             }
@@ -428,22 +432,22 @@ pub fn parse_with_revision(schema_contents: str8, revision: ?Revision) !Schema {
     var parse_arena = try Arena.init(.{});
     defer parse_arena.deinit();
 
-    const root_json = try hashable_json.parse(&parse_arena, schema_contents);
+    const root_json = try json.hashed.parse(&parse_arena, schema_contents);
 
     var ctx: ParseContext = .{
-        .revision = revision orelse Revision.detect(&root_json),
+        .revision = revision orelse Revision.detect(root_json),
         .usage_arena = &usage_arena,
         .parse_arena = &parse_arena,
     };
 
     // Phase 1: Collect and pre-allocate definitions
     ctx.defs = if (root_json.kind == .object) blk: {
-        const defs_obj = (root_json.kind.object.map.get_const("$defs") orelse
-            root_json.kind.object.map.get_const("definitions")) orelse break :blk &.{};
+        const defs_obj = (root_json.kind.object.get_const("$defs") orelse
+            root_json.kind.object.get_const("definitions")) orelse break :blk &.{};
         if (defs_obj.*.kind != .object) break :blk &.{};
         const d = &defs_obj.*.kind.object;
-        const slice = try usage_arena.alloc(Schema.Definition, d.map.count());
-        var key_iter = d.map.key_iterator();
+        const slice = try usage_arena.alloc(Schema.Definition, d.count());
+        var key_iter = d.key_iterator();
         var i: usize = 0;
         while (key_iter.next()) |key| : (i += 1) {
             const stub = try usage_arena.create(Schema.Constraint);
@@ -456,11 +460,11 @@ pub fn parse_with_revision(schema_contents: str8, revision: ?Revision) !Schema {
 
     // Phase 2: Parse each definition into its pre-allocated stub
     if (root_json.kind == .object) {
-        const defs_obj = root_json.kind.object.map.get_const("$defs") orelse
-            root_json.kind.object.map.get_const("definitions");
+        const defs_obj = root_json.kind.object.get_const("$defs") orelse
+            root_json.kind.object.get_const("definitions");
         if (defs_obj != null and defs_obj.?.*.kind == .object) {
             const d = &defs_obj.?.*.kind.object;
-            var iter = d.map.const_iterator();
+            var iter = d.const_iterator();
             while (iter.next()) |entry| {
                 const def = find_def(ctx.defs, entry.key_ptr.*) orelse continue;
                 try parse_into_constraint(&ctx, entry.value_ptr.*, def);
@@ -469,7 +473,7 @@ pub fn parse_with_revision(schema_contents: str8, revision: ?Revision) !Schema {
     }
 
     // Phase 3: Parse the root schema
-    const root = try parse_constraint(&ctx, &root_json);
+    const root = try parse_constraint(&ctx, root_json);
     return Schema{
         .root = root,
         .arena = usage_arena,
@@ -601,12 +605,12 @@ fn parse_into_constraint(ctx: *ParseContext, schema: *const HashableJsonValue, c
             };
         },
         .object => |*obj| {
-            if (obj.map.count() == 0) {
+            if (obj.count() == 0) {
                 constraint.kind = .true;
                 break :parse;
             }
             // Handle $ref first (in draft4-7, $ref overrides siblings)
-            if (obj.map.get_const("$ref")) |ref_ptr| {
+            if (obj.get_const("$ref")) |ref_ptr| {
                 const ref_val = ref_ptr.*;
                 if (ref_val.kind == .string) {
                     if (parse_local_def_ref(ref_val.kind.string)) |name| {
@@ -756,8 +760,8 @@ const ValidationType = enum {
     });
 };
 
-fn parse_validation__type(ctx: *ParseContext, obj: *const HashableJsonValue.Object) !?[]ValidationType {
-    const ty = (obj.map.get_const("type") orelse return null).*;
+fn parse_validation__type(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?[]ValidationType {
+    const ty = (obj.get_const("type") orelse return null).*;
     switch (ty.kind) {
         .string => |v_type_str| {
             const v_type = try ctx.usage_arena.create(ValidationType);
@@ -766,8 +770,8 @@ fn parse_validation__type(ctx: *ParseContext, obj: *const HashableJsonValue.Obje
             return v_type[0..1];
         },
         .array => |*arr| {
-            var v_types: base.ArenaList(ValidationType) = try .init_capacity(ctx.usage_arena, arr.len);
-            var iter = arr.iterator();
+            var v_types: base.ArenaList(ValidationType) = try .init_capacity(ctx.usage_arena, arr.count());
+            var iter = arr.iter();
             while (iter.next()) |v_type_item| {
                 if (v_type_item.kind != .string) {
                     // todo: error
@@ -783,8 +787,8 @@ fn parse_validation__type(ctx: *ParseContext, obj: *const HashableJsonValue.Obje
 }
 
 /// https://www.learnjsonschema.com/2020-12/validation/minlength/
-fn parse_validation__min_length(obj: *const HashableJsonValue.Object) ?u64 {
-    const min_len = (obj.map.get_const("minLength") orelse return null).*;
+fn parse_validation__min_length(obj: *const HashableJsonValue.Kind.Object) ?u64 {
+    const min_len = (obj.get_const("minLength") orelse return null).*;
     switch (min_len.kind) {
         .integer => |int_val| {
             return std.math.lossyCast(u64, int_val);
@@ -794,8 +798,8 @@ fn parse_validation__min_length(obj: *const HashableJsonValue.Object) ?u64 {
 }
 
 /// https://www.learnjsonschema.com/2020-12/validation/maxlength/
-fn parse_validation__max_length(obj: *const HashableJsonValue.Object) ?u64 {
-    const min_len = (obj.map.get_const("maxLength") orelse return null).*;
+fn parse_validation__max_length(obj: *const HashableJsonValue.Kind.Object) ?u64 {
+    const min_len = (obj.get_const("maxLength") orelse return null).*;
     switch (min_len.kind) {
         .integer => |int_val| {
             return std.math.lossyCast(u64, int_val);
@@ -805,8 +809,8 @@ fn parse_validation__max_length(obj: *const HashableJsonValue.Object) ?u64 {
 }
 
 /// https://www.learnjsonschema.com/2020-12/validation/minimum/
-fn parse_validation__min(obj: *const HashableJsonValue.Object) ?Schema.Constraint.Kind {
-    const min_val = (obj.map.get_const("minimum") orelse return null).*;
+fn parse_validation__min(obj: *const HashableJsonValue.Kind.Object) ?Schema.Constraint.Kind {
+    const min_val = (obj.get_const("minimum") orelse return null).*;
     switch (min_val.kind) {
         .integer => |int_val| {
             return .{ .min_i64 = int_val };
@@ -819,8 +823,8 @@ fn parse_validation__min(obj: *const HashableJsonValue.Object) ?Schema.Constrain
 }
 
 /// https://www.learnjsonschema.com/2020-12/validation/maximum/
-fn parse_validation__max(obj: *const HashableJsonValue.Object) ?Schema.Constraint.Kind {
-    const max_val = (obj.map.get_const("maximum") orelse return null).*;
+fn parse_validation__max(obj: *const HashableJsonValue.Kind.Object) ?Schema.Constraint.Kind {
+    const max_val = (obj.get_const("maximum") orelse return null).*;
     switch (max_val.kind) {
         .integer => |int_val| {
             return .{ .max_i64 = int_val };
@@ -833,8 +837,8 @@ fn parse_validation__max(obj: *const HashableJsonValue.Object) ?Schema.Constrain
 }
 
 /// https://www.learnjsonschema.com/2020-12/validation/exclusiveminimum/
-fn parse_validation__exclusive_min(obj: *const HashableJsonValue.Object) ?Schema.Constraint.Kind {
-    const min_val = (obj.map.get_const("exclusiveMinimum") orelse return null).*;
+fn parse_validation__exclusive_min(obj: *const HashableJsonValue.Kind.Object) ?Schema.Constraint.Kind {
+    const min_val = (obj.get_const("exclusiveMinimum") orelse return null).*;
     switch (min_val.kind) {
         .integer => |int_val| {
             return .{ .min_i64_exclusive = int_val };
@@ -847,8 +851,8 @@ fn parse_validation__exclusive_min(obj: *const HashableJsonValue.Object) ?Schema
 }
 
 /// https://www.learnjsonschema.com/2020-12/validation/exclusivemaximum/
-fn parse_validation__exclusive_max(obj: *const HashableJsonValue.Object) ?Schema.Constraint.Kind {
-    const max_val = (obj.map.get_const("exclusiveMaximum") orelse return null).*;
+fn parse_validation__exclusive_max(obj: *const HashableJsonValue.Kind.Object) ?Schema.Constraint.Kind {
+    const max_val = (obj.get_const("exclusiveMaximum") orelse return null).*;
     switch (max_val.kind) {
         .integer => |int_val| {
             return .{ .max_i64_exclusive = int_val };
@@ -860,8 +864,8 @@ fn parse_validation__exclusive_max(obj: *const HashableJsonValue.Object) ?Schema
     }
 }
 
-fn parse_validation__min_items(obj: *const HashableJsonValue.Object) ?Schema.Constraint.Kind {
-    const min_items = (obj.map.get_const("minItems") orelse return null).*;
+fn parse_validation__min_items(obj: *const HashableJsonValue.Kind.Object) ?Schema.Constraint.Kind {
+    const min_items = (obj.get_const("minItems") orelse return null).*;
     switch (min_items.kind) {
         .integer => |int_val| {
             return .{ .min_items = std.math.lossyCast(u64, int_val) };
@@ -873,8 +877,8 @@ fn parse_validation__min_items(obj: *const HashableJsonValue.Object) ?Schema.Con
     }
 }
 
-fn parse_validation__max_items(obj: *const HashableJsonValue.Object) ?Schema.Constraint.Kind {
-    const max_items = (obj.map.get_const("maxItems") orelse return null).*;
+fn parse_validation__max_items(obj: *const HashableJsonValue.Kind.Object) ?Schema.Constraint.Kind {
+    const max_items = (obj.get_const("maxItems") orelse return null).*;
     switch (max_items.kind) {
         .integer => |int_val| {
             return .{ .max_items = std.math.lossyCast(u64, int_val) };
@@ -886,8 +890,8 @@ fn parse_validation__max_items(obj: *const HashableJsonValue.Object) ?Schema.Con
     }
 }
 
-fn parse_validation__min_properties(obj: *const HashableJsonValue.Object) ?Schema.Constraint.Kind {
-    const min_properties = (obj.map.get_const("minProperties") orelse return null).*;
+fn parse_validation__min_properties(obj: *const HashableJsonValue.Kind.Object) ?Schema.Constraint.Kind {
+    const min_properties = (obj.get_const("minProperties") orelse return null).*;
     switch (min_properties.kind) {
         .integer => |int_val| {
             return .{ .min_properties = std.math.lossyCast(u64, int_val) };
@@ -899,8 +903,8 @@ fn parse_validation__min_properties(obj: *const HashableJsonValue.Object) ?Schem
     }
 }
 
-fn parse_validation__max_properties(obj: *const HashableJsonValue.Object) ?Schema.Constraint.Kind {
-    const max_properties = (obj.map.get_const("maxProperties") orelse return null).*;
+fn parse_validation__max_properties(obj: *const HashableJsonValue.Kind.Object) ?Schema.Constraint.Kind {
+    const max_properties = (obj.get_const("maxProperties") orelse return null).*;
     switch (max_properties.kind) {
         .integer => |int_val| {
             return .{ .max_properties = std.math.lossyCast(u64, int_val) };
@@ -912,18 +916,18 @@ fn parse_validation__max_properties(obj: *const HashableJsonValue.Object) ?Schem
     }
 }
 
-fn parse_validation__const(obj: *const HashableJsonValue.Object) ?Schema.Constraint.Kind {
-    const value = (obj.map.get_const("const") orelse return null).*;
+fn parse_validation__const(obj: *const HashableJsonValue.Kind.Object) ?Schema.Constraint.Kind {
+    const value = (obj.get_const("const") orelse return null).*;
     return .{ .@"const" = value.hash };
 }
 
-fn parse_validation__enum(ctx: *ParseContext, obj: *const HashableJsonValue.Object) !?Schema.Constraint.Kind {
-    const value = (obj.map.get_const("enum") orelse return null).*;
+fn parse_validation__enum(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
+    const value = (obj.get_const("enum") orelse return null).*;
     if (value.kind != .array) {
         return .{ .@"enum" = &.{} };
     }
-    var hashes: base.ArenaList(u64) = try .init_capacity(ctx.usage_arena, value.kind.array.len);
-    var iter = value.kind.array.iterator();
+    var hashes: base.ArenaList(u64) = try .init_capacity(ctx.usage_arena, value.kind.array.count());
+    var iter = value.kind.array.iter();
     while (iter.next()) |item| {
         hashes.append_assume_capacity(item.hash);
     }
@@ -932,26 +936,26 @@ fn parse_validation__enum(ctx: *ParseContext, obj: *const HashableJsonValue.Obje
     };
 }
 
-fn parse_validation__unique_items(obj: *const HashableJsonValue.Object) ?Schema.Constraint.Kind {
-    const unique_items = (obj.map.get_const("uniqueItems") orelse return null).*;
+fn parse_validation__unique_items(obj: *const HashableJsonValue.Kind.Object) ?Schema.Constraint.Kind {
+    const unique_items = (obj.get_const("uniqueItems") orelse return null).*;
     // todo: how to handle
     if (unique_items.kind != .bool or !unique_items.kind.bool) return null;
     return .unique_items;
 }
 
-fn parse_applicitor__items(ctx: *ParseContext, obj: *const HashableJsonValue.Object) !?Schema.Constraint.Kind {
-    const items_sub_schema = (obj.map.get_const("items") orelse return null).*;
+fn parse_applicitor__items(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
+    const items_sub_schema = (obj.get_const("items") orelse return null).*;
     // items can be either a single schema (applies to all items) or an array of schemas (tuple validation)
     if (items_sub_schema.kind == .array) {
-        const item_schemas = try ctx.usage_arena.alloc(*Schema.Constraint, items_sub_schema.kind.array.len);
-        var iter = items_sub_schema.kind.array.iterator();
+        const item_schemas = try ctx.usage_arena.alloc(*Schema.Constraint, items_sub_schema.kind.array.count());
+        var iter = items_sub_schema.kind.array.iter();
         var i: usize = 0;
         while (iter.next()) |item_schema| : (i += 1) {
             item_schemas[i] = try parse_constraint(ctx, item_schema);
         }
         // Parse additionalItems
         const additional_items: ?*Schema.Constraint = blk: {
-            const additional_items_ptr = obj.map.get_const("additionalItems") orelse break :blk null;
+            const additional_items_ptr = obj.get_const("additionalItems") orelse break :blk null;
             break :blk try parse_constraint(ctx, additional_items_ptr.*);
         };
         return .{ .tuple_items = .{
@@ -962,10 +966,10 @@ fn parse_applicitor__items(ctx: *ParseContext, obj: *const HashableJsonValue.Obj
     return .{ .items = try parse_constraint(ctx, items_sub_schema) };
 }
 
-fn parse_applicitor__properties(ctx: *ParseContext, obj: *const HashableJsonValue.Object) !?Schema.Constraint.Kind {
-    const properties_ptr = obj.map.get_const("properties");
-    const pattern_properties_ptr = obj.map.get_const("patternProperties");
-    const additional_properties_ptr = obj.map.get_const("additionalProperties");
+fn parse_applicitor__properties(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
+    const properties_ptr = obj.get_const("properties");
+    const pattern_properties_ptr = obj.get_const("patternProperties");
+    const additional_properties_ptr = obj.get_const("additionalProperties");
 
     const properties_value: ?*const HashableJsonValue = if (properties_ptr) |p| p.* else null;
     const pattern_properties_value: ?*const HashableJsonValue = if (pattern_properties_ptr) |p| p.* else null;
@@ -980,8 +984,8 @@ fn parse_applicitor__properties(ctx: *ParseContext, obj: *const HashableJsonValu
     var first_property: ?*Schema.Constraint = null;
     if (properties_value) |props| {
         if (props.kind == .object) {
-            var property_iter = props.kind.object.map.const_iterator();
-            var property_constraints = try ctx.usage_arena.alloc(Schema.Constraint, props.kind.object.map.count());
+            var property_iter = props.kind.object.const_iterator();
+            var property_constraints = try ctx.usage_arena.alloc(Schema.Constraint, props.kind.object.count());
             var index: u64 = 0;
             while (property_iter.next()) |entry| : (index += 1) {
                 if (index > 0) {
@@ -1008,8 +1012,8 @@ fn parse_applicitor__properties(ctx: *ParseContext, obj: *const HashableJsonValu
     var pattern_properties: []PatternProperty = &.{};
     if (pattern_properties_value) |pattern_props| {
         if (pattern_props.kind == .object) {
-            var pattern_property_list = try ctx.usage_arena.alloc(PatternProperty, pattern_props.kind.object.map.count());
-            var pattern_iter = pattern_props.kind.object.map.const_iterator();
+            var pattern_property_list = try ctx.usage_arena.alloc(PatternProperty, pattern_props.kind.object.count());
+            var pattern_iter = pattern_props.kind.object.const_iterator();
             var pattern_index: usize = 0;
             while (pattern_iter.next()) |entry| {
                 const pattern_c = try ctx.usage_arena.allocator().dupeZ(u8, entry.key_ptr.*);
@@ -1037,21 +1041,21 @@ fn parse_applicitor__properties(ctx: *ParseContext, obj: *const HashableJsonValu
     };
 }
 
-fn parse_validation__required_properties(ctx: *ParseContext, obj: *const HashableJsonValue.Object) !?Schema.Constraint.Kind {
+fn parse_validation__required_properties(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
     if (ctx.revision == .draft3) {
         // Draft3 style: "required": true inside each property definition
-        const properties_value = (obj.map.get_const("properties") orelse return null).*;
+        const properties_value = (obj.get_const("properties") orelse return null).*;
         if (properties_value.kind != .object) return null;
 
         var required_properties: base.ArenaList(u64) = .empty;
-        var property_iter = properties_value.kind.object.map.const_iterator();
+        var property_iter = properties_value.kind.object.const_iterator();
         while (property_iter.next()) |entry| {
             if (entry.value_ptr.*.kind != .object) continue;
-            const required_field = (entry.value_ptr.*.kind.object.map.get_const("required") orelse continue).*;
+            const required_field = (entry.value_ptr.*.kind.object.get_const("required") orelse continue).*;
             if (required_field.kind != .bool) continue;
             if (required_field.kind.bool) {
                 // Hash the property name as a string for required check
-                try required_properties.append(ctx.usage_arena, hashable_json.compute_string_hash(entry.key_ptr.*));
+                try required_properties.append(ctx.usage_arena, json.hashed.compute_string_hash(entry.key_ptr.*));
             }
         }
 
@@ -1062,11 +1066,11 @@ fn parse_validation__required_properties(ctx: *ParseContext, obj: *const Hashabl
     }
 
     // Draft4+ style: "required" is an array of property names at the object level
-    const required_properties_value = (obj.map.get_const("required") orelse return null).*;
+    const required_properties_value = (obj.get_const("required") orelse return null).*;
     if (required_properties_value.kind != .array) return null;
 
-    var required_properties = try base.ArenaList(u64).init_capacity(ctx.usage_arena, required_properties_value.kind.array.len);
-    var iter = required_properties_value.kind.array.iterator();
+    var required_properties = try base.ArenaList(u64).init_capacity(ctx.usage_arena, required_properties_value.kind.array.count());
+    var iter = required_properties_value.kind.array.iter();
     while (iter.next()) |required_property| {
         if (required_property.kind != .string) continue;
         required_properties.append_assume_capacity(required_property.hash);
@@ -1077,21 +1081,21 @@ fn parse_validation__required_properties(ctx: *ParseContext, obj: *const Hashabl
     };
 }
 
-fn parse_applicator_not(ctx: *ParseContext, obj: *const HashableJsonValue.Object) !?Schema.Constraint.Kind {
-    const sub_schema = (obj.map.get_const("not") orelse return null).*;
+fn parse_applicator_not(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
+    const sub_schema = (obj.get_const("not") orelse return null).*;
     return .{
         .not = try parse_constraint(ctx, sub_schema),
     };
 }
 
-fn parse_applicitor__all_of(ctx: *ParseContext, obj: *const HashableJsonValue.Object) !?Schema.Constraint.Kind {
-    const items = (obj.map.get_const("allOf") orelse return null).*;
+fn parse_applicitor__all_of(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
+    const items = (obj.get_const("allOf") orelse return null).*;
     if (items.kind != .array) return null;
     var all_of_constraint = Schema.Constraint.Kind{
         .all = null,
     };
     var prev_next_ptr = &all_of_constraint.all;
-    var iter = items.kind.array.iterator();
+    var iter = items.kind.array.iter();
     while (iter.next()) |item| {
         const sub_schema = try parse_constraint(ctx, item);
         prev_next_ptr.* = sub_schema;
@@ -1100,14 +1104,14 @@ fn parse_applicitor__all_of(ctx: *ParseContext, obj: *const HashableJsonValue.Ob
     return all_of_constraint;
 }
 
-fn parse_applicitor__any_of(ctx: *ParseContext, obj: *const HashableJsonValue.Object) !?Schema.Constraint.Kind {
-    const items = (obj.map.get_const("anyOf") orelse return null).*;
+fn parse_applicitor__any_of(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
+    const items = (obj.get_const("anyOf") orelse return null).*;
     if (items.kind != .array) return null;
     var any_of_constraint = Schema.Constraint.Kind{
         .any = null,
     };
     var prev_next_ptr = &any_of_constraint.any;
-    var iter = items.kind.array.iterator();
+    var iter = items.kind.array.iter();
     while (iter.next()) |item| {
         const sub_schema = try parse_constraint(ctx, item);
         prev_next_ptr.* = sub_schema;
@@ -1116,14 +1120,14 @@ fn parse_applicitor__any_of(ctx: *ParseContext, obj: *const HashableJsonValue.Ob
     return any_of_constraint;
 }
 
-fn parse_applicitor__one_of(ctx: *ParseContext, obj: *const HashableJsonValue.Object) !?Schema.Constraint.Kind {
-    const items = (obj.map.get_const("oneOf") orelse return null).*;
+fn parse_applicitor__one_of(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
+    const items = (obj.get_const("oneOf") orelse return null).*;
     if (items.kind != .array) return null;
     var one_of_constraint = Schema.Constraint.Kind{
         .one = null,
     };
     var prev_next_ptr = &one_of_constraint.one;
-    var iter = items.kind.array.iterator();
+    var iter = items.kind.array.iter();
     while (iter.next()) |item| {
         const sub_schema = try parse_constraint(ctx, item);
         prev_next_ptr.* = sub_schema;
@@ -1132,8 +1136,8 @@ fn parse_applicitor__one_of(ctx: *ParseContext, obj: *const HashableJsonValue.Ob
     return one_of_constraint;
 }
 
-fn parse_validation__multiple_of(obj: *const HashableJsonValue.Object) ?Schema.Constraint.Kind {
-    const multiple_of = (obj.map.get_const("multipleOf") orelse return null).*;
+fn parse_validation__multiple_of(obj: *const HashableJsonValue.Kind.Object) ?Schema.Constraint.Kind {
+    const multiple_of = (obj.get_const("multipleOf") orelse return null).*;
     return switch (multiple_of.kind) {
         .float => |float_val| .{ .multiple_of_f64 = float_val },
         .integer => |int_val| .{ .multiple_of_i64 = int_val },
@@ -1141,8 +1145,8 @@ fn parse_validation__multiple_of(obj: *const HashableJsonValue.Object) ?Schema.C
     };
 }
 
-fn parse_validation__pattern(ctx: *ParseContext, obj: *const HashableJsonValue.Object) !?Schema.Constraint.Kind {
-    const pattern = (obj.map.get_const("pattern") orelse return null).*;
+fn parse_validation__pattern(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
+    const pattern = (obj.get_const("pattern") orelse return null).*;
     if (pattern.kind != .string) return null;
 
     const pattern_c = try ctx.usage_arena.allocator().dupeZ(u8, pattern.kind.string);
@@ -1873,8 +1877,4 @@ test "$ref recursive schema" {
     try std.testing.expect(schema.is_valid("{\"value\": 1, \"child\": {\"value\": 2, \"child\": {\"value\": 3}}}"));
     try std.testing.expect(!schema.is_valid("{\"value\": \"not an int\"}"));
     try std.testing.expect(!schema.is_valid("{\"value\": 1, \"child\": {\"value\": \"bad\"}}"));
-}
-
-test {
-    std.testing.refAllDecls(hashable_json);
 }

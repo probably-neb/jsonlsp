@@ -17,7 +17,7 @@ pub const Document = struct {
     buf: GapBuffer,
     buf_arena: Arena,
     language_id: []const u8,
-    tree: ?json.Tree_Root,
+    tree: ?json.resilient.Tree_Root,
     lex_arena: Arena,
     tree_arena: Arena,
 
@@ -87,7 +87,7 @@ pub const DocumentStore = struct {
         }
     };
 
-    pub const OpenError = error{ OpenDocumentLimitReached, DocumentAlreadyOpen } || json.ParseError || Arena.InitError;
+    pub const OpenError = error{ OpenDocumentLimitReached, DocumentAlreadyOpen } || json.lexer.ParseError || Arena.InitError;
 
     pub fn open(store: *DocumentStore, uri: []const u8, contents: []const u8, version: i32, language_id: []const u8) OpenError!void {
         if (store.find(uri) != null) return error.DocumentAlreadyOpen;
@@ -111,7 +111,7 @@ pub const DocumentStore = struct {
         try json.lex(&lexer, &lex_arena, slices.suffix);
 
         var tree_arena: Arena = try .init(.{});
-        const tree = try json.parse(&tree_arena, &lexer);
+        const tree = try json.resilient.parse(&tree_arena, &lexer);
 
         doc.* = .{
             .next = store.documents_open,
@@ -202,7 +202,7 @@ pub const DocumentStore = struct {
             return;
         };
         doc.tree_arena.clear();
-        doc.tree = json.parse(&doc.tree_arena, &lexer) catch null;
+        doc.tree = json.resilient.parse(&doc.tree_arena, &lexer) catch null;
     }
 
     pub const DiagnosticSet = struct {
@@ -223,7 +223,7 @@ pub const DocumentStore = struct {
 
         var diagnostic_index: u32 = 0;
 
-        const syntax_errors = json.syntax_errors(arena, tree) catch @panic("OOM");
+        const syntax_errors = json.resilient.syntax_errors(arena, tree) catch @panic("OOM");
         var syntax_error_iter = syntax_errors.iter();
 
         while (syntax_error_iter.next()) |syntax_error| : (diagnostic_index += 1) {

@@ -192,7 +192,7 @@ pub fn IntrusiveDoublyLinkedList(comptime T: type) type {
             first.prev = other_last;
         }
 
-        pub fn count(list: Self) usize {
+        pub fn count(list: *const Self) usize {
             const first = list.first orelse return 0;
             var c: usize = 1;
             var it = first.next;

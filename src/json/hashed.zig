@@ -12,17 +12,36 @@ const std = @import("std");
 const mem = std.mem;
 const base = @import("base");
 const Arena = base.Arena;
-const json = @import("json");
+const lexer = @import("lex.zig");
 
 const str8 = []const u8;
 
 const hash_seed: u64 = 0xdeadbeef;
 
-pub const HashableJsonValue = struct {
+pub const Value = struct {
     hash: u64 = 0,
     kind: Kind,
+    next: *Value,
+    prev: *Value,
 
-    pub const KindEnum = enum(u8) {
+    const This = @This();
+
+    pub const zero: Value = .{
+        .hash = 0,
+        .kind = .null,
+        .next = @constCast(&Value.zero),
+        .prev = @constCast(&Value.zero),
+    };
+
+    pub fn value(val: *Value, kind: Kind, hash: u64) *Value {
+        val.kind = kind;
+        val.hash = hash;
+        val.next = val;
+        val.prev = val;
+        return val;
+    }
+
+    pub const Kind_Tag = enum(u8) {
         null = 0,
         bool = 1,
         integer = 2,
@@ -32,7 +51,7 @@ pub const HashableJsonValue = struct {
         object = 6,
     };
 
-    pub const Kind = union(KindEnum) {
+    pub const Kind = union(Kind_Tag) {
         null: void,
         bool: bool,
         integer: i64,
@@ -40,144 +59,10 @@ pub const HashableJsonValue = struct {
         string: str8,
         array: Array,
         object: Object,
+
+        pub const Array = base.IntrusiveDoublyLinkedList(Value);
+        pub const Object = base.XarMap(str8, *Value, 4);
     };
-
-    pub const Array = struct {
-        first: ?*ArrayNode = null,
-        len: usize = 0,
-
-        pub const ArrayNode = struct {
-            value: HashableJsonValue,
-            next: ?*ArrayNode = null,
-        };
-
-        pub const empty: Array = .{};
-
-        pub fn get(arr: *const Array, index: usize) ?*const HashableJsonValue {
-            if (index >= arr.len) return null;
-            var node = arr.first;
-            var i: usize = 0;
-            while (node) |n| : (i += 1) {
-                if (i == index) return &n.value;
-                node = n.next;
-            }
-            return null;
-        }
-
-        pub fn get_mut(arr: *Array, index: usize) ?*HashableJsonValue {
-            if (index >= arr.len) return null;
-            var node = arr.first;
-            var i: usize = 0;
-            while (node) |n| : (i += 1) {
-                if (i == index) return &n.value;
-                node = n.next;
-            }
-            return null;
-        }
-
-        pub const Iterator = struct {
-            node: ?*const ArrayNode,
-
-            pub fn next(iter: *Iterator) ?*const HashableJsonValue {
-                const node = iter.node orelse return null;
-                iter.node = node.next;
-                return &node.value;
-            }
-        };
-
-        pub fn iterator(arr: *const Array) Iterator {
-            return .{ .node = arr.first };
-        }
-    };
-
-    pub const Object = struct {
-        map: ObjectMap,
-
-        pub const ObjectMap = base.XarMap(str8, *HashableJsonValue, 8);
-    };
-
-    /// Navigate a JSON pointer path (e.g., "#/properties/name/type")
-    /// Supports both "#/path" (fragment) and "/path" (relative) formats
-    pub fn resolve_pointer(value: *const HashableJsonValue, pointer: str8) ?*const HashableJsonValue {
-        if (pointer.len == 0) return value;
-
-        var path = pointer;
-
-        // Handle fragment identifier
-        if (path[0] == '#') {
-            path = path[1..];
-            if (path.len == 0) return value;
-        }
-
-        var current = value;
-
-        while (path.len > 0) {
-            if (path[0] != '/') return null;
-            path = path[1..]; // Skip '/'
-
-            // Find next segment
-            const end = mem.indexOfScalar(u8, path, '/') orelse path.len;
-            const segment_raw = path[0..end];
-            path = path[end..];
-
-            // Unescape the segment (RFC 6901: ~1 -> /, ~0 -> ~)
-            const segment = unescape_pointer_segment(segment_raw);
-
-            switch (current.kind) {
-                .object => |*obj| {
-                    const ptr = obj.map.get_const(segment) orelse return null;
-                    current = ptr.*;
-                },
-                .array => |*arr| {
-                    const index = std.fmt.parseInt(usize, segment, 10) catch return null;
-                    current = arr.get(index) orelse return null;
-                },
-                else => return null,
-            }
-        }
-        return current;
-    }
-
-    /// Mutable version of resolve_pointer
-    pub fn resolve_pointer_mut(value: *HashableJsonValue, pointer: str8) ?*HashableJsonValue {
-        if (pointer.len == 0) return value;
-
-        var path = pointer;
-
-        // Handle fragment identifier
-        if (path[0] == '#') {
-            path = path[1..];
-            if (path.len == 0) return value;
-        }
-
-        var current = value;
-
-        while (path.len > 0) {
-            if (path[0] != '/') return null;
-            path = path[1..]; // Skip '/'
-
-            // Find next segment
-            const end = mem.indexOfScalar(u8, path, '/') orelse path.len;
-            const segment_raw = path[0..end];
-            path = path[end..];
-
-            // Unescape the segment (RFC 6901: ~1 -> /, ~0 -> ~)
-            const segment = unescape_pointer_segment(segment_raw);
-
-            switch (current.kind) {
-                .object => |*obj| {
-                    const ptr = obj.map.get(segment) orelse return null;
-                    current = ptr.*;
-                },
-                .array => |*arr| {
-                    const index = std.fmt.parseInt(usize, segment, 10) catch return null;
-                    current = arr.get_mut(index) orelse return null;
-                },
-                else => return null,
-            }
-        }
-        return current;
-    }
 };
 
 /// Unescape a JSON Pointer segment per RFC 6901
@@ -194,6 +79,88 @@ fn unescape_pointer_segment(segment: str8) str8 {
     return segment;
 }
 
+/// Navigate a JSON pointer path (e.g., "#/properties/name/type")
+/// Supports both "#/path" (fragment) and "/path" (relative) formats
+pub fn resolve_pointer(value: *const Value, pointer: str8) ?*const Value {
+    if (pointer.len == 0) return value;
+
+    var path = pointer;
+
+    // Handle fragment identifier
+    if (path[0] == '#') {
+        path = path[1..];
+        if (path.len == 0) return value;
+    }
+
+    var current = value;
+
+    while (path.len > 0) {
+        if (path[0] != '/') return null;
+        path = path[1..]; // Skip '/'
+
+        // Find next segment
+        const end = mem.indexOfScalar(u8, path, '/') orelse path.len;
+        const segment_raw = path[0..end];
+        path = path[end..];
+
+        // Unescape the segment (RFC 6901: ~1 -> /, ~0 -> ~)
+        const segment = unescape_pointer_segment(segment_raw);
+
+        switch (current.kind) {
+            .object => |*obj| {
+                const ptr = obj.map.get_const(segment) orelse return null;
+                current = ptr.*;
+            },
+            .array => |*arr| {
+                const index = std.fmt.parseInt(usize, segment, 10) catch return null;
+                current = arr.get(index) orelse return null;
+            },
+            else => return null,
+        }
+    }
+    return current;
+}
+
+/// Mutable version of resolve_pointer
+pub fn resolve_pointer_mut(value: *Value, pointer: str8) ?*Value {
+    if (pointer.len == 0) return value;
+
+    var path = pointer;
+
+    // Handle fragment identifier
+    if (path[0] == '#') {
+        path = path[1..];
+        if (path.len == 0) return value;
+    }
+
+    var current = value;
+
+    while (path.len > 0) {
+        if (path[0] != '/') return null;
+        path = path[1..]; // Skip '/'
+
+        // Find next segment
+        const end = mem.indexOfScalar(u8, path, '/') orelse path.len;
+        const segment_raw = path[0..end];
+        path = path[end..];
+
+        const segment = unescape_pointer_segment(segment_raw);
+
+        switch (current.kind) {
+            .object => |*obj| {
+                const ptr = obj.map.get(segment) orelse return null;
+                current = ptr.*;
+            },
+            .array => |*arr| {
+                const index = std.fmt.parseInt(usize, segment, 10) catch return null;
+                current = arr.get_mut(index) orelse return null;
+            },
+            else => return null,
+        }
+    }
+    return current;
+}
+
 pub const ParseError = error{
     OutOfMemory,
     InvalidJson,
@@ -205,239 +172,283 @@ pub const ParseError = error{
 };
 
 /// Parse JSON input into a HashableJsonValue with incrementally computed hashes
-pub fn parse(arena: *Arena, input: str8) ParseError!HashableJsonValue {
-    var lexer: json.Lexer = .zero;
-    json.lex(&lexer, arena, input) catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-        error.InvalidUtf8 => return error.InvalidUtf8,
-    };
+pub fn parse(arena: *Arena, input: str8) ParseError!*Value {
+    var lxr: lexer.Lexer = .zero;
+    try lexer.lex(&lxr, arena, input);
 
     var parser = Parser{
         .arena = arena,
-        .tokens = lexer.tokens.items,
+        .tokens = lxr.tokens.items,
         .input = input,
         .pos = 0,
     };
 
-    return parser.parse_value();
+    return parse_value(&parser);
 }
 
 const Parser = struct {
     arena: *Arena,
-    tokens: []const json.Token,
+    tokens: []const lexer.Token,
     input: str8,
     pos: usize,
 
-    fn parse_value(parser: *Parser) ParseError!HashableJsonValue {
+    pub const zero = Parser{
+        .arena = &.empty,
+        .tokens = &.{},
+        .input = "",
+        .pos = 0,
+    };
+};
+
+fn parse_value(parser: *Parser) ParseError!*Value {
+    if (parser.pos >= parser.tokens.len) {
+        return error.UnexpectedEndOfInput;
+    }
+
+    const token = parser.tokens[parser.pos];
+    return switch (token.kind) {
+        .null => parse_null(parser),
+        .true => parse_bool(parser, true),
+        .false => parse_bool(parser, false),
+        .string => parse_string(parser),
+        .number => parse_number(parser),
+        .l_bracket => parse_array(parser),
+        .l_curly => parse_object(parser),
+        .err => error.InvalidJson,
+        else => error.UnexpectedToken,
+    };
+}
+
+fn parse_null(parser: *Parser) ParseError!*Value {
+    parser.pos += 1;
+    return .value(
+        try parser.arena.create(Value),
+        .null,
+        compute_null_hash(),
+    );
+}
+
+fn parse_bool(parser: *Parser, value: bool) ParseError!*Value {
+    parser.pos += 1;
+    return .value(
+        try parser.arena.create(Value),
+        .{ .bool = value },
+        compute_bool_hash(value),
+    );
+}
+
+fn parse_string(parser: *Parser) ParseError!*Value {
+    const token = parser.tokens[parser.pos];
+    parser.pos += 1;
+
+    const raw = parser.input[token.range.start.byte..token.range.close.byte];
+
+    // Remove quotes and unescape
+    if (raw.len < 2) return error.InvalidString;
+    const content = try unescape_string(parser.arena, raw[1 .. raw.len - 1]);
+
+    return .value(
+        try parser.arena.create(Value),
+        .{ .string = content },
+        compute_string_hash(content),
+    );
+}
+
+fn parse_number(parser: *Parser) ParseError!*Value {
+    const token = parser.tokens[parser.pos];
+    parser.pos += 1;
+
+    const raw = parser.input[token.range.start.byte..token.range.close.byte];
+
+    if (std.fmt.parseInt(i64, raw, 10)) |int_val| {
+        return .value(
+            try parser.arena.create(Value),
+            .{ .integer = int_val },
+            // hashed as float so 42.0 == 42
+            compute_number_hash(@floatFromInt(int_val)),
+        );
+    } else |_| {
+        const float_val = std.fmt.parseFloat(f64, raw) catch return error.InvalidNumber;
+        return .value(
+            try parser.arena.create(Value),
+            .{ .float = float_val },
+            compute_number_hash(float_val),
+        );
+    }
+}
+
+fn parse_array(parser: *Parser) ParseError!*Value {
+    parser.pos += 1; // consume '['
+
+    // Check for empty array
+    if (parser.pos < parser.tokens.len and parser.tokens[parser.pos].kind == .r_bracket) {
+        parser.pos += 1;
+        const arr: Value.Kind.Array = .zero;
+        return .value(
+            try parser.arena.create(Value),
+            .{ .array = arr },
+            compute_array_hash(&arr),
+        );
+    }
+
+    var list: Value.Kind.Array = .zero;
+
+    while (parser.pos < parser.tokens.len) {
+        // TODO: make parse functions take dest pointer if we're going to be using linked lists
+        const item = try parse_value(parser);
+
+        list.append(item);
+
         if (parser.pos >= parser.tokens.len) {
             return error.UnexpectedEndOfInput;
         }
 
-        const token = parser.tokens[parser.pos];
-        return switch (token.kind) {
-            .null => parser.parse_null(),
-            .true => parser.parse_bool(true),
-            .false => parser.parse_bool(false),
-            .string => parser.parse_string(),
-            .number => parser.parse_number(),
-            .l_bracket => parser.parse_array(),
-            .l_curly => parser.parse_object(),
-            .err => error.InvalidJson,
-            else => error.UnexpectedToken,
-        };
+        const next = parser.tokens[parser.pos];
+        if (next.kind == .r_bracket) {
+            parser.pos += 1;
+            break;
+        } else if (next.kind == .comma) {
+            parser.pos += 1;
+        } else {
+            return error.UnexpectedToken;
+        }
     }
 
-    fn parse_null(parser: *Parser) ParseError!HashableJsonValue {
+    return .value(
+        try parser.arena.create(Value),
+        .{ .array = list },
+        compute_array_hash(&list),
+    );
+}
+
+fn parse_object(parser: *Parser) ParseError!*Value {
+    parser.pos += 1; // consume '{'
+
+    var obj_map: Value.Kind.Object = .empty;
+
+    // Check for empty object
+    if (parser.pos < parser.tokens.len and parser.tokens[parser.pos].kind == .r_curly) {
         parser.pos += 1;
-        return .{
-            .hash = compute_null_hash(),
-            .kind = .null,
-        };
+        return .value(
+            try parser.arena.create(Value),
+            .{ .object = obj_map },
+            compute_object_hash(&obj_map),
+        );
     }
 
-    fn parse_bool(parser: *Parser, value: bool) ParseError!HashableJsonValue {
-        parser.pos += 1;
-        return .{
-            .hash = compute_bool_hash(value),
-            .kind = .{ .bool = value },
-        };
-    }
+    while (true) {
+        if (parser.pos >= parser.tokens.len) {
+            return error.UnexpectedEndOfInput;
+        }
 
-    fn parse_string(parser: *Parser) ParseError!HashableJsonValue {
-        const token = parser.tokens[parser.pos];
-        parser.pos += 1;
-
-        const raw = parser.input[token.range.start.byte..token.range.close.byte];
-
-        // Remove quotes and unescape
-        if (raw.len < 2) return error.InvalidString;
-        const content = try unescape_string(parser.arena, raw[1 .. raw.len - 1]);
-
-        return .{
-            .hash = compute_string_hash(content),
-            .kind = .{ .string = content },
-        };
-    }
-
-    fn parse_number(parser: *Parser) ParseError!HashableJsonValue {
-        const token = parser.tokens[parser.pos];
+        // Parse key
+        const key_token = parser.tokens[parser.pos];
+        if (key_token.kind != .string) {
+            return error.UnexpectedToken;
+        }
         parser.pos += 1;
 
-        const raw = parser.input[token.range.start.byte..token.range.close.byte];
+        const raw_key = parser.input[key_token.range.start.byte..key_token.range.close.byte];
+        if (raw_key.len < 2) return error.InvalidString;
+        const key = try unescape_string(parser.arena, raw_key[1 .. raw_key.len - 1]);
 
-        // Try parsing as integer first
-        if (std.fmt.parseInt(i64, raw, 10)) |int_val| {
-            // Hash as float for consistency (42 == 42.0)
-            const float_val: f64 = @floatFromInt(int_val);
-            return .{
-                .hash = compute_number_hash(float_val),
-                .kind = .{ .integer = int_val },
-            };
-        } else |_| {
-            // Parse as float
-            const float_val = std.fmt.parseFloat(f64, raw) catch return error.InvalidNumber;
-            return .{
-                .hash = compute_number_hash(float_val),
-                .kind = .{ .float = float_val },
-            };
+        // Expect colon
+        if (parser.pos >= parser.tokens.len) {
+            return error.UnexpectedEndOfInput;
+        }
+        if (parser.tokens[parser.pos].kind != .colon) {
+            return error.UnexpectedToken;
+        }
+        parser.pos += 1;
+
+        // Parse value
+        const value = try parse_value(parser);
+
+        // Allocate value on arena and add to map for O(1) lookups
+        try obj_map.put(parser.arena, key, value);
+
+        if (parser.pos >= parser.tokens.len) {
+            return error.UnexpectedEndOfInput;
+        }
+
+        const next = parser.tokens[parser.pos];
+        if (next.kind == .r_curly) {
+            parser.pos += 1;
+            break;
+        } else if (next.kind == .comma) {
+            parser.pos += 1;
+        } else {
+            return error.UnexpectedToken;
         }
     }
 
-    fn parse_array(parser: *Parser) ParseError!HashableJsonValue {
-        parser.pos += 1; // consume '['
-
-        // Check for empty array
-        if (parser.pos < parser.tokens.len and parser.tokens[parser.pos].kind == .r_bracket) {
-            parser.pos += 1;
-            const arr = HashableJsonValue.Array.empty;
-            return .{
-                .hash = compute_array_hash(&arr),
-                .kind = .{ .array = arr },
-            };
-        }
-
-        // Use intrusive linked list to collect items
-        const ArrayNode = HashableJsonValue.Array.ArrayNode;
-        var first: ?*ArrayNode = null;
-        var last: ?*ArrayNode = null;
-        var count: usize = 0;
-
-        while (true) {
-            if (parser.pos >= parser.tokens.len) {
-                return error.UnexpectedEndOfInput;
-            }
-
-            const item = try parser.parse_value();
-            const node = try parser.arena.create(ArrayNode);
-            node.* = .{ .value = item };
-
-            // Append to list
-            if (last) |l| {
-                l.next = node;
-            } else {
-                first = node;
-            }
-            last = node;
-            count += 1;
-
-            if (parser.pos >= parser.tokens.len) {
-                return error.UnexpectedEndOfInput;
-            }
-
-            const next = parser.tokens[parser.pos];
-            if (next.kind == .r_bracket) {
-                parser.pos += 1;
-                break;
-            } else if (next.kind == .comma) {
-                parser.pos += 1;
-            } else {
-                return error.UnexpectedToken;
-            }
-        }
-
-        const arr = HashableJsonValue.Array{ .first = first, .len = count };
-
-        return .{
-            .hash = compute_array_hash(&arr),
-            .kind = .{ .array = arr },
-        };
-    }
-
-    fn parse_object(parser: *Parser) ParseError!HashableJsonValue {
-        parser.pos += 1; // consume '{'
-
-        var obj_map: HashableJsonValue.Object.ObjectMap = .empty;
-
-        // Check for empty object
-        if (parser.pos < parser.tokens.len and parser.tokens[parser.pos].kind == .r_curly) {
-            parser.pos += 1;
-            const obj = HashableJsonValue.Object{ .map = obj_map };
-            return .{
-                .hash = compute_object_hash(&obj),
-                .kind = .{ .object = obj },
-            };
-        }
-
-        while (true) {
-            if (parser.pos >= parser.tokens.len) {
-                return error.UnexpectedEndOfInput;
-            }
-
-            // Parse key
-            const key_token = parser.tokens[parser.pos];
-            if (key_token.kind != .string) {
-                return error.UnexpectedToken;
-            }
-            parser.pos += 1;
-
-            const raw_key = parser.input[key_token.range.start.byte..key_token.range.close.byte];
-            if (raw_key.len < 2) return error.InvalidString;
-            const key = try unescape_string(parser.arena, raw_key[1 .. raw_key.len - 1]);
-
-            // Expect colon
-            if (parser.pos >= parser.tokens.len) {
-                return error.UnexpectedEndOfInput;
-            }
-            if (parser.tokens[parser.pos].kind != .colon) {
-                return error.UnexpectedToken;
-            }
-            parser.pos += 1;
-
-            // Parse value
-            const value = try parser.parse_value();
-
-            // Allocate value on arena and add to map for O(1) lookups
-            const value_ptr = try parser.arena.create(HashableJsonValue);
-            value_ptr.* = value;
-            try obj_map.put(parser.arena, key, value_ptr);
-
-            if (parser.pos >= parser.tokens.len) {
-                return error.UnexpectedEndOfInput;
-            }
-
-            const next = parser.tokens[parser.pos];
-            if (next.kind == .r_curly) {
-                parser.pos += 1;
-                break;
-            } else if (next.kind == .comma) {
-                parser.pos += 1;
-            } else {
-                return error.UnexpectedToken;
-            }
-        }
-
-        const obj = HashableJsonValue.Object{ .map = obj_map };
-        return .{
-            .hash = compute_object_hash(&obj),
-            .kind = .{ .object = obj },
-        };
-    }
-};
+    return .value(
+        try parser.arena.create(Value),
+        .{ .object = obj_map },
+        compute_object_hash(&obj_map),
+    );
+}
 
 const CharNode = struct {
     byte: u8,
     next: ?*CharNode = null,
 };
+
+// TODO: test and replace unescape_string
+fn unescape_string2(arena: *Arena, input: str8) ParseError!str8 {
+    var slash_pos = mem.indexOfScalar(u8, input, '\\') orelse input.len;
+    // Fast path: no escapes
+    if (slash_pos == input.len) {
+        return input;
+    }
+
+    const arena_start_pos = arena.pos;
+    _ = arena.alloc(u8, input.len);
+    arena.set_pos(arena_start_pos);
+    var cursor: u32 = 0;
+
+    while (cursor < input.len and slash_pos < input.len) {
+        defer if (mem.indexOfScalar(u8, input[slash_pos + 1 ..], '\\')) |next_slash_pos| {
+            slash_pos += next_slash_pos + 1;
+        } else {
+            slash_pos = input.len;
+        };
+
+        const escaped_pos = slash_pos + 1;
+        if (escaped_pos >= input.len) {
+            break;
+        }
+        // \uXXXX
+        if (input[escaped_pos] == 'u' and escaped_pos + 5 < input.len) {
+            const hex = input[escaped_pos + 2 ..][0..6];
+            const codepoint = std.fmt.parseInt(u21, hex, 16) orelse continue;
+            var buf: [4]u8 = undefined;
+            const codepoint_len = std.unicode.utf8Encode(codepoint, &buf) orelse continue;
+            try arena.dupe(u8, input[cursor..escaped_pos]);
+            try arena.dupe(u8, &buf[0..codepoint_len]);
+            cursor = escaped_pos + 6;
+            continue;
+        }
+        const char = switch (input[escaped_pos]) {
+            'n' => '\n',
+            't' => '\t',
+            'r' => '\r',
+            '"' => '"',
+            '\\' => '\\',
+            '/' => '/',
+            'b' => 0x80,
+            'f' => 0x0C,
+            else => {
+                continue;
+            },
+        };
+        try arena.dupe(u8, input[cursor..escaped_pos]);
+        try arena.dupe(u8, &.{char});
+        cursor = escaped_pos + 1;
+    }
+    try arena.dupe(u8, input[cursor..]);
+    return arena.memory[arena_start_pos..arena.pos];
+}
 
 /// Unescape a JSON string (handles \n, \t, \", \\, \/, \uXXXX, etc.)
 fn unescape_string(arena: *Arena, input: str8) ParseError!str8 {
@@ -562,18 +573,18 @@ fn unescape_string(arena: *Arena, input: str8) ParseError!str8 {
 // (e.g., 42 and 42.0 are the same value). We achieve this by:
 // 1. Using the same type tag for both integer and float
 // 2. Converting integers to float before hashing the bytes
-const hash_tag_number: u8 = @intFromEnum(HashableJsonValue.KindEnum.integer);
+const hash_tag_number: u8 = @intFromEnum(Value.Kind_Tag.integer);
 
 fn hash_null_into(hasher: *std.hash.Wyhash) void {
-    hasher.update(&[_]u8{@intFromEnum(HashableJsonValue.KindEnum.null)});
+    hasher.update(&[_]u8{@intFromEnum(Value.Kind_Tag.null)});
 }
 
 fn hash_bool_into(hasher: *std.hash.Wyhash, value: bool) void {
-    hasher.update(&[_]u8{ @intFromEnum(HashableJsonValue.KindEnum.bool), @intFromBool(value) });
+    hasher.update(&[_]u8{ @intFromEnum(Value.Kind_Tag.bool), @intFromBool(value) });
 }
 
 fn hash_string_into(hasher: *std.hash.Wyhash, value: str8) void {
-    hasher.update(&[_]u8{@intFromEnum(HashableJsonValue.KindEnum.string)});
+    hasher.update(&[_]u8{@intFromEnum(Value.Kind_Tag.string)});
     hasher.update(value);
 }
 
@@ -582,18 +593,18 @@ fn hash_number_into(hasher: *std.hash.Wyhash, value: f64) void {
     hasher.update(mem.asBytes(&value));
 }
 
-fn hash_array_into(hasher: *std.hash.Wyhash, arr: *const HashableJsonValue.Array) void {
-    hasher.update(&[_]u8{@intFromEnum(HashableJsonValue.KindEnum.array)});
-    var iter = arr.iterator();
+fn hash_array_into(hasher: *std.hash.Wyhash, arr: *const Value.Kind.Array) void {
+    hasher.update(&[_]u8{@intFromEnum(Value.Kind_Tag.array)});
+    var iter = arr.iter();
     while (iter.next()) |item| {
         hash_value_into(hasher, item);
     }
 }
 
-fn hash_object_into(hasher: *std.hash.Wyhash, obj: *const HashableJsonValue.Object) void {
-    hasher.update(&[_]u8{@intFromEnum(HashableJsonValue.KindEnum.object)});
+fn hash_object_into(hasher: *std.hash.Wyhash, obj: *const Value.Kind.Object) void {
+    hasher.update(&[_]u8{@intFromEnum(Value.Kind_Tag.object)});
 
-    const n = obj.map.count();
+    const n = obj.count();
     if (n == 0) return;
 
     const scratch = Arena.get_scratch(&.{});
@@ -603,7 +614,7 @@ fn hash_object_into(hasher: *std.hash.Wyhash, obj: *const HashableJsonValue.Obje
         hash_object_unsorted(hasher, obj);
         return;
     };
-    const values = scratch.arena.alloc(*const HashableJsonValue, n) catch {
+    const values = scratch.arena.alloc(*const Value, n) catch {
         hash_object_unsorted(hasher, obj);
         return;
     };
@@ -612,7 +623,7 @@ fn hash_object_into(hasher: *std.hash.Wyhash, obj: *const HashableJsonValue.Obje
         return;
     };
 
-    var iter = obj.map.const_iterator();
+    var iter = obj.const_iterator();
     var i: usize = 0;
     while (iter.next()) |entry| : (i += 1) {
         keys[i] = entry.key_ptr.*;
@@ -633,15 +644,15 @@ fn hash_object_into(hasher: *std.hash.Wyhash, obj: *const HashableJsonValue.Obje
     }
 }
 
-fn hash_object_unsorted(hasher: *std.hash.Wyhash, obj: *const HashableJsonValue.Object) void {
-    var iter = obj.map.const_iterator();
+fn hash_object_unsorted(hasher: *std.hash.Wyhash, obj: *const Value.Kind.Object) void {
+    var iter = obj.const_iterator();
     while (iter.next()) |entry| {
         hasher.update(entry.key_ptr.*);
         hash_value_into(hasher, entry.value_ptr.*);
     }
 }
 
-fn hash_value_into(hasher: *std.hash.Wyhash, value: *const HashableJsonValue) void {
+fn hash_value_into(hasher: *std.hash.Wyhash, value: *const Value) void {
     switch (value.kind) {
         .null => hash_null_into(hasher),
         .bool => |b| hash_bool_into(hasher, b),
@@ -677,13 +688,13 @@ fn compute_number_hash(value: f64) u64 {
     return hasher.final();
 }
 
-fn compute_array_hash(arr: *const HashableJsonValue.Array) u64 {
+fn compute_array_hash(arr: *const Value.Kind.Array) u64 {
     var hasher = std.hash.Wyhash.init(hash_seed);
     hash_array_into(&hasher, arr);
     return hasher.final();
 }
 
-fn compute_object_hash(obj: *const HashableJsonValue.Object) u64 {
+fn compute_object_hash(obj: *const Value.Kind.Object) u64 {
     var hasher = std.hash.Wyhash.init(hash_seed);
     hash_object_into(&hasher, obj);
     return hasher.final();
@@ -698,7 +709,7 @@ test "parse null" {
     defer arena.deinit();
 
     const result = try parse(&arena, "null");
-    try std.testing.expectEqual(HashableJsonValue.Kind.null, result.kind);
+    try std.testing.expectEqual(Value.Kind.null, result.kind);
 }
 
 test "parse booleans" {
