@@ -14,6 +14,7 @@ const std = @import("std");
 const mem = std.mem;
 const base = @import("base");
 const Arena = base.Arena;
+const XarMap = base.XarMap;
 
 const str8 = []const u8;
 pub const OOM = error{OutOfMemory};
@@ -209,12 +210,14 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
             }
             const scratch = Arena.get_scratch(&.{arena});
             defer scratch.release();
-            var hashes: std.AutoHashMapUnmanaged(u64, void) = .empty;
-            defer hashes.deinit(scratch.arena.allocator());
-            try hashes.ensureTotalCapacity(scratch.arena.allocator(), @intCast(value.kind.array.count()));
+
+            var hashes: XarMap(u64, void, 2) = .empty;
+            try hashes.expand(scratch.arena, value.kind.array.count());
+
             var arr_iter = value.kind.array.iter();
             while (arr_iter.next()) |item| {
-                if (try hashes.fetchPut(scratch.arena.allocator(), item.hash, {})) |_| {
+                const entry = try hashes.get_or_put(scratch.arena, item.hash);
+                if (entry.found_existing) {
                     return false;
                 }
             }
@@ -451,7 +454,7 @@ pub fn parse_with_revision(schema_contents: str8, revision: ?Revision) !Schema {
         var i: usize = 0;
         while (key_iter.next()) |key| : (i += 1) {
             const stub = try usage_arena.create(Schema.Constraint);
-            stub.* = Schema.Constraint.zero;
+            stub.* = .zero;
             slice[i] = .{ .path = key.*, .constraint = stub };
         }
         mem.sort(Schema.Definition, slice, {}, Schema.Definition.lessThan);
@@ -592,119 +595,128 @@ const ParseContext = struct {
     defs: []const Schema.Definition = &.{},
     usage_arena: *Arena,
     parse_arena: *Arena,
+    /// Cache of value hash to Constraint
+    /// Used to deduplciate parsing generally, but specifically useful for refs
+    constraint_cache: XarMap(u64, *Schema.Constraint, 64) = .empty,
 };
 
 fn parse_into_constraint(ctx: *ParseContext, schema: *const HashableJsonValue, constraint: *Schema.Constraint) ParseError!void {
     constraint.next = null;
     constraint.kind = .true;
-    parse: switch (schema.kind) {
-        .bool => |value| {
-            constraint.kind = switch (value) {
-                true => .true,
-                false => .false,
-            };
-        },
-        .object => |*obj| {
-            if (obj.count() == 0) {
-                constraint.kind = .true;
-                break :parse;
-            }
-            // Handle $ref first (in draft4-7, $ref overrides siblings)
-            if (obj.get_const("$ref")) |ref_ptr| {
-                const ref_val = ref_ptr.*;
-                if (ref_val.kind == .string) {
-                    if (parse_local_def_ref(ref_val.kind.string)) |name| {
-                        const unescaped_name = try unescape_json_pointer(ctx, name);
-                        if (find_def(ctx.defs, unescaped_name)) |target| {
-                            constraint.kind = .{ .ref = target };
-                            // In draft4-7, $ref overrides all siblings, so return early
-                            if (ctx.revision != .draft2019_09 and ctx.revision != .draft2020_12 and ctx.revision != .draft_next) {
-                                return;
-                            }
-                            // In 2019-09+, $ref can combine with siblings, so chain it
-                            try chain_with(ctx, constraint, .{ .ref = target });
-                        }
-                    }
-                }
-            }
-            // todo: error
-            if (parse_validation__type(ctx, obj) catch null) |v_types| {
-                try chain_with(ctx, constraint, .{ .type = v_types });
-            }
-            if (parse_validation__min_length(obj)) |min_length| {
-                try chain_with(ctx, constraint, .{ .min_len = min_length });
-            }
-            if (parse_validation__max_length(obj)) |max_length| {
-                try chain_with(ctx, constraint, .{ .max_len = max_length });
-            }
-            if (parse_validation__min(obj)) |min| {
-                try chain_with(ctx, constraint, min);
-            }
-            if (parse_validation__max(obj)) |max| {
-                try chain_with(ctx, constraint, max);
-            }
-            if (parse_validation__exclusive_min(obj)) |exclusive_min| {
-                try chain_with(ctx, constraint, exclusive_min);
-            }
-            if (parse_validation__exclusive_max(obj)) |exclusive_max| {
-                try chain_with(ctx, constraint, exclusive_max);
-            }
-            if (parse_validation__min_items(obj)) |min_items| {
-                try chain_with(ctx, constraint, min_items);
-            }
-            if (parse_validation__max_items(obj)) |max_items| {
-                try chain_with(ctx, constraint, max_items);
-            }
-            if (parse_validation__min_properties(obj)) |min_properties| {
-                try chain_with(ctx, constraint, min_properties);
-            }
-            if (parse_validation__max_properties(obj)) |max_properties| {
-                try chain_with(ctx, constraint, max_properties);
-            }
-            if (parse_validation__const(obj)) |@"const"| {
-                try chain_with(ctx, constraint, @"const");
-            }
-            if (parse_validation__enum(ctx, obj) catch null) |@"enum"| {
-                try chain_with(ctx, constraint, @"enum");
-            }
-            if (parse_validation__unique_items(obj)) |unique_items| {
-                try chain_with(ctx, constraint, unique_items);
-            }
-            if (parse_applicitor__items(ctx, obj) catch null) |items| {
-                try chain_with(ctx, constraint, items);
-            }
-            if (parse_applicitor__properties(ctx, obj) catch null) |properties| {
-                try chain_with(ctx, constraint, properties);
-            }
-            if (parse_validation__required_properties(ctx, obj) catch null) |required_properties| {
-                try chain_with(ctx, constraint, required_properties);
-            }
-            if (parse_applicator_not(ctx, obj) catch null) |not| {
-                try chain_with(ctx, constraint, not);
-            }
-            if (parse_applicitor__all_of(ctx, obj) catch null) |all| {
-                try chain_with(ctx, constraint, all);
-            }
-            if (parse_applicitor__any_of(ctx, obj) catch null) |all| {
-                try chain_with(ctx, constraint, all);
-            }
-            if (parse_applicitor__one_of(ctx, obj) catch null) |all| {
-                try chain_with(ctx, constraint, all);
-            }
-            if (parse_validation__multiple_of(obj)) |multiple_of| {
-                try chain_with(ctx, constraint, multiple_of);
-            }
-            if (parse_validation__pattern(ctx, obj) catch null) |pattern| {
-                try chain_with(ctx, constraint, pattern);
-            }
-        },
-        else => return error.UnrecognizedSchemaType,
+
+    if (schema.kind == .bool) {
+        constraint.kind = switch (schema.kind.bool) {
+            true => .true,
+            false => .false,
+        };
+    }
+    if (schema.kind != .object) {
+        return error.UnrecognizedSchemaType;
+    }
+    const obj = &schema.kind.object;
+
+    if (obj.count() == 0) {
+        constraint.kind = .true;
+        return;
+    }
+
+    if (obj.get_const("$ref")) |ref_ptr| parse_ref: {
+        const ref = ref_ptr.*;
+        if (ref.kind != .string) {
+            break :parse_ref;
+        }
+
+        const name = parse_local_def_ref(ref.kind.string) orelse break :parse_ref;
+        const unescaped_name = try unescape_json_pointer(ctx, name);
+
+        const target = find_def(ctx.defs, unescaped_name) orelse break :parse_ref;
+
+        constraint.kind = .{ .ref = target };
+        // In draft4-7, $ref overrides all siblings
+        if (ref_overrides_siblings(ctx.revision)) {
+            return;
+        }
+        try chain_with(ctx, constraint, .{ .ref = target });
+    }
+    // todo: error
+    if (parse_validation__type(ctx, obj) catch null) |types| {
+        try chain_with(ctx, constraint, types);
+    }
+    if (parse_validation__min_length(obj)) |min_length| {
+        try chain_with(ctx, constraint, min_length);
+    }
+    if (parse_validation__max_length(obj)) |max_length| {
+        try chain_with(ctx, constraint, max_length);
+    }
+    if (parse_validation__min(obj)) |min| {
+        try chain_with(ctx, constraint, min);
+    }
+    if (parse_validation__max(obj)) |max| {
+        try chain_with(ctx, constraint, max);
+    }
+    if (parse_validation__exclusive_min(obj)) |exclusive_min| {
+        try chain_with(ctx, constraint, exclusive_min);
+    }
+    if (parse_validation__exclusive_max(obj)) |exclusive_max| {
+        try chain_with(ctx, constraint, exclusive_max);
+    }
+    if (parse_validation__min_items(obj)) |min_items| {
+        try chain_with(ctx, constraint, min_items);
+    }
+    if (parse_validation__max_items(obj)) |max_items| {
+        try chain_with(ctx, constraint, max_items);
+    }
+    if (parse_validation__min_properties(obj)) |min_properties| {
+        try chain_with(ctx, constraint, min_properties);
+    }
+    if (parse_validation__max_properties(obj)) |max_properties| {
+        try chain_with(ctx, constraint, max_properties);
+    }
+    if (parse_validation__const(obj)) |@"const"| {
+        try chain_with(ctx, constraint, @"const");
+    }
+    if (parse_validation__enum(ctx, obj) catch null) |@"enum"| {
+        try chain_with(ctx, constraint, @"enum");
+    }
+    if (parse_validation__unique_items(obj)) |unique_items| {
+        try chain_with(ctx, constraint, unique_items);
+    }
+    if (parse_applicitor__items(ctx, obj) catch null) |items| {
+        try chain_with(ctx, constraint, items);
+    }
+    if (parse_applicitor__properties(ctx, obj) catch null) |properties| {
+        try chain_with(ctx, constraint, properties);
+    }
+    if (parse_validation__required_properties(ctx, obj) catch null) |required_properties| {
+        try chain_with(ctx, constraint, required_properties);
+    }
+    if (parse_applicator_not(ctx, obj) catch null) |not| {
+        try chain_with(ctx, constraint, not);
+    }
+    if (parse_applicitor__all_of(ctx, obj) catch null) |all| {
+        try chain_with(ctx, constraint, all);
+    }
+    if (parse_applicitor__any_of(ctx, obj) catch null) |all| {
+        try chain_with(ctx, constraint, all);
+    }
+    if (parse_applicitor__one_of(ctx, obj) catch null) |all| {
+        try chain_with(ctx, constraint, all);
+    }
+    if (parse_validation__multiple_of(obj)) |multiple_of| {
+        try chain_with(ctx, constraint, multiple_of);
+    }
+    if (parse_validation__pattern(ctx, obj) catch null) |pattern| {
+        try chain_with(ctx, constraint, pattern);
     }
 }
 
 fn parse_constraint(ctx: *ParseContext, schema: *const HashableJsonValue) ParseError!*Schema.Constraint {
+    if (ctx.constraint_cache.get(schema.hash)) |cached_entry_ptr_ptr| {
+        return cached_entry_ptr_ptr.*;
+    }
     const constraint = try ctx.usage_arena.create(Schema.Constraint);
     try parse_into_constraint(ctx, schema, constraint);
+    try ctx.constraint_cache.put(ctx.parse_arena, schema.hash, constraint);
     return constraint;
 }
 
@@ -760,14 +772,14 @@ const ValidationType = enum {
     });
 };
 
-fn parse_validation__type(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?[]ValidationType {
+fn parse_validation__type(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
     const ty = (obj.get_const("type") orelse return null).*;
     switch (ty.kind) {
         .string => |v_type_str| {
             const v_type = try ctx.usage_arena.create(ValidationType);
             // todo: error
             v_type.* = ValidationType.Map.get(v_type_str) orelse return null;
-            return v_type[0..1];
+            return .{ .type = v_type[0..1] };
         },
         .array => |*arr| {
             var v_types: base.ArenaList(ValidationType) = try .init_capacity(ctx.usage_arena, arr.count());
@@ -780,29 +792,29 @@ fn parse_validation__type(ctx: *ParseContext, obj: *const HashableJsonValue.Kind
                 const v_type = ValidationType.Map.get(v_type_item.kind.string) orelse continue;
                 v_types.append_assume_capacity(v_type);
             }
-            return v_types.items;
+            return .{ .type = v_types.items };
         },
         else => return null,
     }
 }
 
 /// https://www.learnjsonschema.com/2020-12/validation/minlength/
-fn parse_validation__min_length(obj: *const HashableJsonValue.Kind.Object) ?u64 {
+fn parse_validation__min_length(obj: *const HashableJsonValue.Kind.Object) ?Schema.Constraint.Kind {
     const min_len = (obj.get_const("minLength") orelse return null).*;
     switch (min_len.kind) {
         .integer => |int_val| {
-            return std.math.lossyCast(u64, int_val);
+            return .{ .min_len = std.math.lossyCast(u64, int_val) };
         },
         else => return null,
     }
 }
 
 /// https://www.learnjsonschema.com/2020-12/validation/maxlength/
-fn parse_validation__max_length(obj: *const HashableJsonValue.Kind.Object) ?u64 {
+fn parse_validation__max_length(obj: *const HashableJsonValue.Kind.Object) ?Schema.Constraint.Kind {
     const min_len = (obj.get_const("maxLength") orelse return null).*;
     switch (min_len.kind) {
         .integer => |int_val| {
-            return std.math.lossyCast(u64, int_val);
+            return .{ .max_len = std.math.lossyCast(u64, int_val) };
         },
         else => return null,
     }
@@ -1169,6 +1181,10 @@ fn float_as_int(float: f64) ?i64 {
     return @intFromFloat(float);
 }
 
+fn ref_overrides_siblings(revision: Revision) bool {
+    return revision != .draft2019_09 and revision != .draft2020_12 and revision != .draft_next;
+}
+
 test "boolean schema - true schema accepts everything" {
     const schema_str = "true";
     var schema = try parse(schema_str);
@@ -1221,7 +1237,6 @@ test "type constraint - string" {
     var schema = try parse(schema_str);
     defer schema.arena.deinit();
 
-    // Should accept strings
     try std.testing.expectEqual(schema.is_valid("\"hello\""), true);
     try std.testing.expectEqual(schema.is_valid("\"\""), true);
     try std.testing.expectEqual(schema.is_valid("\"123\""), true);
