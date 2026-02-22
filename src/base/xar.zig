@@ -7,7 +7,6 @@ const testing = std.testing;
 const mem = std.mem;
 const base = @import("base.zig");
 const Arena = base.Arena;
-const Allocator = std.mem.Allocator;
 
 // Imagine that `fn at(self: *Self, index: usize) &T` is a customer asking for a box
 // from a warehouse, based on a flat array, boxes ordered from 0 to N - 1.
@@ -97,8 +96,11 @@ pub fn Xar(comptime T: type, comptime prealloc_item_count: usize) type {
             }
         };
 
+        const shelf_list_prealloc = 16;
+
         prealloc_segment: [prealloc_item_count]T = undefined,
         dynamic_segments: [][*]T = &[_][*]T{},
+        dynamic_segments_capacity: usize = 0,
         len: usize = 0,
 
         pub const prealloc_count = prealloc_item_count;
@@ -112,19 +114,13 @@ pub fn Xar(comptime T: type, comptime prealloc_item_count: usize) type {
         }
 
         pub fn deinit(xar: *Self, arena: *Arena) void {
-            const allocator = arena.allocator();
-            xar.free_shelves(allocator, @as(ShelfIndex, @intCast(xar.dynamic_segments.len)), 0);
-            allocator.free(xar.dynamic_segments);
+            _ = arena;
             xar.* = undefined;
         }
 
         pub fn at(xar: anytype, i: usize) at_type(@TypeOf(xar)) {
             assert(i < xar.len);
             return xar.unchecked_at(i);
-        }
-
-        pub fn count(xar: Self) usize {
-            return xar.len;
         }
 
         pub fn append(xar: *Self, arena: *Arena, item: T) Arena.AllocError!void {
@@ -187,68 +183,48 @@ pub fn Xar(comptime T: type, comptime prealloc_item_count: usize) type {
 
         /// Only grows capacity, or retains current capacity.
         pub fn grow_capacity(xar: *Self, arena: *Arena, new_capacity: usize) Arena.AllocError!void {
-            const allocator = arena.allocator();
-
             const new_cap_shelf_count = shelf_count(new_capacity);
             const old_shelf_count = @as(ShelfIndex, @intCast(xar.dynamic_segments.len));
             if (new_cap_shelf_count <= old_shelf_count) return;
 
-            const new_dynamic_segments = try allocator.alloc([*]T, new_cap_shelf_count);
-            errdefer allocator.free(new_dynamic_segments);
-
-            var i: ShelfIndex = 0;
-            while (i < old_shelf_count) : (i += 1) {
-                new_dynamic_segments[i] = xar.dynamic_segments[i];
+            if (xar.dynamic_segments_capacity == 0) {
+                const new_dynamic_segments = try arena.alloc([*]T, shelf_list_prealloc);
+                xar.dynamic_segments = new_dynamic_segments[0..0];
+                xar.dynamic_segments_capacity = shelf_list_prealloc;
             }
-            errdefer while (i > old_shelf_count) : (i -= 1) {
-                allocator.free(new_dynamic_segments[i][0..shelf_size(i)]);
-            };
+
+            if (new_cap_shelf_count > xar.dynamic_segments_capacity) {
+                const new_segments_capacity = @max(new_cap_shelf_count, xar.dynamic_segments_capacity * 2);
+                const new_dynamic_segments = try arena.alloc([*]T, new_segments_capacity);
+
+                var i: ShelfIndex = 0;
+                while (i < old_shelf_count) : (i += 1) {
+                    new_dynamic_segments[i] = xar.dynamic_segments[i];
+                }
+
+                xar.dynamic_segments = new_dynamic_segments[0..old_shelf_count];
+                xar.dynamic_segments_capacity = new_segments_capacity;
+            }
+
+            var i: ShelfIndex = old_shelf_count;
             while (i < new_cap_shelf_count) : (i += 1) {
-                new_dynamic_segments[i] = (try allocator.alloc(T, shelf_size(i))).ptr;
+                xar.dynamic_segments.ptr[i] = (try arena.alloc(T, shelf_size(i))).ptr;
             }
 
-            allocator.free(xar.dynamic_segments);
-            xar.dynamic_segments = new_dynamic_segments;
+            xar.dynamic_segments = xar.dynamic_segments.ptr[0..new_cap_shelf_count];
         }
 
         /// Only shrinks capacity or retains current capacity.
         /// It may fail to reduce the capacity in which case the capacity will remain unchanged.
         pub fn shrink_capacity(xar: *Self, arena: *Arena, new_capacity: usize) void {
-            const allocator = arena.allocator();
-
-            if (new_capacity <= prealloc_item_count) {
-                const len = @as(ShelfIndex, @intCast(xar.dynamic_segments.len));
-                xar.free_shelves(allocator, len, 0);
-                allocator.free(xar.dynamic_segments);
-                xar.dynamic_segments = &[_][*]T{};
-                return;
-            }
+            _ = arena;
 
             const new_cap_shelf_count = shelf_count(new_capacity);
             const old_shelf_count = @as(ShelfIndex, @intCast(xar.dynamic_segments.len));
             assert(new_cap_shelf_count <= old_shelf_count);
             if (new_cap_shelf_count == old_shelf_count) return;
 
-            // freeShelves() must be called before resizing the dynamic
-            // segments, but we don't know if resizing the dynamic segments
-            // will work until we try it. So we must allocate a fresh memory
-            // buffer in order to reduce capacity.
-            const new_dynamic_segments = allocator.alloc([*]T, new_cap_shelf_count) catch {
-                // Can't shrink: keep bookkeeping unchanged.
-                return;
-            };
-
-            xar.free_shelves(allocator, old_shelf_count, new_cap_shelf_count);
-            if (allocator.resize(xar.dynamic_segments, new_cap_shelf_count)) {
-                // We didn't need the new memory allocation after all.
-                xar.dynamic_segments = xar.dynamic_segments[0..new_cap_shelf_count];
-                allocator.free(new_dynamic_segments);
-            } else {
-                // Good thing we allocated that new memory slice.
-                @memcpy(new_dynamic_segments, xar.dynamic_segments[0..new_cap_shelf_count]);
-                allocator.free(xar.dynamic_segments);
-                xar.dynamic_segments = new_dynamic_segments;
-            }
+            xar.dynamic_segments = xar.dynamic_segments[0..new_cap_shelf_count];
         }
 
         pub fn shrink(xar: *Self, new_len: usize) void {
@@ -317,14 +293,6 @@ pub fn Xar(comptime T: type, comptime prealloc_item_count: usize) type {
                 return (list_index + 1) - (@as(usize, 1) << shelf_index);
             }
             return list_index + prealloc_item_count - (@as(usize, 1) << ((prealloc_exp + 1) + shelf_index));
-        }
-
-        fn free_shelves(xar: *Self, allocator: Allocator, from_count: ShelfIndex, to_count: ShelfIndex) void {
-            var i = from_count;
-            while (i != to_count) {
-                i -= 1;
-                allocator.free(xar.dynamic_segments[i][0..shelf_size(i)]);
-            }
         }
 
         pub const Iterator = BaseIterator(*Self, *T);

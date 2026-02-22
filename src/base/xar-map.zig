@@ -37,7 +37,6 @@ pub fn XarMap(comptime K: type, comptime V: type, comptime prealloc_count: usize
         values: ValueXar = .{},
         slots: SlotXar = .{},
         size: usize = 0,
-        slot_count: usize = 0,
 
         pub const empty: Self = .{};
 
@@ -69,7 +68,7 @@ pub fn XarMap(comptime K: type, comptime V: type, comptime prealloc_count: usize
         }
 
         pub fn capacity(map: Self) usize {
-            return map.slot_count;
+            return map.slots.len;
         }
 
         pub fn get(map: *Self, key: K) ?*V {
@@ -111,12 +110,12 @@ pub fn XarMap(comptime K: type, comptime V: type, comptime prealloc_count: usize
             try map.ensure_capacity_for_insert(arena);
 
             const hash = hash_key(key);
-            var slot_idx = hash % map.slot_count;
+            var slot_idx = hash % map.slots.len;
 
             var first_tombstone: ?usize = null;
             var probes: usize = 0;
 
-            while (probes < map.slot_count) : (probes += 1) {
+            while (probes < map.slots.len) : (probes += 1) {
                 const slot = map.slots.unchecked_at(slot_idx).*;
 
                 if (slot.is_empty()) {
@@ -146,7 +145,7 @@ pub fn XarMap(comptime K: type, comptime V: type, comptime prealloc_count: usize
                     }
                 }
 
-                slot_idx = (slot_idx + 1) % map.slot_count;
+                slot_idx = (slot_idx + 1) % map.slots.len;
             }
 
             if (first_tombstone) |tombstone_idx| {
@@ -182,7 +181,7 @@ pub fn XarMap(comptime K: type, comptime V: type, comptime prealloc_count: usize
 
         pub fn clear(map: *Self) void {
             var i: usize = 0;
-            while (i < map.slot_count) : (i += 1) {
+            while (i < map.slots.len) : (i += 1) {
                 map.slots.unchecked_at(i).* = .{ .index = Slot.empty_sentinel };
             }
             map.keys.clear_retaining_capacity();
@@ -194,7 +193,6 @@ pub fn XarMap(comptime K: type, comptime V: type, comptime prealloc_count: usize
             map.keys.clear_and_free(arena);
             map.values.clear_and_free(arena);
             map.slots.clear_and_free(arena);
-            map.slot_count = 0;
             map.size = 0;
         }
 
@@ -233,7 +231,7 @@ pub fn XarMap(comptime K: type, comptime V: type, comptime prealloc_count: usize
             slot_idx: usize,
 
             pub fn next(it: *ConstIterator) ?ConstEntry {
-                while (it.slot_idx < it.map.slot_count) {
+                while (it.slot_idx < it.map.slots.len) {
                     const idx = it.slot_idx;
                     it.slot_idx += 1;
 
@@ -262,7 +260,7 @@ pub fn XarMap(comptime K: type, comptime V: type, comptime prealloc_count: usize
             slot_idx: usize,
 
             pub fn next(it: *KeyIterator) ?*const K {
-                while (it.slot_idx < it.map.slot_count) {
+                while (it.slot_idx < it.map.slots.len) {
                     const idx = it.slot_idx;
                     it.slot_idx += 1;
 
@@ -287,7 +285,7 @@ pub fn XarMap(comptime K: type, comptime V: type, comptime prealloc_count: usize
             slot_idx: usize,
 
             pub fn next(it: *ValueIterator) ?*V {
-                while (it.slot_idx < it.map.slot_count) {
+                while (it.slot_idx < it.map.slots.len) {
                     const idx = it.slot_idx;
                     it.slot_idx += 1;
 
@@ -308,13 +306,13 @@ pub fn XarMap(comptime K: type, comptime V: type, comptime prealloc_count: usize
         }
 
         fn find_slot_index(map: *Self, key: K) ?usize {
-            if (map.slot_count == 0) return null;
+            if (map.slots.len == 0) return null;
 
             const hash = hash_key(key);
-            var slot_idx = hash % map.slot_count;
+            var slot_idx = hash % map.slots.len;
 
             var probes: usize = 0;
-            while (probes < map.slot_count) : (probes += 1) {
+            while (probes < map.slots.len) : (probes += 1) {
                 const slot = map.slots.unchecked_at(slot_idx).*;
 
                 if (slot.is_empty()) {
@@ -325,20 +323,20 @@ pub fn XarMap(comptime K: type, comptime V: type, comptime prealloc_count: usize
                         return slot_idx;
                     }
                 }
-                slot_idx = (slot_idx + 1) % map.slot_count;
+                slot_idx = (slot_idx + 1) % map.slots.len;
             }
 
             return null;
         }
 
         fn find_entry_index(map: *const Self, key: K) ?usize {
-            if (map.slot_count == 0) return null;
+            if (map.slots.len == 0) return null;
 
             const hash = hash_key(key);
-            var slot_idx = hash % map.slot_count;
+            var slot_idx = hash % map.slots.len;
 
             var probes: usize = 0;
-            while (probes < map.slot_count) : (probes += 1) {
+            while (probes < map.slots.len) : (probes += 1) {
                 const slot = map.slots.unchecked_at(slot_idx).*;
 
                 if (slot.is_empty()) {
@@ -350,20 +348,20 @@ pub fn XarMap(comptime K: type, comptime V: type, comptime prealloc_count: usize
                     }
                 }
 
-                slot_idx = (slot_idx + 1) % map.slot_count;
+                slot_idx = (slot_idx + 1) % map.slots.len;
             }
 
             return null;
         }
 
         fn find_entry_index_const(map: *const Self, key: K) ?usize {
-            if (map.slot_count == 0) return null;
+            if (map.slots.len == 0) return null;
 
             const hash = hash_key(key);
-            var slot_idx = hash % map.slot_count;
+            var slot_idx = hash % map.slots.len;
 
             var probes: usize = 0;
-            while (probes < map.slot_count) : (probes += 1) {
+            while (probes < map.slots.len) : (probes += 1) {
                 const slot = map.slots.unchecked_at(slot_idx).*;
 
                 if (slot.is_empty()) {
@@ -375,38 +373,37 @@ pub fn XarMap(comptime K: type, comptime V: type, comptime prealloc_count: usize
                     }
                 }
 
-                slot_idx = (slot_idx + 1) % map.slot_count;
+                slot_idx = (slot_idx + 1) % map.slots.len;
             }
 
             return null;
         }
 
         fn append_entry(map: *Self, arena: *Arena) Arena.AllocError!usize {
-            const idx = map.keys.count();
+            const idx = map.keys.len;
             _ = try map.keys.add_one(arena);
             _ = try map.values.add_one(arena);
             return idx;
         }
 
         fn ensure_capacity_for_insert(map: *Self, arena: *Arena) Arena.AllocError!void {
-            if (map.slot_count == 0) {
-                try map.init_slots(arena, initial_capacity());
-            } else if ((map.size + 1) * 4 > map.slot_count * 3) {
-                try map.rehash(arena, map.slot_count * 2);
+            if (map.slots.len == 0) {
+                try map.expand(arena, initial_capacity());
+            } else if ((map.size + 1) * 4 > map.slots.len * 3) {
+                try map.rehash(arena, map.slots.len * 2);
             }
         }
 
-        fn init_slots(map: *Self, arena: *Arena, new_cap: usize) Arena.AllocError!void {
-            var i: usize = 0;
-            while (i < new_cap) : (i += 1) {
+        pub fn expand(map: *Self, arena: *Arena, new_cap: usize) Arena.AllocError!void {
+            try map.slots.grow_capacity(arena, new_cap);
+            while (map.slots.len < new_cap) {
                 const slot_ptr = try map.slots.add_one(arena);
                 slot_ptr.* = .{ .index = Slot.empty_sentinel };
             }
-            map.slot_count = new_cap;
         }
 
         fn rehash(map: *Self, arena: *Arena, new_cap: usize) Arena.AllocError!void {
-            const old_cap = map.slot_count;
+            const old_cap = map.slots.len;
 
             const scratch = Arena.get_scratch(&.{arena});
             defer scratch.release();
@@ -422,10 +419,9 @@ pub fn XarMap(comptime K: type, comptime V: type, comptime prealloc_count: usize
                 }
             }
 
-            while (map.slot_count < new_cap) {
+            while (map.slots.len < new_cap) {
                 const slot_ptr = try map.slots.add_one(arena);
                 slot_ptr.* = .{ .index = Slot.empty_sentinel };
-                map.slot_count += 1;
             }
 
             i = 0;
@@ -437,10 +433,10 @@ pub fn XarMap(comptime K: type, comptime V: type, comptime prealloc_count: usize
             for (valid_indices[0..valid_count]) |entry_idx| {
                 const key = map.keys.unchecked_at(entry_idx).*;
                 const hash = hash_key(key);
-                var slot_idx = hash % map.slot_count;
+                var slot_idx = hash % map.slots.len;
 
                 var probes: usize = 0;
-                while (probes < map.slot_count) : (probes += 1) {
+                while (probes < map.slots.len) : (probes += 1) {
                     const slot = map.slots.unchecked_at(slot_idx).*;
 
                     if (slot.is_empty()) {
@@ -449,7 +445,7 @@ pub fn XarMap(comptime K: type, comptime V: type, comptime prealloc_count: usize
                         break;
                     }
 
-                    slot_idx = (slot_idx + 1) % map.slot_count;
+                    slot_idx = (slot_idx + 1) % map.slots.len;
                 }
             }
         }
