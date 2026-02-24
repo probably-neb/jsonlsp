@@ -46,7 +46,8 @@ pub fn main() !void {
             \\ const JSONSchema = @import("json-schema");
             \\
             \\ fn check_valid(schema_str: []const u8, case: []const u8, is_valid: bool) !void {{
-            \\     const schema = JSONSchema.parseWithRevision(schema_str, .{s}) catch |err| std.debug.panic("Failed to parse JSON schema: {{}}\n", .{{err}});
+            \\     var schema = JSONSchema.parseWithRevision(schema_str, .{s}) catch |err| std.debug.panic("Failed to parse JSON schema: {{}}\n", .{{err}});
+            \\     defer schema.arena.release();
             \\     if (schema.is_valid(case) == is_valid) return;
             \\     std.debug.print("\nReason:\nExpected Schema:\n{{s}}\nTo {{s}} Case:\n{{s}}\nBut it was {{s}}!\n", .{{
             \\         schema_str,

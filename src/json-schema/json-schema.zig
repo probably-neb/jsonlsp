@@ -135,13 +135,9 @@ pub const Schema = struct {
 
     pub fn is_valid(schema: *const Schema, input: str8) bool {
         var arena = Arena.init(.{}) catch unreachable;
-        // _ = input;
+        defer arena.release();
 
         const json_value = json.hashed.parse(&arena, input) catch return false;
-        // _ = input;
-        // const json_value: HashableJsonValue = undefined;
-        // WIP: need to parse here
-        // - cleaning up hashed json impl
         return check(&arena, schema.root, json_value) catch return false;
     }
 };
