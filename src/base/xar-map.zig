@@ -63,6 +63,14 @@ pub fn XarMap(comptime K: type, comptime V: type, comptime prealloc_count: usize
             map.* = undefined;
         }
 
+        fn at_type(comptime SelfType: type, comptime T: type) type {
+            if (@typeInfo(SelfType).pointer.is_const) {
+                return *const T;
+            } else {
+                return *T;
+            }
+        }
+
         pub fn count(map: Self) usize {
             return map.size;
         }
@@ -71,11 +79,12 @@ pub fn XarMap(comptime K: type, comptime V: type, comptime prealloc_count: usize
             return map.slots.len;
         }
 
-        pub fn get(map: *Self, key: K) ?*V {
+        pub fn get(map: anytype, key: K) ?at_type(@TypeOf(map), V) {
             const idx = map.find_entry_index(key) orelse return null;
             return map.values.unchecked_at(idx);
         }
 
+        /// @deprecated: prefer `get`
         pub fn get_const(map: *const Self, key: K) ?*const V {
             const idx = map.find_entry_index_const(key) orelse return null;
             return map.values.unchecked_at(idx);

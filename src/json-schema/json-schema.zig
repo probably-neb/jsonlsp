@@ -77,16 +77,16 @@ pub const Schema = struct {
     };
 
     pub const Constraint = struct {
-        next: ?*Constraint,
+        next: ?*const Constraint,
         kind: Kind,
 
         pub const Kind = union(enum) {
             true: void,
             false: void,
             type: []ValidationType,
-            all: ?*Constraint, // corresponds to allOf,
-            any: ?*Constraint, // corresponds to anyOf,
-            one: ?*Constraint, // corresponds to oneOf,
+            all: ?*const Constraint, // corresponds to allOf,
+            any: ?*const Constraint, // corresponds to anyOf,
+            one: ?*const Constraint, // corresponds to oneOf,
             @"const": u64,
             @"enum": []u64,
             unique_items: void,
@@ -104,27 +104,32 @@ pub const Schema = struct {
             min_items: u64,
             max_properties: u64,
             min_properties: u64,
-            items: *Constraint,
+            items: *const Constraint,
             tuple_items: ?struct {
-                items: []*Constraint,
-                additional_items: ?*Constraint,
+                items: []*const Constraint,
+                additional_items: ?*const Constraint,
             },
             properties: struct {
-                first_property: ?*Constraint,
-                additional: *Constraint,
+                first_property: ?*const Constraint,
+                additional: *const Constraint,
                 pattern_properties: []PatternProperty,
             },
             // todo: just store in slice, not actual constraint
             property: struct {
                 name: str8,
-                constraint: *Constraint,
+                constraint: *const Constraint,
             },
             required: []u64,
-            not: *Constraint,
+            not: *const Constraint,
             multiple_of_i64: i64,
             multiple_of_f64: f64,
             pattern: pcre.Regex,
-            ref: *Constraint,
+            ref: *const Constraint,
+            if_then_else: struct {
+                cond: *const Constraint,
+                then: *const Constraint,
+                else_: *const Constraint,
+            },
         };
 
         pub const zero = Constraint{
@@ -414,6 +419,13 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
         .ref => |referenced_constraint| {
             return check(arena, referenced_constraint, value);
         },
+        .if_then_else => |if_then_else| {
+            if (try check(arena, if_then_else.cond, value)) {
+                return try check(arena, if_then_else.then, value);
+            } else {
+                return try check(arena, if_then_else.else_, value);
+            }
+        },
     }
 }
 
@@ -435,41 +447,12 @@ pub fn parse_with_revision(schema_contents: str8, revision: ?Revision) !Schema {
 
     var ctx: ParseContext = .{
         .revision = revision orelse Revision.detect(root_json),
+        .id_registry = .empty,
+        .base_url_stack = .{},
         .usage_arena = &usage_arena,
         .parse_arena = &parse_arena,
+        .root_json = root_json,
     };
-
-    // Phase 1: Collect and pre-allocate definitions
-    ctx.defs = if (root_json.kind == .object) blk: {
-        const defs_obj = (root_json.kind.object.get_const("$defs") orelse
-            root_json.kind.object.get_const("definitions")) orelse break :blk &.{};
-        if (defs_obj.*.kind != .object) break :blk &.{};
-        const d = &defs_obj.*.kind.object;
-        const slice = try usage_arena.alloc(Schema.Definition, d.count());
-        var key_iter = d.key_iterator();
-        var i: usize = 0;
-        while (key_iter.next()) |key| : (i += 1) {
-            const stub = try usage_arena.create(Schema.Constraint);
-            stub.* = .zero;
-            slice[i] = .{ .path = key.*, .constraint = stub };
-        }
-        mem.sort(Schema.Definition, slice, {}, Schema.Definition.lessThan);
-        break :blk slice;
-    } else &.{};
-
-    // Phase 2: Parse each definition into its pre-allocated stub
-    if (root_json.kind == .object) {
-        const defs_obj = root_json.kind.object.get_const("$defs") orelse
-            root_json.kind.object.get_const("definitions");
-        if (defs_obj != null and defs_obj.?.*.kind == .object) {
-            const d = &defs_obj.?.*.kind.object;
-            var iter = d.const_iterator();
-            while (iter.next()) |entry| {
-                const def = find_def(ctx.defs, entry.key_ptr.*) orelse continue;
-                try parse_into_constraint(&ctx, entry.value_ptr.*, def);
-            }
-        }
-    }
 
     // Phase 3: Parse the root schema
     const root = try parse_constraint(&ctx, root_json);
@@ -503,6 +486,71 @@ fn parse_local_def_ref(ref: str8) ?str8 {
     return null;
 }
 
+pub fn resolve_pointer(value: *const HashableJsonValue, unescaped_pointer: []const u8) ?*const HashableJsonValue {
+    const scratch = Arena.get_scratch(&.{});
+    defer scratch.release();
+
+    const pointer = unescape_json_pointer(scratch.arena, unescaped_pointer) catch return null orelse return null;
+    if (pointer.len == 0) return value;
+    if (pointer[0] != '#') return null;
+
+    var current = value;
+    var path = pointer[1..]; // Skip '#'
+
+    while (path.len > 0) {
+        if (path[0] != '/') return null;
+        path = path[1..]; // Skip '/'
+
+        // Find next segment
+        const end = std.mem.indexOfScalar(u8, path, '/') orelse path.len;
+        const segment = path[0..end];
+        path = path[end..];
+
+        switch (current.kind) {
+            .object => |obj| {
+                current = (obj.get(segment) orelse return null).*;
+            },
+            .array => |arr| {
+                const index = std.fmt.parseInt(usize, segment, 10) catch return null;
+                if (index >= arr.count()) return null;
+                current = arr.at(index) orelse return null;
+            },
+            else => return null,
+        }
+    }
+    return current;
+}
+
+fn resolve_ref(ctx: *ParseContext, ref_string: []const u8) !?*Schema.Constraint {
+    // Case 1: JSON pointer ref (starts with #)
+    if (ref_string.len > 0 and ref_string[0] == '#') {
+        if (resolve_pointer(ctx.root_json, ref_string)) |target_json| {
+            // Parse the target JSON - cache handles dedup
+            return try parse_constraint(ctx, target_json);
+        }
+        return null;
+    }
+
+    // Case 2: $id-based ref (URI)
+    if (ctx.id_registry.get(ref_string)) |target_json| {
+        return try parse_constraint(ctx, target_json.*);
+    }
+
+    // Case 3: URI with fragment (e.g., "https://example.com/schema#/defs/foo")
+    if (std.mem.indexOfScalar(u8, ref_string, '#')) |hash_pos| {
+        const base_uri = ref_string[0..hash_pos];
+        const fragment = ref_string[hash_pos..];
+
+        if (ctx.id_registry.get(base_uri)) |base_json| {
+            if (resolve_pointer(base_json.*, fragment)) |target_json| {
+                return try parse_constraint(ctx, target_json);
+            }
+        }
+    }
+
+    return null;
+}
+
 fn persist_string(ctx: *ParseContext, s: str8) OOM!str8 {
     const copy = try ctx.usage_arena.alloc(u8, s.len);
     @memcpy(copy, s);
@@ -513,7 +561,7 @@ fn persist_string(ctx: *ParseContext, s: str8) OOM!str8 {
 /// - ~0 -> ~
 /// - ~1 -> /
 /// Also handles percent-encoding (e.g., %25 -> %)
-fn unescape_json_pointer(ctx: *ParseContext, escaped: str8) OOM!str8 {
+fn unescape_json_pointer(arena: *Arena, escaped: str8) OOM!str8 {
     var needs_unescape = false;
     for (escaped) |c| {
         if (c == '~' or c == '%') {
@@ -541,7 +589,7 @@ fn unescape_json_pointer(ctx: *ParseContext, escaped: str8) OOM!str8 {
         }
     }
 
-    const result = try ctx.usage_arena.alloc(u8, result_len);
+    const result = try arena.alloc(u8, result_len);
     var out_idx: usize = 0;
     i = 0;
     while (i < escaped.len) {
@@ -587,8 +635,10 @@ fn int_from_hex_digit(c: u8) ?u4 {
 const ParseError = OOM || error{UnrecognizedSchemaType};
 
 const ParseContext = struct {
+    root_json: *const HashableJsonValue,
     revision: Revision,
-    defs: []const Schema.Definition = &.{},
+    id_registry: XarMap(str8, *const HashableJsonValue, 4),
+    base_url_stack: base.Xar(str8, 4),
     usage_arena: *Arena,
     parse_arena: *Arena,
     /// Cache of value hash to Constraint
@@ -616,23 +666,24 @@ fn parse_into_constraint(ctx: *ParseContext, schema: *const HashableJsonValue, c
         return;
     }
 
+    if (obj.get_const("$id")) |id_ptr| {
+        if (id_ptr.*.kind == .string) {
+            ctx.id_registry.put(ctx.parse_arena, id_ptr.*.kind.string, schema) catch {};
+        }
+    }
+
     if (obj.get_const("$ref")) |ref_ptr| parse_ref: {
         const ref = ref_ptr.*;
         if (ref.kind != .string) {
             break :parse_ref;
         }
-
-        const name = parse_local_def_ref(ref.kind.string) orelse break :parse_ref;
-        const unescaped_name = try unescape_json_pointer(ctx, name);
-
-        const target = find_def(ctx.defs, unescaped_name) orelse break :parse_ref;
-
-        constraint.kind = .{ .ref = target };
+        if (try resolve_ref(ctx, ref.kind.string)) |target| {
+            try chain_with(ctx, constraint, .{ .ref = target });
+        }
         // In draft4-7, $ref overrides all siblings
         if (ref_overrides_siblings(ctx.revision)) {
             return;
         }
-        try chain_with(ctx, constraint, .{ .ref = target });
     }
     // todo: error
     if (parse_validation__type(ctx, obj) catch null) |types| {
@@ -677,10 +728,10 @@ fn parse_into_constraint(ctx: *ParseContext, schema: *const HashableJsonValue, c
     if (parse_validation__unique_items(obj)) |unique_items| {
         try chain_with(ctx, constraint, unique_items);
     }
-    if (parse_applicitor__items(ctx, obj) catch null) |items| {
+    if (parse_applicator__items(ctx, obj) catch null) |items| {
         try chain_with(ctx, constraint, items);
     }
-    if (parse_applicitor__properties(ctx, obj) catch null) |properties| {
+    if (parse_applicator__properties(ctx, obj) catch null) |properties| {
         try chain_with(ctx, constraint, properties);
     }
     if (parse_validation__required_properties(ctx, obj) catch null) |required_properties| {
@@ -689,14 +740,17 @@ fn parse_into_constraint(ctx: *ParseContext, schema: *const HashableJsonValue, c
     if (parse_applicator_not(ctx, obj) catch null) |not| {
         try chain_with(ctx, constraint, not);
     }
-    if (parse_applicitor__all_of(ctx, obj) catch null) |all| {
-        try chain_with(ctx, constraint, all);
+    if (parse_applicator__all_of(ctx, obj) catch null) |all_of| {
+        try chain_with(ctx, constraint, all_of);
     }
-    if (parse_applicitor__any_of(ctx, obj) catch null) |all| {
-        try chain_with(ctx, constraint, all);
+    if (parse_applicator__any_of(ctx, obj) catch null) |any_of| {
+        try chain_with(ctx, constraint, any_of);
     }
-    if (parse_applicitor__one_of(ctx, obj) catch null) |all| {
-        try chain_with(ctx, constraint, all);
+    if (parse_applicator__one_of(ctx, obj) catch null) |one_of| {
+        try chain_with(ctx, constraint, one_of);
+    }
+    if (try parse_applicator__if_then_else(ctx, obj)) |if_then_else| {
+        try chain_with(ctx, constraint, if_then_else);
     }
     if (parse_validation__multiple_of(obj)) |multiple_of| {
         try chain_with(ctx, constraint, multiple_of);
@@ -951,18 +1005,18 @@ fn parse_validation__unique_items(obj: *const HashableJsonValue.Kind.Object) ?Sc
     return .unique_items;
 }
 
-fn parse_applicitor__items(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
+fn parse_applicator__items(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
     const items_sub_schema = (obj.get_const("items") orelse return null).*;
     // items can be either a single schema (applies to all items) or an array of schemas (tuple validation)
     if (items_sub_schema.kind == .array) {
-        const item_schemas = try ctx.usage_arena.alloc(*Schema.Constraint, items_sub_schema.kind.array.count());
+        const item_schemas = try ctx.usage_arena.alloc(*const Schema.Constraint, items_sub_schema.kind.array.count());
         var iter = items_sub_schema.kind.array.iter();
         var i: usize = 0;
         while (iter.next()) |item_schema| : (i += 1) {
             item_schemas[i] = try parse_constraint(ctx, item_schema);
         }
         // Parse additionalItems
-        const additional_items: ?*Schema.Constraint = blk: {
+        const additional_items: ?*const Schema.Constraint = blk: {
             const additional_items_ptr = obj.get_const("additionalItems") orelse break :blk null;
             break :blk try parse_constraint(ctx, additional_items_ptr.*);
         };
@@ -974,7 +1028,7 @@ fn parse_applicitor__items(ctx: *ParseContext, obj: *const HashableJsonValue.Kin
     return .{ .items = try parse_constraint(ctx, items_sub_schema) };
 }
 
-fn parse_applicitor__properties(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
+fn parse_applicator__properties(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
     const properties_ptr = obj.get_const("properties");
     const pattern_properties_ptr = obj.get_const("patternProperties");
     const additional_properties_ptr = obj.get_const("additionalProperties");
@@ -1096,7 +1150,7 @@ fn parse_applicator_not(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.O
     };
 }
 
-fn parse_applicitor__all_of(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
+fn parse_applicator__all_of(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
     const items = (obj.get_const("allOf") orelse return null).*;
     if (items.kind != .array) return null;
     var all_of_constraint = Schema.Constraint.Kind{
@@ -1112,7 +1166,7 @@ fn parse_applicitor__all_of(ctx: *ParseContext, obj: *const HashableJsonValue.Ki
     return all_of_constraint;
 }
 
-fn parse_applicitor__any_of(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
+fn parse_applicator__any_of(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
     const items = (obj.get_const("anyOf") orelse return null).*;
     if (items.kind != .array) return null;
     var any_of_constraint = Schema.Constraint.Kind{
@@ -1128,7 +1182,7 @@ fn parse_applicitor__any_of(ctx: *ParseContext, obj: *const HashableJsonValue.Ki
     return any_of_constraint;
 }
 
-fn parse_applicitor__one_of(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
+fn parse_applicator__one_of(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
     const items = (obj.get_const("oneOf") orelse return null).*;
     if (items.kind != .array) return null;
     var one_of_constraint = Schema.Constraint.Kind{
@@ -1166,6 +1220,18 @@ fn parse_validation__pattern(ctx: *ParseContext, obj: *const HashableJsonValue.K
 
     return .{
         .pattern = re,
+    };
+}
+
+fn parse_applicator__if_then_else(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
+    const cond_value = obj.get_const("if") orelse return null;
+    const cond = try parse_constraint(ctx, cond_value.*);
+    return .{
+        .if_then_else = .{
+            .cond = cond,
+            .then = if (obj.get_const("then")) |then| try parse_constraint(ctx, then.*) else &.zero,
+            .else_ = if (obj.get_const("else")) |else_| try parse_constraint(ctx, else_.*) else &.zero,
+        },
     };
 }
 
