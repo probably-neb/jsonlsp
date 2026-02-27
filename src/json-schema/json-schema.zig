@@ -67,15 +67,6 @@ pub const Schema = struct {
         constraint: *Constraint,
     };
 
-    pub const Definition = struct {
-        path: str8,
-        constraint: *Constraint,
-
-        fn lessThan(_: void, a: Definition, b: Definition) bool {
-            return mem.order(u8, a.path, b.path) == .lt;
-        }
-    };
-
     pub const Constraint = struct {
         next: ?*const Constraint,
         kind: Kind,
@@ -448,7 +439,6 @@ pub fn parse_with_revision(schema_contents: str8, revision: ?Revision) !Schema {
     var ctx: ParseContext = .{
         .revision = revision orelse Revision.detect(root_json),
         .id_registry = .empty,
-        .base_url_stack = .{},
         .usage_arena = &usage_arena,
         .parse_arena = &parse_arena,
         .root_json = root_json,
@@ -460,30 +450,6 @@ pub fn parse_with_revision(schema_contents: str8, revision: ?Revision) !Schema {
         .root = root,
         .arena = usage_arena,
     };
-}
-
-fn find_def(defs: []const Schema.Definition, path: str8) ?*Schema.Constraint {
-    var left: usize = 0;
-    var right: usize = defs.len;
-    while (left < right) {
-        const mid = left + (right - left) / 2;
-        const cmp = mem.order(u8, defs[mid].path, path);
-        switch (cmp) {
-            .lt => left = mid + 1,
-            .gt => right = mid,
-            .eq => return defs[mid].constraint,
-        }
-    }
-    return null;
-}
-
-fn parse_local_def_ref(ref: str8) ?str8 {
-    if (mem.startsWith(u8, ref, "#/$defs/")) {
-        return ref["#/$defs/".len..];
-    } else if (mem.startsWith(u8, ref, "#/definitions/")) {
-        return ref["#/definitions/".len..];
-    }
-    return null;
 }
 
 pub fn resolve_pointer(value: *const HashableJsonValue, unescaped_pointer: []const u8) ?*const HashableJsonValue {
@@ -638,7 +604,7 @@ const ParseContext = struct {
     root_json: *const HashableJsonValue,
     revision: Revision,
     id_registry: XarMap(str8, *const HashableJsonValue, 4),
-    base_url_stack: base.Xar(str8, 4),
+
     usage_arena: *Arena,
     parse_arena: *Arena,
     /// Cache of value hash to Constraint
