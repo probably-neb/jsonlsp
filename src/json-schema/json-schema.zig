@@ -78,6 +78,7 @@ pub const Schema = struct {
             all: ?*const Constraint, // corresponds to allOf,
             any: ?*const Constraint, // corresponds to anyOf,
             one: ?*const Constraint, // corresponds to oneOf,
+            not: *const Constraint,
             @"const": u64,
             @"enum": []u64,
             unique_items: void,
@@ -111,7 +112,6 @@ pub const Schema = struct {
                 constraint: *const Constraint,
             },
             required: []u64,
-            not: *const Constraint,
             multiple_of_i64: i64,
             multiple_of_f64: f64,
             pattern: pcre.Regex,
@@ -119,7 +119,7 @@ pub const Schema = struct {
             if_then_else: struct {
                 cond: *const Constraint,
                 then: *const Constraint,
-                else_: *const Constraint,
+                elsa: *const Constraint,
             },
         };
 
@@ -414,7 +414,7 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
             if (try check(arena, if_then_else.cond, value)) {
                 return try check(arena, if_then_else.then, value);
             } else {
-                return try check(arena, if_then_else.else_, value);
+                return try check(arena, if_then_else.elsa, value);
             }
         },
     }
@@ -621,6 +621,7 @@ fn parse_into_constraint(ctx: *ParseContext, schema: *const HashableJsonValue, c
             true => .true,
             false => .false,
         };
+        return;
     }
     if (schema.kind != .object) {
         return error.UnrecognizedSchemaType;
@@ -727,13 +728,13 @@ fn parse_into_constraint(ctx: *ParseContext, schema: *const HashableJsonValue, c
 }
 
 fn parse_constraint(ctx: *ParseContext, schema: *const HashableJsonValue) ParseError!*Schema.Constraint {
-    if (ctx.constraint_cache.get(schema.hash)) |cached_entry_ptr_ptr| {
-        return cached_entry_ptr_ptr.*;
+    const cached_constraint = try ctx.constraint_cache.get_or_put(ctx.usage_arena, schema.hash);
+    if (cached_constraint.found_existing) {
+        return cached_constraint.value_ptr.*;
     }
-    const constraint = try ctx.usage_arena.create(Schema.Constraint);
-    try parse_into_constraint(ctx, schema, constraint);
-    try ctx.constraint_cache.put(ctx.parse_arena, schema.hash, constraint);
-    return constraint;
+    cached_constraint.value_ptr.* = try ctx.usage_arena.create(Schema.Constraint);
+    try parse_into_constraint(ctx, schema, cached_constraint.value_ptr.*);
+    return cached_constraint.value_ptr.*;
 }
 
 fn chain_with(ctx: *ParseContext, from: *Schema.Constraint, new_kind: Schema.Constraint.Kind) !void {
@@ -1196,7 +1197,7 @@ fn parse_applicator__if_then_else(ctx: *ParseContext, obj: *const HashableJsonVa
         .if_then_else = .{
             .cond = cond,
             .then = if (obj.get_const("then")) |then| try parse_constraint(ctx, then.*) else &.zero,
-            .else_ = if (obj.get_const("else")) |else_| try parse_constraint(ctx, else_.*) else &.zero,
+            .elsa = if (obj.get_const("else")) |else_| try parse_constraint(ctx, else_.*) else &.zero,
         },
     };
 }
