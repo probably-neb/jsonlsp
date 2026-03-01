@@ -67,17 +67,21 @@ pub const Schema = struct {
         constraint: *Constraint,
     };
 
+    pub const ConstraintNode = struct {
+        constraint: *const Constraint,
+        next: ?*const ConstraintNode,
+    };
+
     pub const Constraint = struct {
-        next: ?*const Constraint,
         kind: Kind,
 
         pub const Kind = union(enum) {
             true: void,
             false: void,
             type: []ValidationType,
-            all: ?*const Constraint, // corresponds to allOf,
-            any: ?*const Constraint, // corresponds to anyOf,
-            one: ?*const Constraint, // corresponds to oneOf,
+            all: ?*const ConstraintNode, // corresponds to allOf,
+            any: ?*const ConstraintNode, // corresponds to anyOf,
+            one: ?*const ConstraintNode, // corresponds to oneOf,
             not: *const Constraint,
             @"const": u64,
             @"enum": []u64,
@@ -102,7 +106,7 @@ pub const Schema = struct {
                 additional_items: ?*const Constraint,
             },
             properties: struct {
-                first_property: ?*const Constraint,
+                first_property: ?*const ConstraintNode,
                 additional: *const Constraint,
                 pattern_properties: []PatternProperty,
             },
@@ -129,8 +133,7 @@ pub const Schema = struct {
             required_property_hashes: []u64,
         };
 
-        pub const zero = Constraint{
-            .next = null,
+        pub const zero: Constraint = .{
             .kind = .true,
         };
     };
@@ -165,31 +168,25 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
         },
         .all => |first_child| {
             var result = true;
-            var cur_constraint = first_child;
-            // std.debug.print("\nall\n", .{});
-            while (cur_constraint) |cur| : (cur_constraint = cur.next) {
-                result = result and try check(arena, cur, value);
-                // std.debug.print("Constraint {t} -> {}\n", .{ cur.kind, result });
+            var cur_node = first_child;
+            while (cur_node) |node| : (cur_node = node.next) {
+                result = result and try check(arena, node.constraint, value);
             }
             return result;
         },
         .any => |first_child| {
             var result = false;
-            var cur_constraint = first_child;
-            // std.debug.print("\nall\n", .{});
-            while (cur_constraint) |cur| : (cur_constraint = cur.next) {
-                result = result or try check(arena, cur, value);
-                // std.debug.print("Constraint {t} -> {}\n", .{ cur.kind, result });
+            var cur_node = first_child;
+            while (cur_node) |node| : (cur_node = node.next) {
+                result = result or try check(arena, node.constraint, value);
             }
             return result;
         },
         .one => |first_child| {
             var result = false;
-            var cur_constraint = first_child;
-            // std.debug.print("\nall\n", .{});
-            while (cur_constraint) |cur| : (cur_constraint = cur.next) {
-                result = result != try check(arena, cur, value);
-                // std.debug.print("Constraint {t} -> {}\n", .{ cur.kind, result });
+            var cur_node = first_child;
+            while (cur_node) |node| : (cur_node = node.next) {
+                result = result != try check(arena, node.constraint, value);
             }
             return result;
         },
@@ -337,7 +334,8 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
             var current_property = properties.first_property;
             var checked_properties: std.StringArrayHashMapUnmanaged(void) = .empty;
             defer checked_properties.deinit(scratch.arena.allocator());
-            while (current_property) |property_constraint| : (current_property = property_constraint.next) {
+            while (current_property) |property_node| : (current_property = property_node.next) {
+                const property_constraint = property_node.constraint;
                 const sub_value = (value.kind.object.get_const(property_constraint.kind.property.name) orelse continue).*;
                 try checked_properties.put(scratch.arena.allocator(), property_constraint.kind.property.name, {});
                 if (!try check(arena, property_constraint.kind.property.constraint, sub_value)) {
@@ -652,7 +650,6 @@ const ParseContext = struct {
 };
 
 fn parse_into_constraint(ctx: *ParseContext, schema: *const HashableJsonValue, constraint: *Schema.Constraint) ParseError!void {
-    constraint.next = null;
     constraint.kind = .true;
 
     if (schema.kind == .bool) {
@@ -774,26 +771,56 @@ fn parse_constraint(ctx: *ParseContext, schema: *const HashableJsonValue) ParseE
     if (cached_constraint.found_existing) {
         return cached_constraint.value_ptr.*;
     }
-    cached_constraint.value_ptr.* = try ctx.usage_arena.create(Schema.Constraint);
-    try parse_into_constraint(ctx, schema, cached_constraint.value_ptr.*);
-    return cached_constraint.value_ptr.*;
+
+    const constraint = try ctx.usage_arena.create(Schema.Constraint);
+
+    cached_constraint.value_ptr.* = constraint;
+    constraint.* = .zero;
+
+    try parse_into_constraint(ctx, schema, constraint);
+    return constraint;
 }
 
 fn chain_with(ctx: *ParseContext, from: *Schema.Constraint, new_kind: Schema.Constraint.Kind) !void {
     if (from.kind == .all) {
-        // add new link to chain
-        const new = try ctx.usage_arena.create(Schema.Constraint);
-        new.next = from.kind.all;
-        new.kind = new_kind;
-        from.kind.all = new;
+        const first = from.kind.all orelse return;
+        var tail = first;
+        while (tail.next) |next| {
+            tail = next;
+        }
+
+        const new_constraint = try ctx.usage_arena.create(Schema.Constraint);
+        new_constraint.* = .{
+            .kind = new_kind,
+        };
+
+        const new_node = try ctx.usage_arena.create(Schema.ConstraintNode);
+        new_node.* = .{
+            .constraint = new_constraint,
+            .next = null,
+        };
+        @constCast(tail).next = new_node;
     } else if (from.kind != .true) {
-        // turn from into chain of length two with it's current constraint and the new constraint
-        var constraints = try ctx.usage_arena.alloc(Schema.Constraint, 2);
-        @memset(constraints, .zero);
-        constraints[0].kind = from.kind;
-        constraints[0].next = &constraints[1];
-        constraints[1].kind = new_kind;
-        from.kind = .{ .all = &constraints[0] };
+        const first_constraint = try ctx.usage_arena.create(Schema.Constraint);
+        first_constraint.* = .{
+            .kind = from.kind,
+        };
+
+        const second_constraint = try ctx.usage_arena.create(Schema.Constraint);
+        second_constraint.* = .{
+            .kind = new_kind,
+        };
+
+        const nodes = try ctx.usage_arena.alloc(Schema.ConstraintNode, 2);
+        nodes[0] = .{
+            .constraint = first_constraint,
+            .next = &nodes[1],
+        };
+        nodes[1] = .{
+            .constraint = second_constraint,
+            .next = null,
+        };
+        from.kind = .{ .all = &nodes[0] };
     } else {
         from.kind = new_kind;
     }
@@ -1052,18 +1079,15 @@ fn parse_applicator__properties(ctx: *ParseContext, obj: *const HashableJsonValu
     }
 
     // Parse properties
-    var first_property: ?*Schema.Constraint = null;
+    var first_property: ?*Schema.ConstraintNode = null;
     if (properties_value) |props| {
         if (props.kind == .object) {
             var property_iter = props.kind.object.const_iterator();
-            var property_constraints = try ctx.usage_arena.alloc(Schema.Constraint, props.kind.object.count());
-            var index: u64 = 0;
+            const property_nodes = try ctx.usage_arena.alloc(Schema.ConstraintNode, props.kind.object.count());
+            var index: usize = 0;
             while (property_iter.next()) |entry| : (index += 1) {
-                if (index > 0) {
-                    property_constraints[index - 1].next = &property_constraints[index];
-                }
-                property_constraints[index] = .{
-                    .next = null,
+                const property_constraint = try ctx.usage_arena.create(Schema.Constraint);
+                property_constraint.* = .{
                     .kind = .{
                         .property = .{
                             .name = try persist_string(ctx, entry.key_ptr.*),
@@ -1071,9 +1095,13 @@ fn parse_applicator__properties(ctx: *ParseContext, obj: *const HashableJsonValu
                         },
                     },
                 };
+                property_nodes[index] = .{
+                    .constraint = property_constraint,
+                    .next = if (index + 1 < property_nodes.len) &property_nodes[index + 1] else null,
+                };
             }
-            if (property_constraints.len > 0) {
-                first_property = &property_constraints[0];
+            if (property_nodes.len > 0) {
+                first_property = &property_nodes[0];
             }
         }
     }
@@ -1195,49 +1223,61 @@ fn parse_applicator_not(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.O
 fn parse_applicator__all_of(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
     const items = (obj.get_const("allOf") orelse return null).*;
     if (items.kind != .array) return null;
-    var all_of_constraint = Schema.Constraint.Kind{
-        .all = null,
-    };
-    var prev_next_ptr = &all_of_constraint.all;
+
+    const count = items.kind.array.count();
+    if (count == 0) return .{ .all = null };
+
+    const nodes = try ctx.usage_arena.alloc(Schema.ConstraintNode, count);
     var iter = items.kind.array.iter();
-    while (iter.next()) |item| {
-        const sub_schema = try parse_constraint(ctx, item);
-        prev_next_ptr.* = sub_schema;
-        prev_next_ptr = &sub_schema.next;
+    var i: usize = 0;
+    while (iter.next()) |item| : (i += 1) {
+        nodes[i] = .{
+            .constraint = try parse_constraint(ctx, item),
+            .next = if (i + 1 < count) &nodes[i + 1] else null,
+        };
     }
-    return all_of_constraint;
+
+    return .{ .all = &nodes[0] };
 }
 
 fn parse_applicator__any_of(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
     const items = (obj.get_const("anyOf") orelse return null).*;
     if (items.kind != .array) return null;
-    var any_of_constraint = Schema.Constraint.Kind{
-        .any = null,
-    };
-    var prev_next_ptr = &any_of_constraint.any;
+
+    const count = items.kind.array.count();
+    if (count == 0) return .{ .any = null };
+
+    const nodes = try ctx.usage_arena.alloc(Schema.ConstraintNode, count);
     var iter = items.kind.array.iter();
-    while (iter.next()) |item| {
-        const sub_schema = try parse_constraint(ctx, item);
-        prev_next_ptr.* = sub_schema;
-        prev_next_ptr = &sub_schema.next;
+    var i: usize = 0;
+    while (iter.next()) |item| : (i += 1) {
+        nodes[i] = .{
+            .constraint = try parse_constraint(ctx, item),
+            .next = if (i + 1 < count) &nodes[i + 1] else null,
+        };
     }
-    return any_of_constraint;
+
+    return .{ .any = &nodes[0] };
 }
 
 fn parse_applicator__one_of(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
     const items = (obj.get_const("oneOf") orelse return null).*;
     if (items.kind != .array) return null;
-    var one_of_constraint = Schema.Constraint.Kind{
-        .one = null,
-    };
-    var prev_next_ptr = &one_of_constraint.one;
+
+    const count = items.kind.array.count();
+    if (count == 0) return .{ .one = null };
+
+    const nodes = try ctx.usage_arena.alloc(Schema.ConstraintNode, count);
     var iter = items.kind.array.iter();
-    while (iter.next()) |item| {
-        const sub_schema = try parse_constraint(ctx, item);
-        prev_next_ptr.* = sub_schema;
-        prev_next_ptr = &sub_schema.next;
+    var i: usize = 0;
+    while (iter.next()) |item| : (i += 1) {
+        nodes[i] = .{
+            .constraint = try parse_constraint(ctx, item),
+            .next = if (i + 1 < count) &nodes[i + 1] else null,
+        };
     }
-    return one_of_constraint;
+
+    return .{ .one = &nodes[0] };
 }
 
 fn parse_validation__multiple_of(obj: *const HashableJsonValue.Kind.Object) ?Schema.Constraint.Kind {
@@ -2046,6 +2086,24 @@ test "$ref pointer escape segment percent (%25)" {
     try std.testing.expect(!schema.is_valid("\"true\""));
 }
 
+test "$ref root pointer recursive object does not crash" {
+    const schema_str =
+        \\{
+        \\  "properties": {
+        \\    "foo": { "$ref": "#" }
+        \\  },
+        \\  "additionalProperties": false
+        \\}
+    ;
+    var schema = try parse_with_revision(schema_str, .draft4);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("{\"foo\": false}"));
+    try std.testing.expect(schema.is_valid("{\"foo\": {\"foo\": false}}"));
+    try std.testing.expect(!schema.is_valid("{\"bar\": false}"));
+    try std.testing.expect(!schema.is_valid("{\"foo\": {\"bar\": false}}"));
+}
+
 test "dependentRequired - trigger present requires dependents (draft 2020-12)" {
     const schema_str =
         \\{
@@ -2078,4 +2136,24 @@ test "dependentRequired - multiple dependencies (draft 2019-09)" {
     try std.testing.expect(schema.is_valid("{\"surname\": \"Doe\"}"));
     try std.testing.expect(!schema.is_valid("{\"name\": \"X\", \"surname\": \"Doe\"}"));
     try std.testing.expect(schema.is_valid("{\"name\": \"X\", \"surname\": \"Doe\", \"given_name\": \"John\"}"));
+}
+
+test "allOf with duplicate empty subschemas does not hang" {
+    const schema_str =
+        \\{
+        \\  "allOf": [
+        \\    {},
+        \\    {}
+        \\  ]
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("1"));
+    try std.testing.expect(schema.is_valid("\"text\""));
+    try std.testing.expect(schema.is_valid("true"));
+    try std.testing.expect(schema.is_valid("null"));
+    try std.testing.expect(schema.is_valid("[]"));
+    try std.testing.expect(schema.is_valid("{}"));
 }

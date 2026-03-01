@@ -110,9 +110,6 @@ pub fn XarMap(comptime K: type, comptime V: type, comptime prealloc_count: usize
         pub fn put(map: *Self, arena: *Arena, key: K, value: V) Arena.AllocError!void {
             const result = try map.get_or_put(arena, key);
             result.value_ptr.* = value;
-            if (!result.found_existing) {
-                result.key_ptr.* = key;
-            }
         }
 
         pub fn get_or_put(map: *Self, arena: *Arena, key: K) Arena.AllocError!GetOrPutResult {
@@ -129,16 +126,7 @@ pub fn XarMap(comptime K: type, comptime V: type, comptime prealloc_count: usize
 
                 if (slot.is_empty()) {
                     const insert_slot_idx = first_tombstone orelse slot_idx;
-                    const entry_idx = try map.append_entry(arena);
-
-                    map.slots.unchecked_at(insert_slot_idx).* = .{ .index = @intCast(entry_idx) };
-                    map.size += 1;
-
-                    return GetOrPutResult{
-                        .key_ptr = map.keys.unchecked_at(entry_idx),
-                        .value_ptr = map.values.unchecked_at(entry_idx),
-                        .found_existing = false,
-                    };
+                    return try map.insert_new_entry(arena, insert_slot_idx, key);
                 } else if (slot.is_tombstone()) {
                     if (first_tombstone == null) {
                         first_tombstone = slot_idx;
@@ -158,15 +146,7 @@ pub fn XarMap(comptime K: type, comptime V: type, comptime prealloc_count: usize
             }
 
             if (first_tombstone) |tombstone_idx| {
-                const entry_idx = try map.append_entry(arena);
-                map.slots.unchecked_at(tombstone_idx).* = .{ .index = @intCast(entry_idx) };
-                map.size += 1;
-
-                return GetOrPutResult{
-                    .key_ptr = map.keys.unchecked_at(entry_idx),
-                    .value_ptr = map.values.unchecked_at(entry_idx),
-                    .found_existing = false,
-                };
+                return try map.insert_new_entry(arena, tombstone_idx, key);
             }
 
             unreachable;
@@ -395,6 +375,21 @@ pub fn XarMap(comptime K: type, comptime V: type, comptime prealloc_count: usize
             return idx;
         }
 
+        fn insert_new_entry(map: *Self, arena: *Arena, slot_idx: usize, key: K) Arena.AllocError!GetOrPutResult {
+            const entry_idx = try map.append_entry(arena);
+            const key_ptr = map.keys.unchecked_at(entry_idx);
+            key_ptr.* = key;
+
+            map.slots.unchecked_at(slot_idx).* = .{ .index = @intCast(entry_idx) };
+            map.size += 1;
+
+            return GetOrPutResult{
+                .key_ptr = key_ptr,
+                .value_ptr = map.values.unchecked_at(entry_idx),
+                .found_existing = false,
+            };
+        }
+
         fn ensure_capacity_for_insert(map: *Self, arena: *Arena) Arena.AllocError!void {
             if (map.slots.len == 0) {
                 try map.expand(arena, initial_capacity());
@@ -516,12 +511,33 @@ test "XarMap: getOrPut" {
 
     const result1 = try map.get_or_put(&arena, 42);
     try std.testing.expect(!result1.found_existing);
-    result1.key_ptr.* = 42;
+    try std.testing.expectEqual(@as(u32, 42), result1.key_ptr.*);
     result1.value_ptr.* = 100;
 
     const result2 = try map.get_or_put(&arena, 42);
     try std.testing.expect(result2.found_existing);
+    try std.testing.expectEqual(@as(u32, 42), result2.key_ptr.*);
     try std.testing.expectEqual(@as(u32, 100), result2.value_ptr.*);
+}
+
+test "XarMap: getOrPut insertion initializes key_ptr to lookup key" {
+    var arena = try Arena.init(.{});
+    defer arena.deinit();
+
+    var map: XarMap([]const u8, u32, 4) = .{};
+    defer map.deinit(&arena);
+
+    const key = "alpha";
+    const result = try map.get_or_put(&arena, key);
+    try std.testing.expect(!result.found_existing);
+    try std.testing.expect(std.mem.eql(u8, key, result.key_ptr.*));
+    try std.testing.expect(map.contains(key));
+
+    result.value_ptr.* = 7;
+
+    const stored = map.get_entry(key).?;
+    try std.testing.expect(std.mem.eql(u8, key, stored.key_ptr.*));
+    try std.testing.expectEqual(@as(u32, 7), stored.value_ptr.*);
 }
 
 test "XarMap: remove" {
