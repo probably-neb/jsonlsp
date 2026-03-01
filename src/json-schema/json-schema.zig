@@ -112,6 +112,7 @@ pub const Schema = struct {
                 constraint: *const Constraint,
             },
             required: []u64,
+            dependent_required: []DependentRequiredEntry,
             multiple_of_i64: i64,
             multiple_of_f64: f64,
             pattern: pcre.Regex,
@@ -121,6 +122,11 @@ pub const Schema = struct {
                 then: *const Constraint,
                 elsa: *const Constraint,
             },
+        };
+
+        pub const DependentRequiredEntry = struct {
+            trigger_property_hash: u64,
+            required_property_hashes: []u64,
         };
 
         pub const zero = Constraint{
@@ -378,6 +384,39 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
             }
             return true;
         },
+        .dependent_required => |entries| {
+            if (value.kind != .object) {
+                return true;
+            }
+
+            for (entries) |entry| {
+                var trigger_present = false;
+                var trigger_iter = value.kind.object.key_iterator();
+                while (trigger_iter.next()) |key_ptr| {
+                    const key_hash = json.hashed.compute_string_hash(key_ptr.*);
+                    if (key_hash == entry.trigger_property_hash) {
+                        trigger_present = true;
+                        break;
+                    }
+                }
+
+                if (!trigger_present) continue;
+
+                for (entry.required_property_hashes) |required_property_hash| {
+                    var dependent_present = false;
+                    var dependent_iter = value.kind.object.key_iterator();
+                    while (dependent_iter.next()) |key_ptr| {
+                        const key_hash = json.hashed.compute_string_hash(key_ptr.*);
+                        if (key_hash == required_property_hash) {
+                            dependent_present = true;
+                            break;
+                        }
+                    }
+                    if (!dependent_present) return false;
+                }
+            }
+            return true;
+        },
         .not => |constraint_to_invert| {
             return !try check(arena, constraint_to_invert, value);
         },
@@ -456,12 +495,11 @@ pub fn resolve_pointer(value: *const HashableJsonValue, unescaped_pointer: []con
     const scratch = Arena.get_scratch(&.{});
     defer scratch.release();
 
-    const pointer = unescape_json_pointer(scratch.arena, unescaped_pointer) catch return null orelse return null;
-    if (pointer.len == 0) return value;
-    if (pointer[0] != '#') return null;
+    if (unescaped_pointer.len == 0) return value;
+    if (unescaped_pointer[0] != '#') return null;
 
     var current = value;
-    var path = pointer[1..]; // Skip '#'
+    var path = unescaped_pointer[1..]; // Skip '#'
 
     while (path.len > 0) {
         if (path[0] != '/') return null;
@@ -469,8 +507,9 @@ pub fn resolve_pointer(value: *const HashableJsonValue, unescaped_pointer: []con
 
         // Find next segment
         const end = std.mem.indexOfScalar(u8, path, '/') orelse path.len;
-        const segment = path[0..end];
+        const segment_escaped = path[0..end];
         path = path[end..];
+        const segment = unescape_json_pointer(scratch.arena, segment_escaped) catch return null orelse return null;
 
         switch (current.kind) {
             .object => |obj| {
@@ -703,6 +742,9 @@ fn parse_into_constraint(ctx: *ParseContext, schema: *const HashableJsonValue, c
     }
     if (parse_validation__required_properties(ctx, obj) catch null) |required_properties| {
         try chain_with(ctx, constraint, required_properties);
+    }
+    if (parse_validation__dependent_required(ctx, obj) catch null) |dependent_required| {
+        try chain_with(ctx, constraint, dependent_required);
     }
     if (parse_applicator_not(ctx, obj) catch null) |not| {
         try chain_with(ctx, constraint, not);
@@ -1107,6 +1149,39 @@ fn parse_validation__required_properties(ctx: *ParseContext, obj: *const Hashabl
     if (required_properties.items.len == 0) return null;
     return .{
         .required = required_properties.items,
+    };
+}
+
+fn parse_validation__dependent_required(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
+    const dependent_required_value = (obj.get_const("dependentRequired") orelse return null).*;
+    if (dependent_required_value.kind != .object) return null;
+
+    var entries = try base.ArenaList(Schema.Constraint.DependentRequiredEntry).init_capacity(
+        ctx.usage_arena,
+        dependent_required_value.kind.object.count(),
+    );
+    var iter = dependent_required_value.kind.object.const_iterator();
+    while (iter.next()) |entry| {
+        if (entry.value_ptr.*.kind != .array) continue;
+
+        var required_hashes = try base.ArenaList(u64).init_capacity(ctx.usage_arena, entry.value_ptr.*.kind.array.count());
+        var req_iter = entry.value_ptr.*.kind.array.iter();
+        while (req_iter.next()) |required_property| {
+            if (required_property.kind != .string) continue;
+            required_hashes.append_assume_capacity(required_property.hash);
+        }
+
+        if (required_hashes.items.len == 0) continue;
+
+        entries.append_assume_capacity(.{
+            .trigger_property_hash = json.hashed.compute_string_hash(entry.key_ptr.*),
+            .required_property_hashes = required_hashes.items,
+        });
+    }
+
+    if (entries.items.len == 0) return null;
+    return .{
+        .dependent_required = entries.items,
     };
 }
 
@@ -1921,4 +1996,86 @@ test "$ref recursive schema" {
     try std.testing.expect(schema.is_valid("{\"value\": 1, \"child\": {\"value\": 2, \"child\": {\"value\": 3}}}"));
     try std.testing.expect(!schema.is_valid("{\"value\": \"not an int\"}"));
     try std.testing.expect(!schema.is_valid("{\"value\": 1, \"child\": {\"value\": \"bad\"}}"));
+}
+
+test "$ref pointer escape segment slash (~1)" {
+    const schema_str =
+        \\{
+        \\  "$defs": {
+        \\    "slash/field": { "type": "integer" }
+        \\  },
+        \\  "$ref": "#/$defs/slash~1field"
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("1"));
+    try std.testing.expect(!schema.is_valid("\"1\""));
+}
+
+test "$ref pointer escape segment tilde (~0)" {
+    const schema_str =
+        \\{
+        \\  "$defs": {
+        \\    "tilde~field": { "type": "string" }
+        \\  },
+        \\  "$ref": "#/$defs/tilde~0field"
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("\"ok\""));
+    try std.testing.expect(!schema.is_valid("1"));
+}
+
+test "$ref pointer escape segment percent (%25)" {
+    const schema_str =
+        \\{
+        \\  "$defs": {
+        \\    "percent%field": { "type": "boolean" }
+        \\  },
+        \\  "$ref": "#/$defs/percent%25field"
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("true"));
+    try std.testing.expect(!schema.is_valid("\"true\""));
+}
+
+test "dependentRequired - trigger present requires dependents (draft 2020-12)" {
+    const schema_str =
+        \\{
+        \\  "dependentRequired": {
+        \\    "credit_card": ["billing_address"]
+        \\  }
+        \\}
+    ;
+    var schema = try parse_with_revision(schema_str, .draft2020_12);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("{}"));
+    try std.testing.expect(schema.is_valid("{\"billing_address\": \"123 Main St\"}"));
+    try std.testing.expect(schema.is_valid("{\"credit_card\": 1234, \"billing_address\": \"123 Main St\"}"));
+    try std.testing.expect(!schema.is_valid("{\"credit_card\": 1234}"));
+}
+
+test "dependentRequired - multiple dependencies (draft 2019-09)" {
+    const schema_str =
+        \\{
+        \\  "dependentRequired": {
+        \\    "name": ["surname", "given_name"]
+        \\  }
+        \\}
+    ;
+    var schema = try parse_with_revision(schema_str, .draft2019_09);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("{}"));
+    try std.testing.expect(schema.is_valid("{\"surname\": \"Doe\"}"));
+    try std.testing.expect(!schema.is_valid("{\"name\": \"X\", \"surname\": \"Doe\"}"));
+    try std.testing.expect(schema.is_valid("{\"name\": \"X\", \"surname\": \"Doe\", \"given_name\": \"John\"}"));
 }
