@@ -205,7 +205,17 @@ pub fn lex(lexer: *Lexer, arena: *Arena, contents: []const u8) ParseError!void {
             .string => {
                 prev.?.range.close = next_offset;
                 if (byte == '"') {
-                    lexer.state = .none;
+                    var backslash_count: usize = 0;
+                    var idx = buf_idx;
+                    while (idx > 0) {
+                        const prev_byte = contents[idx - 1];
+                        if (prev_byte != '\\') break;
+                        backslash_count += 1;
+                        idx -= 1;
+                    }
+                    if (backslash_count % 2 == 0) {
+                        lexer.state = .none;
+                    }
                 }
             },
             .keyword => |*kw| {
@@ -224,4 +234,33 @@ pub fn lex(lexer: *Lexer, arena: *Arena, contents: []const u8) ParseError!void {
             },
         }
     }
+}
+
+test "lex string with escaped quote does not terminate early" {
+    var arena = try Arena.init(.{});
+    defer arena.deinit();
+
+    var lxr: Lexer = .zero;
+    try lex(&lxr, &arena, "\"foo\\\"bar\"");
+
+    try std.testing.expectEqual(@as(usize, 1), lxr.tokens.items.len);
+    try std.testing.expectEqual(Token.Kind.string, lxr.tokens.items[0].kind);
+}
+
+test "lex object key with escaped quote token range" {
+    var arena = try Arena.init(.{});
+    defer arena.deinit();
+
+    const input = "{\"foo\\\"bar\":1}";
+    var lxr: Lexer = .zero;
+    try lex(&lxr, &arena, input);
+
+    try std.testing.expect(lxr.tokens.items.len >= 4);
+    try std.testing.expectEqual(Token.Kind.l_curly, lxr.tokens.items[0].kind);
+    try std.testing.expectEqual(Token.Kind.string, lxr.tokens.items[1].kind);
+    try std.testing.expectEqual(Token.Kind.colon, lxr.tokens.items[2].kind);
+
+    const key_token = lxr.tokens.items[1];
+    const raw_key = input[key_token.range.start.byte..key_token.range.close.byte];
+    try std.testing.expectEqualStrings("\"foo\\\"bar\"", raw_key);
 }
