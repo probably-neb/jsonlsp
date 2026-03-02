@@ -87,7 +87,10 @@ pub const Schema = struct {
         min_items: u64,
         max_properties: u64,
         min_properties: u64,
-        items: *const Constraint,
+        items: struct {
+            prefix_items: ?*const Constraint.Node,
+            items: *const Constraint,
+        },
         tuple_items: ?struct {
             items: []*const Constraint,
             additional_items: ?*const Constraint,
@@ -182,12 +185,12 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
             return result;
         },
         .one => |first_child| {
-            var result = false;
+            var count: u32 = 0;
             var cur_node = first_child;
             while (cur_node) |node| : (cur_node = node.next) {
-                result = result != try check(arena, node.constraint, value);
+                count += @intFromBool(try check(arena, node.constraint, value));
             }
-            return result;
+            return count == 1;
         },
         .@"const" => |stored_hash| {
             return stored_hash == value.hash;
@@ -217,19 +220,26 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
             }
             return true;
         },
-        .items => |item_sub_schema| {
+        .items => |items| {
             if (value.kind != .array) {
                 return true;
             }
 
             var arr_iter = value.kind.array.iter();
+            if (items.prefix_items) |prefix_items| {
+                var prefix_item_node = @as(?*const Schema.Constraint.Node, prefix_items);
+                while (prefix_item_node) |prefix_item| : (prefix_item_node = prefix_item.next) {
+                    if (!try check(arena, prefix_item.constraint, arr_iter.next() orelse return false)) return false;
+                }
+            }
+
             while (arr_iter.next()) |item| {
-                if (!try check(arena, item_sub_schema, item)) return false;
+                if (!try check(arena, items.items, item)) return false;
             }
             return true;
         },
-        .tuple_items => |tuple_info| {
-            const ti = tuple_info orelse return true;
+        .tuple_items => |ti| {
+            const tuple_items = ti orelse return true;
             if (value.kind != .array) {
                 return true;
             }
@@ -238,15 +248,15 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
             var arr_iter = value.kind.array.iter();
             var i: usize = 0;
             while (arr_iter.next()) |item| : (i += 1) {
-                if (i >= ti.items.len) {
+                if (i >= tuple_items.items.len) {
                     // Check additional items
-                    if (ti.additional_items) |additional_schema| {
+                    if (tuple_items.additional_items) |additional_schema| {
                         if (!try check(arena, additional_schema, item)) return false;
                     }
                     // If no additional_items constraint, extra items are allowed
                     continue;
                 }
-                if (!try check(arena, ti.items[i], item)) return false;
+                if (!try check(arena, tuple_items.items[i], item)) return false;
             }
             return true;
         },
@@ -788,7 +798,17 @@ fn parse_constraint(ctx: *ParseContext, schema: *const HashableJsonValue) ParseE
 
 fn chain_with(ctx: *ParseContext, from: *Schema.Constraint, new_kind: Schema.Constraint) !void {
     if (from.* == .all) {
-        const first = from.all orelse return;
+        const first = from.all orelse {
+            const new_constraint = try ctx.usage_arena.create(Schema.Constraint);
+            new_constraint.* = new_kind;
+            const new_node = try ctx.usage_arena.create(Schema.Constraint.Node);
+            new_node.* = .{
+                .constraint = new_constraint,
+                .next = null,
+            };
+            from.* = .{ .all = new_node };
+            return;
+        };
         var tail = first;
         while (tail.next) |next| {
             tail = next;
@@ -1060,7 +1080,30 @@ fn parse_applicator__items(ctx: *ParseContext, obj: *const HashableJsonValue.Kin
             .additional_items = additional_items,
         } };
     }
-    return .{ .items = try parse_constraint(ctx, items_sub_schema) };
+    const items: @FieldType(Schema.Constraint, "items") = .{
+        .items = try parse_constraint(ctx, items_sub_schema),
+        .prefix_items = if (obj.get_const("prefixItems")) |prefix_items| blk: {
+            if (prefix_items.*.kind != .array) break :blk null;
+            var prefix_item_iter = prefix_items.*.kind.array.iter();
+            const prefix_item_schemas = try ctx.usage_arena.create(Schema.Constraint.Node);
+            prefix_item_schemas.* = .{ .constraint = &.zero, .next = null };
+            var curr = prefix_item_schemas;
+            while (prefix_item_iter.next()) |item| {
+                const item_schema = try parse_constraint(ctx, item);
+                if (curr.constraint.* == .true) {
+                    curr.constraint = item_schema;
+                    continue;
+                }
+                const next = try ctx.usage_arena.create(Schema.Constraint.Node);
+                next.* = .{ .constraint = &.zero, .next = null };
+                curr.next = next;
+                curr = curr.next.?;
+            }
+            break :blk prefix_item_schemas;
+        } else null,
+    };
+
+    return .{ .items = items };
 }
 
 fn parse_applicator__properties(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint {
@@ -1787,6 +1830,8 @@ test "oneOf combinator" {
         \\{
         \\  "oneOf": [
         \\    { "type": "number", "multipleOf": 5 },
+        \\    { "type": "number", "multipleOf": 3 },
+        \\    { "type": "number", "multipleOf": 6 },
         \\    { "type": "number", "multipleOf": 3 }
         \\  ]
         \\}
@@ -1796,10 +1841,11 @@ test "oneOf combinator" {
 
     // Satisfies exactly one
     try std.testing.expectEqual(schema.is_valid("10"), true); // multiple of 5 only
-    try std.testing.expectEqual(schema.is_valid("9"), true); // multiple of 3 only
+    try std.testing.expectEqual(schema.is_valid("9"), false); // multiple of 3 twice
 
     // Satisfies both (invalid for oneOf)
     try std.testing.expectEqual(schema.is_valid("15"), false); // multiple of both 3 and 5
+    try std.testing.expectEqual(schema.is_valid("30"), false); // multiple of both 3 and 5
 
     // Satisfies none
     try std.testing.expectEqual(schema.is_valid("7"), false);

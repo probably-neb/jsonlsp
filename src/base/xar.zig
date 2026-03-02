@@ -271,7 +271,7 @@ pub fn Xar(comptime T: type, comptime prealloc_item_count: usize) type {
             if (prealloc_item_count == 0) {
                 return log2_int_ceil(usize, box_count + 1);
             }
-            return log2_int_ceil(usize, box_count + prealloc_item_count) - prealloc_exp - 1;
+            return log2_int_ceil(usize, box_count + prealloc_item_count) - prealloc_exp;
         }
 
         fn shelf_size(shelf_index: ShelfIndex) usize {
