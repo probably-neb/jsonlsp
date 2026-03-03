@@ -64,6 +64,11 @@ pub const Schema = struct {
 
     pub const Constraint = struct {
         kind: Kind,
+        flags: packed struct {
+            additional_items: bool = false,
+        } = .{},
+        prefix_items: ?*const Constraint.Node = null,
+        items: ?*const Constraint = null,
 
         pub const Kind = union(enum) {
             true: void,
@@ -90,14 +95,6 @@ pub const Schema = struct {
             min_items: u64,
             max_properties: u64,
             min_properties: u64,
-            items: struct {
-                prefix_items: ?*const Constraint.Node,
-                items: *const Constraint,
-            },
-            tuple_items: ?struct {
-                items: []*const Constraint,
-                additional_items: ?*const Constraint,
-            },
             properties: struct {
                 first_property: ?*const Node,
                 additional: *const Constraint,
@@ -156,6 +153,23 @@ pub const Schema = struct {
 };
 
 fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const HashableJsonValue) !bool {
+    if (value.kind == .array) {
+        var arr_iter = value.kind.array.iter();
+        if (constraint.prefix_items) |prefix_items| {
+            var prefix_item_node: ?*const Schema.Constraint.Node = prefix_items;
+            while (prefix_item_node) |prefix_item| : (prefix_item_node = prefix_item.next) {
+                if (!try check(arena, prefix_item.constraint, arr_iter.next() orelse break)) return false;
+            }
+        }
+        if (!constraint.flags.additional_items or constraint.prefix_items != null) {
+            if (constraint.items) |items| {
+                while (arr_iter.next()) |item| {
+                    if (!try check(arena, items, item)) return false;
+                }
+            }
+        }
+    }
+
     switch (constraint.kind) {
         .true => return true,
         .false => return false,
@@ -223,46 +237,6 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
                 if (entry.found_existing) {
                     return false;
                 }
-            }
-            return true;
-        },
-        .items => |items| {
-            if (value.kind != .array) {
-                return true;
-            }
-
-            var arr_iter = value.kind.array.iter();
-            if (items.prefix_items) |prefix_items| {
-                var prefix_item_node = @as(?*const Schema.Constraint.Node, prefix_items);
-                while (prefix_item_node) |prefix_item| : (prefix_item_node = prefix_item.next) {
-                    if (!try check(arena, prefix_item.constraint, arr_iter.next() orelse return false)) return false;
-                }
-            }
-
-            while (arr_iter.next()) |item| {
-                if (!try check(arena, items.items, item)) return false;
-            }
-            return true;
-        },
-        .tuple_items => |ti| {
-            const tuple_items = ti orelse return true;
-            if (value.kind != .array) {
-                return true;
-            }
-
-            // Validate each array item against its corresponding schema
-            var arr_iter = value.kind.array.iter();
-            var i: usize = 0;
-            while (arr_iter.next()) |item| : (i += 1) {
-                if (i >= tuple_items.items.len) {
-                    // Check additional items
-                    if (tuple_items.additional_items) |additional_schema| {
-                        if (!try check(arena, additional_schema, item)) return false;
-                    }
-                    // If no additional_items constraint, extra items are allowed
-                    continue;
-                }
-                if (!try check(arena, tuple_items.items[i], item)) return false;
             }
             return true;
         },
@@ -746,9 +720,8 @@ fn parse_into_constraint(ctx: *ParseContext, schema: *const HashableJsonValue, c
     if (parse_validation__unique_items(obj)) |unique_items| {
         try chain_with(ctx, constraint, unique_items);
     }
-    if (parse_applicator__items(ctx, obj) catch null) |items| {
-        try chain_with(ctx, constraint, items);
-    }
+    parse_applicator__prefix_items(ctx, obj, constraint) catch {};
+    parse_applicator__items(ctx, obj, constraint) catch {};
     if (parse_applicator__properties(ctx, obj) catch null) |properties| {
         try chain_with(ctx, constraint, properties);
     }
@@ -831,7 +804,7 @@ fn chain_with(ctx: *ParseContext, from: *Schema.Constraint, new_kind: Schema.Con
         @constCast(tail).next = new_node;
     } else if (from.kind != .true) {
         const first_constraint = try ctx.usage_arena.create(Schema.Constraint);
-        first_constraint.kind = from.kind;
+        first_constraint.* = from.*;
 
         const second_constraint = try ctx.usage_arena.create(Schema.Constraint);
         second_constraint.kind = new_kind;
@@ -845,7 +818,7 @@ fn chain_with(ctx: *ParseContext, from: *Schema.Constraint, new_kind: Schema.Con
             .constraint = second_constraint,
             .next = null,
         };
-        from.kind = .{ .all = &nodes[0] };
+        from.* = .{ .kind = .{ .all = &nodes[0] } };
     } else {
         from.kind = new_kind;
     }
@@ -1066,50 +1039,45 @@ fn parse_validation__unique_items(obj: *const HashableJsonValue.Kind.Object) ?Sc
     return .{ .unique_items = {} };
 }
 
-fn parse_applicator__items(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
-    const items_sub_schema = (obj.get_const("items") orelse return null).*;
-    // items can be either a single schema (applies to all items) or an array of schemas (tuple validation)
-    if (items_sub_schema.kind == .array) {
-        const item_schemas = try ctx.usage_arena.alloc(*const Schema.Constraint, items_sub_schema.kind.array.count());
-        var iter = items_sub_schema.kind.array.iter();
-        var i: usize = 0;
-        while (iter.next()) |item_schema| : (i += 1) {
-            item_schemas[i] = try parse_constraint(ctx, item_schema);
+fn parse_applicator__prefix_items(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) !void {
+    const prefix_items = blk: {
+        if (obj.get_const("items")) |items_sub_schema| {
+            if (items_sub_schema.*.kind == .array) break :blk &items_sub_schema.*.kind.array;
         }
-        // Parse additionalItems
-        const additional_items: ?*const Schema.Constraint = blk: {
-            const additional_items_ptr = obj.get_const("additionalItems") orelse break :blk null;
-            break :blk try parse_constraint(ctx, additional_items_ptr.*);
-        };
-        return .{ .tuple_items = .{
-            .items = item_schemas,
-            .additional_items = additional_items,
-        } };
-    }
-    const items: @FieldType(Schema.Constraint.Kind, "items") = .{
-        .items = try parse_constraint(ctx, items_sub_schema),
-        .prefix_items = if (obj.get_const("prefixItems")) |prefix_items| blk: {
-            if (prefix_items.*.kind != .array) break :blk null;
-            var prefix_item_iter = prefix_items.*.kind.array.iter();
-            const prefix_item_schemas = try ctx.usage_arena.create(Schema.Constraint.Node);
-            prefix_item_schemas.* = .{ .constraint = &.zero, .next = null };
-            var curr = prefix_item_schemas;
-            while (prefix_item_iter.next()) |item| {
-                const item_schema = try parse_constraint(ctx, item);
-                if (curr.constraint.kind == .true) {
-                    curr.constraint = item_schema;
-                    continue;
-                }
-                const next = try ctx.usage_arena.create(Schema.Constraint.Node);
-                next.* = .{ .constraint = &.zero, .next = null };
-                curr.next = next;
-                curr = curr.next.?;
-            }
-            break :blk prefix_item_schemas;
-        } else null,
+        if (obj.get_const("prefixItems")) |prefix_items_ptr| {
+            if (prefix_items_ptr.*.kind == .array) break :blk &prefix_items_ptr.*.kind.array;
+        }
+        return;
     };
 
-    return .{ .items = items };
+    var head: ?*Schema.Constraint.Node = null;
+    var cur: *?*Schema.Constraint.Node = &head;
+    var prefix_item_iter = prefix_items.iter();
+    while (prefix_item_iter.next()) |item| {
+        const item_schema = try parse_constraint(ctx, item);
+
+        const node = try ctx.usage_arena.create(Schema.Constraint.Node);
+        node.* = .{ .constraint = item_schema, .next = null };
+        cur.* = node;
+        cur = &node.next;
+    }
+    constraint.prefix_items = head;
+}
+
+fn parse_applicator__items(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) !void {
+    const items = blk: {
+        if (obj.get_const("items")) |items_ptr| {
+            if (items_ptr.*.kind != .array) break :blk items_ptr.*;
+        }
+        if (obj.get_const("additionalItems")) |additional_items_ptr| {
+            if (additional_items_ptr.*.kind != .array) {
+                constraint.flags.additional_items = true;
+                break :blk additional_items_ptr.*;
+            }
+        }
+        return;
+    };
+    constraint.items = try parse_constraint(ctx, items);
 }
 
 fn parse_applicator__properties(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
