@@ -87,6 +87,27 @@ fn generate_debug_json(allocator: Allocator, output_dir: []const u8, snapshot_na
         .initCommands = init_commands,
     });
 
+    const drafts = &.{
+        "draft3",
+        "draft4",
+        "draft6",
+        "draft7",
+        "draft2019-09",
+        "draft2020-12",
+        "draft-next",
+    };
+    inline for (drafts) |draft| {
+        try entries.append(allocator, .{
+            .label = "Debug test suite " ++ draft,
+            .program = "${ZED_WORKTREE_ROOT}/zig-out/bin/test_suite_" ++ draft,
+            .build = .{
+                .args = &.{ "build", "test:suite", "-Dno-run" },
+            },
+            .initCommands = init_commands,
+            .args = &.{},
+        });
+    }
+
     for (snapshot_names) |name| {
         const label = try std.fmt.allocPrint(allocator, "snapshot: {s}", .{name});
         const snapshot_path = try std.fmt.allocPrint(allocator, "tests/snapshots/{s}.txt", .{name});

@@ -252,6 +252,7 @@ pub fn build(b: *std.Build) void {
         const build_test_suite = b.option(bool, "build-test-suite", "Run the JSON Schema test suite") orelse false;
         const test_suite_dir_path = "src/json-schema/test-suite";
         const build_test_suite_path = b.path("src/json-schema/tools/build-test-suite.zig");
+        const run_suite = !(b.option(bool, "no-run", "Do not execute the test suite") orelse false);
 
         const drafts = &.{
             "draft3",
@@ -299,12 +300,17 @@ pub fn build(b: *std.Build) void {
             });
             test_suite_module.addImport("json-schema", mod_json_schema);
             const test_suite_test = b.addTest(.{
+                .name = "test_suite_" ++ draft,
                 .root_module = test_suite_module,
                 .filters = test_filters,
             });
-            const run_test_suite = b.addRunArtifact(test_suite_test);
-            run_test_suite.setName("run test " ++ draft ++ (" " ** (12 - draft.len)));
-            test_suite_step.dependOn(&run_test_suite.step);
+            const install_test_suite = b.addInstallArtifact(test_suite_test, .{});
+            test_suite_step.dependOn(&install_test_suite.step);
+            if (run_suite) {
+                const run_test_suite = b.addRunArtifact(install_test_suite.artifact);
+                run_test_suite.setName("run test " ++ draft ++ (" " ** (12 - draft.len)));
+                test_suite_step.dependOn(&run_test_suite.step);
+            }
         }
     }
 }
