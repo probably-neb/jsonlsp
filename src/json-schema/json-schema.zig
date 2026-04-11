@@ -71,6 +71,9 @@ pub const Schema = struct {
         } = .{},
         prefix_items: ?*const Constraint.Node = null,
         items: ?*const Constraint = null,
+        if_constraint: ?*const Constraint = null,
+        then_constraint: ?*const Constraint = null,
+        else_constraint: ?*const Constraint = null,
         @"const": u64 = 0,
 
         pub const Kind = union(enum) {
@@ -112,11 +115,6 @@ pub const Schema = struct {
             multiple_of_f64: f64,
             pattern: pcre.Regex,
             ref: *const Constraint,
-            if_then_else: struct {
-                cond: *const Constraint,
-                then: *const Constraint,
-                elsa: *const Constraint,
-            },
         };
 
         pub const DependentRequiredEntry = struct {
@@ -189,10 +187,10 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
         }
     }
 
-    switch (constraint.kind) {
-        .true => return true,
-        .false => return false,
-        .type => |v_types| {
+    const kind_result = switch (constraint.kind) {
+        .true => true,
+        .false => false,
+        .type => |v_types| blk: {
             var result = false;
             for (v_types) |v_type| {
                 result = result or switch (v_type) {
@@ -205,115 +203,87 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
                     .integer => value.kind == .integer,
                 };
             }
-            return result;
+            break :blk result;
         },
-        .all => |first_child| {
+        .all => |first_child| blk: {
             var result = true;
             var cur_node = first_child;
             while (cur_node) |node| : (cur_node = node.next) {
                 result = result and try check(arena, node.constraint, value);
             }
-            return result;
+            break :blk result;
         },
-        .any => |first_child| {
+        .any => |first_child| blk: {
             var result = false;
             var cur_node = first_child;
             while (cur_node) |node| : (cur_node = node.next) {
                 result = result or try check(arena, node.constraint, value);
             }
-            return result;
+            break :blk result;
         },
-        .one => |first_child| {
+        .one => |first_child| blk: {
             var count: u32 = 0;
             var cur_node = first_child;
             while (cur_node) |node| : (cur_node = node.next) {
                 count += @intFromBool(try check(arena, node.constraint, value));
             }
-            return count == 1;
+            break :blk count == 1;
         },
-        .@"enum" => |hashes| {
+        .@"enum" => |hashes| blk: {
             for (hashes) |hash| {
-                if (hash == value.hash) return true;
+                if (hash == value.hash) break :blk true;
             }
-            return false;
+            break :blk false;
         },
-        .min_len => |min_len| {
-            return value.kind != .string or (std.unicode.utf8CountCodepoints(value.kind.string) catch 0) >= min_len;
+        .min_len => |min_len| value.kind != .string or (std.unicode.utf8CountCodepoints(value.kind.string) catch 0) >= min_len,
+        .max_len => |max_len| value.kind != .string or (std.unicode.utf8CountCodepoints(value.kind.string) catch 0) <= max_len,
+        .max_items => |max_items| value.kind != .array or value.kind.array.count() <= max_items,
+        .min_items => |min_items| value.kind != .array or value.kind.array.count() >= min_items,
+        .max_properties => |max_properties| value.kind != .object or value.kind.object.count() <= max_properties,
+        .min_properties => |min_properties| value.kind != .object or value.kind.object.count() >= min_properties,
+        .max_i64 => |max_int| switch (value.kind) {
+            .integer => |int_val| int_val <= max_int,
+            .float => |float_val| float_val <= @as(f64, @floatFromInt(max_int)),
+            else => true,
         },
-        .max_len => |max_len| {
-            return value.kind != .string or (std.unicode.utf8CountCodepoints(value.kind.string) catch 0) <= max_len;
+        .min_i64 => |min_int| switch (value.kind) {
+            .integer => |int_val| int_val >= min_int,
+            .float => |float_val| float_val >= @as(f64, @floatFromInt(min_int)),
+            else => true,
         },
-        .max_items => |max_items| {
-            return value.kind != .array or value.kind.array.count() <= max_items;
+        .max_f64 => |max_f64| switch (value.kind) {
+            .integer => |int_val| @as(f64, @floatFromInt(int_val)) <= max_f64,
+            .float => |float_val| float_val <= max_f64,
+            else => true,
         },
-        .min_items => |min_items| {
-            return value.kind != .array or value.kind.array.count() >= min_items;
+        .min_f64 => |min_f64| switch (value.kind) {
+            .integer => |int_val| @as(f64, @floatFromInt(int_val)) >= min_f64,
+            .float => |float_val| float_val >= min_f64,
+            else => true,
         },
-        .max_properties => |max_properties| {
-            return value.kind != .object or value.kind.object.count() <= max_properties;
+        .max_i64_exclusive => |max_int| switch (value.kind) {
+            .integer => |int_val| int_val < max_int,
+            .float => |float_val| float_val < @as(f64, @floatFromInt(max_int)),
+            else => true,
         },
-        .min_properties => |min_properties| {
-            return value.kind != .object or value.kind.object.count() >= min_properties;
+        .min_i64_exclusive => |min_int| switch (value.kind) {
+            .integer => |int_val| int_val > min_int,
+            .float => |float_val| float_val > @as(f64, @floatFromInt(min_int)),
+            else => true,
         },
-        .max_i64 => |max_int| {
-            return switch (value.kind) {
-                .integer => |int_val| int_val <= max_int,
-                .float => |float_val| float_val <= @as(f64, @floatFromInt(max_int)),
-                else => true,
-            };
+        .max_f64_exclusive => |max_f64| switch (value.kind) {
+            .integer => |int_val| @as(f64, @floatFromInt(int_val)) < max_f64,
+            .float => |float_val| float_val < max_f64,
+            else => true,
         },
-        .min_i64 => |min_int| {
-            return switch (value.kind) {
-                .integer => |int_val| int_val >= min_int,
-                .float => |float_val| float_val >= @as(f64, @floatFromInt(min_int)),
-                else => true,
-            };
+        .min_f64_exclusive => |min_f64| switch (value.kind) {
+            .integer => |int_val| @as(f64, @floatFromInt(int_val)) > min_f64,
+            .float => |float_val| float_val > min_f64,
+            else => true,
         },
-        .max_f64 => |max_f64| {
-            return switch (value.kind) {
-                .integer => |int_val| @as(f64, @floatFromInt(int_val)) <= max_f64,
-                .float => |float_val| float_val <= max_f64,
-                else => true,
-            };
-        },
-        .min_f64 => |min_f64| {
-            return switch (value.kind) {
-                .integer => |int_val| @as(f64, @floatFromInt(int_val)) >= min_f64,
-                .float => |float_val| float_val >= min_f64,
-                else => true,
-            };
-        },
-        .max_i64_exclusive => |max_int| {
-            return switch (value.kind) {
-                .integer => |int_val| int_val < max_int,
-                .float => |float_val| float_val < @as(f64, @floatFromInt(max_int)),
-                else => true,
-            };
-        },
-        .min_i64_exclusive => |min_int| {
-            return switch (value.kind) {
-                .integer => |int_val| int_val > min_int,
-                .float => |float_val| float_val > @as(f64, @floatFromInt(min_int)),
-                else => true,
-            };
-        },
-        .max_f64_exclusive => |max_f64| {
-            return switch (value.kind) {
-                .integer => |int_val| @as(f64, @floatFromInt(int_val)) < max_f64,
-                .float => |float_val| float_val < max_f64,
-                else => true,
-            };
-        },
-        .min_f64_exclusive => |min_f64| {
-            return switch (value.kind) {
-                .integer => |int_val| @as(f64, @floatFromInt(int_val)) > min_f64,
-                .float => |float_val| float_val > min_f64,
-                else => true,
-            };
-        },
-        .properties => |properties| {
+        .properties => |properties| blk: {
             if (value.kind != .object) {
-                return true;
+                break :blk true;
             }
             const scratch = Arena.get_scratch(&.{arena});
             defer scratch.release();
@@ -325,52 +295,46 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
                 const sub_value = (value.kind.object.get_const(property_constraint.kind.property.name) orelse continue).*;
                 try checked_properties.put(scratch.arena.allocator(), property_constraint.kind.property.name, {});
                 if (!try check(arena, property_constraint.kind.property.constraint, sub_value)) {
-                    return false;
+                    break :blk false;
                 }
             }
-            // Check all properties against patternProperties and additionalProperties
             var obj_iter = value.kind.object.const_iterator();
             while (obj_iter.next()) |entry| {
-                // Check if property matches any patternProperties (applies to ALL properties)
                 var matched_pattern = false;
                 for (properties.pattern_properties) |pattern_prop| {
                     const matches = try pattern_prop.pattern.matches(entry.key_ptr.*, .{});
                     if (matches != null) {
                         matched_pattern = true;
-                        // Validate against the pattern's constraint
                         if (!try check(arena, pattern_prop.constraint, entry.value_ptr.*)) {
-                            return false;
+                            break :blk false;
                         }
                     }
                 }
 
-                // Only check additionalProperties if not in properties AND no pattern matched
                 if (!checked_properties.contains(entry.key_ptr.*) and !matched_pattern) {
-                    if (!try check(arena, properties.additional, entry.value_ptr.*)) return false;
+                    if (!try check(arena, properties.additional, entry.value_ptr.*)) break :blk false;
                 }
             }
-            return true;
+            break :blk true;
         },
         .property => unreachable,
-        .required => |required_property_hashes| {
+        .required => |required_property_hashes| blk: {
             if (value.kind != .object) {
-                return true;
+                break :blk true;
             }
 
             for (required_property_hashes) |required_property_hash| {
-                // perf: should be improved - could store string hashes in a set
                 var key_iter = value.kind.object.key_iterator();
                 while (key_iter.next()) |key_ptr| {
-                    // Hash the key string to compare
                     const key_hash = json.hashed.compute_string_hash(key_ptr.*);
                     if (key_hash == required_property_hash) break;
-                } else return false;
+                } else break :blk false;
             }
-            return true;
+            break :blk true;
         },
-        .dependent_required => |entries| {
+        .dependent_required => |entries| blk: {
             if (value.kind != .object) {
-                return true;
+                break :blk true;
             }
 
             for (entries) |entry| {
@@ -396,51 +360,56 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
                             break;
                         }
                     }
-                    if (!dependent_present) return false;
+                    if (!dependent_present) break :blk false;
                 }
             }
-            return true;
+            break :blk true;
         },
-        .not => |constraint_to_invert| {
-            return !try check(arena, constraint_to_invert, value);
-        },
-        .multiple_of_f64 => |multiple_of| {
-            if (multiple_of == 0.0) return false;
+        .not => |constraint_to_invert| !try check(arena, constraint_to_invert, value),
+        .multiple_of_f64 => |multiple_of| blk: {
+            if (multiple_of == 0.0) break :blk false;
             const float_val = switch (value.kind) {
                 .integer => |int_val| @as(f64, @floatFromInt(int_val)),
                 .float => |fv| fv,
                 else => 0.0,
             };
-            // Check if value/multiple_of is close to an integer to handle floating-point precision
             const quotient = float_val / multiple_of;
             const diff = @abs(quotient - @round(quotient));
-            return diff < 1e-9;
+            break :blk diff < 1e-9;
         },
-        .multiple_of_i64 => |multiple_of| {
-            if (multiple_of == 0) return false;
+        .multiple_of_i64 => |multiple_of| blk: {
+            if (multiple_of == 0) break :blk false;
             const int_val = switch (value.kind) {
                 .integer => |iv| iv,
-                .float => |fv| float_as_int(fv) orelse return false,
+                .float => |fv| float_as_int(fv) orelse break :blk false,
                 else => 0,
             };
-            return @rem(int_val, multiple_of) == 0;
+            break :blk @rem(int_val, multiple_of) == 0;
         },
-        .pattern => |regex| {
-            if (value.kind != .string) return true;
+        .pattern => |regex| blk: {
+            if (value.kind != .string) break :blk true;
             const matches = try regex.matches(value.kind.string, .{});
-            return matches != null;
+            break :blk matches != null;
         },
-        .ref => |referenced_constraint| {
-            return check(arena, referenced_constraint, value);
-        },
-        .if_then_else => |if_then_else| {
-            if (try check(arena, if_then_else.cond, value)) {
-                return try check(arena, if_then_else.then, value);
-            } else {
-                return try check(arena, if_then_else.elsa, value);
-            }
-        },
+        .ref => |referenced_constraint| try check(arena, referenced_constraint, value),
+    };
+    if (!kind_result) {
+        return false;
     }
+    if (constraint.if_constraint) |if_constraint| {
+        if (try check(arena, if_constraint, value)) {
+            if (constraint.then_constraint) |then_constraint| {
+                if (!try check(arena, then_constraint, value)) {
+                    return false;
+                }
+            }
+        } else if (constraint.else_constraint) |else_constraint| {
+            if (!try check(arena, else_constraint, value)) {
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 pub fn parse(schema_contents: str8) !Schema {
@@ -736,9 +705,7 @@ fn parse_into_constraint(ctx: *ParseContext, schema: *const HashableJsonValue, c
     if (parse_applicator__one_of(ctx, obj) catch null) |one_of| {
         try chain_with(ctx, constraint, one_of);
     }
-    if (try parse_applicator__if_then_else(ctx, obj)) |if_then_else| {
-        try chain_with(ctx, constraint, if_then_else);
-    }
+    try parse_applicator__if_then_else(ctx, obj, constraint);
     if (parse_validation__multiple_of(obj)) |multiple_of| {
         try chain_with(ctx, constraint, multiple_of);
     }
@@ -772,6 +739,7 @@ fn chain_with(ctx: *ParseContext, from: *Schema.Constraint, new_kind: Schema.Con
     if (from.kind == .all) {
         const first = from.kind.all orelse {
             const new_constraint = try ctx.usage_arena.create(Schema.Constraint);
+            new_constraint.* = .zero;
             new_constraint.kind = new_kind;
             const new_node = try ctx.usage_arena.create(Schema.Constraint.Node);
             new_node.* = .{
@@ -787,6 +755,7 @@ fn chain_with(ctx: *ParseContext, from: *Schema.Constraint, new_kind: Schema.Con
         }
 
         const new_constraint = try ctx.usage_arena.create(Schema.Constraint);
+        new_constraint.* = .zero;
         new_constraint.kind = new_kind;
 
         const new_node = try ctx.usage_arena.create(Schema.Constraint.Node);
@@ -800,6 +769,7 @@ fn chain_with(ctx: *ParseContext, from: *Schema.Constraint, new_kind: Schema.Con
         first_constraint.* = from.*;
 
         const second_constraint = try ctx.usage_arena.create(Schema.Constraint);
+        second_constraint.* = .zero;
         second_constraint.kind = new_kind;
 
         const nodes = try ctx.usage_arena.alloc(Schema.Constraint.Node, 2);
@@ -1314,16 +1284,15 @@ fn parse_validation__pattern(ctx: *ParseContext, obj: *const HashableJsonValue.K
     };
 }
 
-fn parse_applicator__if_then_else(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
-    const cond_value = obj.get_const("if") orelse return null;
-    const cond = try parse_constraint(ctx, cond_value.*);
-    return .{
-        .if_then_else = .{
-            .cond = cond,
-            .then = if (obj.get_const("then")) |then| try parse_constraint(ctx, then.*) else &.zero,
-            .elsa = if (obj.get_const("else")) |elsa| try parse_constraint(ctx, elsa.*) else &.zero,
-        },
-    };
+fn parse_applicator__if_then_else(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) !void {
+    const cond_value = obj.get_const("if") orelse return;
+    constraint.if_constraint = try parse_constraint(ctx, cond_value.*);
+    if (obj.get_const("then")) |then| {
+        constraint.then_constraint = try parse_constraint(ctx, then.*);
+    }
+    if (obj.get_const("else")) |elsa| {
+        constraint.else_constraint = try parse_constraint(ctx, elsa.*);
+    }
 }
 
 fn float_as_int(float: f64) ?i64 {
