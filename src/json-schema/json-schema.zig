@@ -66,9 +66,12 @@ pub const Schema = struct {
         kind: Kind,
         flags: packed struct {
             additional_items: bool = false,
+            unique_items: bool = false,
+            @"const": bool = false,
         } = .{},
         prefix_items: ?*const Constraint.Node = null,
         items: ?*const Constraint = null,
+        @"const": u64 = 0,
 
         pub const Kind = union(enum) {
             true: void,
@@ -78,9 +81,7 @@ pub const Schema = struct {
             any: ?*const Node, // corresponds to anyOf,
             one: ?*const Node, // corresponds to oneOf,
             not: *const Constraint,
-            @"const": u64,
             @"enum": []u64,
-            unique_items: void,
             min_len: u64,
             max_len: u64,
             min_i64: i64,
@@ -153,7 +154,25 @@ pub const Schema = struct {
 };
 
 fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const HashableJsonValue) !bool {
+    if (constraint.flags.@"const" and value.hash != constraint.@"const") {
+        return false;
+    }
     if (value.kind == .array) {
+        if (constraint.flags.unique_items) {
+            const scratch = Arena.get_scratch(&.{arena});
+            defer scratch.release();
+
+            var hashes: XarMap(u64, void, 2) = .empty;
+            try hashes.expand(scratch.arena, value.kind.array.count());
+
+            var arr_iter = value.kind.array.iter();
+            while (arr_iter.next()) |item| {
+                const entry = try hashes.get_or_put(scratch.arena, item.hash);
+                if (entry.found_existing) {
+                    return false;
+                }
+            }
+        }
         var arr_iter = value.kind.array.iter();
         if (constraint.prefix_items) |prefix_items| {
             var prefix_item_node: ?*const Schema.Constraint.Node = prefix_items;
@@ -212,33 +231,11 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
             }
             return count == 1;
         },
-        .@"const" => |stored_hash| {
-            return stored_hash == value.hash;
-        },
         .@"enum" => |hashes| {
             for (hashes) |hash| {
                 if (hash == value.hash) return true;
             }
             return false;
-        },
-        .unique_items => {
-            if (value.kind != .array) {
-                return true;
-            }
-            const scratch = Arena.get_scratch(&.{arena});
-            defer scratch.release();
-
-            var hashes: XarMap(u64, void, 2) = .empty;
-            try hashes.expand(scratch.arena, value.kind.array.count());
-
-            var arr_iter = value.kind.array.iter();
-            while (arr_iter.next()) |item| {
-                const entry = try hashes.get_or_put(scratch.arena, item.hash);
-                if (entry.found_existing) {
-                    return false;
-                }
-            }
-            return true;
         },
         .min_len => |min_len| {
             return value.kind != .string or (std.unicode.utf8CountCodepoints(value.kind.string) catch 0) >= min_len;
@@ -711,15 +708,11 @@ fn parse_into_constraint(ctx: *ParseContext, schema: *const HashableJsonValue, c
     if (parse_validation__max_properties(obj)) |max_properties| {
         try chain_with(ctx, constraint, max_properties);
     }
-    if (parse_validation__const(obj)) |@"const"| {
-        try chain_with(ctx, constraint, @"const");
-    }
+    parse_validation__const(obj, constraint);
     if (parse_validation__enum(ctx, obj) catch null) |@"enum"| {
         try chain_with(ctx, constraint, @"enum");
     }
-    if (parse_validation__unique_items(obj)) |unique_items| {
-        try chain_with(ctx, constraint, unique_items);
-    }
+    parse_validation__unique_items(obj, constraint);
     parse_applicator__prefix_items(ctx, obj, constraint) catch {};
     parse_applicator__items(ctx, obj, constraint) catch {};
     if (parse_applicator__properties(ctx, obj) catch null) |properties| {
@@ -822,6 +815,21 @@ fn chain_with(ctx: *ParseContext, from: *Schema.Constraint, new_kind: Schema.Con
     } else {
         from.kind = new_kind;
     }
+}
+
+fn parse_array_of_constraints(ctx: *ParseContext, arr: *const @FieldType(HashableJsonValue.Kind, "array")) !?*const Schema.Constraint.Node {
+    var head: ?*Schema.Constraint.Node = null;
+    var cur: *?*Schema.Constraint.Node = &head;
+    var arr_iter = arr.iter();
+    while (arr_iter.next()) |item| {
+        const item_schema = try parse_constraint(ctx, item);
+
+        const node = try ctx.usage_arena.create(Schema.Constraint.Node);
+        node.* = .{ .constraint = item_schema, .next = null };
+        cur.* = node;
+        cur = &node.next;
+    }
+    return head;
 }
 
 /// The "type" field on an object
@@ -1012,9 +1020,10 @@ fn parse_validation__max_properties(obj: *const HashableJsonValue.Kind.Object) ?
     }
 }
 
-fn parse_validation__const(obj: *const HashableJsonValue.Kind.Object) ?Schema.Constraint.Kind {
-    const value = (obj.get_const("const") orelse return null).*;
-    return .{ .@"const" = value.hash };
+fn parse_validation__const(obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) void {
+    const value = (obj.get_const("const") orelse return).*;
+    constraint.flags.@"const" = true;
+    constraint.@"const" = value.hash;
 }
 
 fn parse_validation__enum(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
@@ -1032,11 +1041,9 @@ fn parse_validation__enum(ctx: *ParseContext, obj: *const HashableJsonValue.Kind
     };
 }
 
-fn parse_validation__unique_items(obj: *const HashableJsonValue.Kind.Object) ?Schema.Constraint.Kind {
-    const unique_items = (obj.get_const("uniqueItems") orelse return null).*;
-    // todo: how to handle
-    if (unique_items.kind != .bool or !unique_items.kind.bool) return null;
-    return .{ .unique_items = {} };
+fn parse_validation__unique_items(obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) void {
+    const unique_items = (obj.get_const("uniqueItems") orelse return).*;
+    constraint.flags.unique_items = unique_items.kind == .bool and unique_items.kind.bool;
 }
 
 fn parse_applicator__prefix_items(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) !void {
@@ -1050,18 +1057,7 @@ fn parse_applicator__prefix_items(ctx: *ParseContext, obj: *const HashableJsonVa
         return;
     };
 
-    var head: ?*Schema.Constraint.Node = null;
-    var cur: *?*Schema.Constraint.Node = &head;
-    var prefix_item_iter = prefix_items.iter();
-    while (prefix_item_iter.next()) |item| {
-        const item_schema = try parse_constraint(ctx, item);
-
-        const node = try ctx.usage_arena.create(Schema.Constraint.Node);
-        node.* = .{ .constraint = item_schema, .next = null };
-        cur.* = node;
-        cur = &node.next;
-    }
-    constraint.prefix_items = head;
+    constraint.prefix_items = try parse_array_of_constraints(ctx, prefix_items);
 }
 
 fn parse_applicator__items(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) !void {
@@ -1668,6 +1664,38 @@ test "array constraints - uniqueItems" {
     try std.testing.expectEqual(schema.is_valid("[\"a\", \"a\"]"), false);
 }
 
+test "array constraints - uniqueItems composes with items" {
+    const schema_str =
+        \\{
+        \\  "type": "array",
+        \\  "items": { "type": "integer" },
+        \\  "uniqueItems": true
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expectEqual(schema.is_valid("[1, 2, 3]"), true);
+    try std.testing.expectEqual(schema.is_valid("[1, 2, 1]"), false);
+    try std.testing.expectEqual(schema.is_valid("[1, \"2\", 3]"), false);
+}
+
+test "array constraints - uniqueItems composes with minItems" {
+    const schema_str =
+        \\{
+        \\  "type": "array",
+        \\  "minItems": 2,
+        \\  "uniqueItems": true
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expectEqual(schema.is_valid("[1, 2]"), true);
+    try std.testing.expectEqual(schema.is_valid("[1]"), false);
+    try std.testing.expectEqual(schema.is_valid("[1, 1]"), false);
+}
+
 test "object constraints - required properties" {
     const schema_str =
         \\{
@@ -1751,6 +1779,34 @@ test "const constraint" {
     try std.testing.expectEqual(schema.is_valid("\"other-value\""), false);
     try std.testing.expectEqual(schema.is_valid("null"), false);
     try std.testing.expectEqual(schema.is_valid("42"), false);
+}
+
+test "const constraint composes with conflicting type" {
+    const schema_str =
+        \\{
+        \\  "const": 42,
+        \\  "type": "string"
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expectEqual(schema.is_valid("42"), false);
+    try std.testing.expectEqual(schema.is_valid("\"42\""), false);
+}
+
+test "const constraint composes with other validators" {
+    const schema_str =
+        \\{
+        \\  "const": "abc",
+        \\  "minLength": 5
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expectEqual(schema.is_valid("\"abc\""), false);
+    try std.testing.expectEqual(schema.is_valid("\"abcdef\""), false);
 }
 
 test "allOf combinator" {
