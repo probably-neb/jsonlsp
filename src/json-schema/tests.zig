@@ -415,6 +415,37 @@ test "object constraints - required properties" {
     try std.testing.expectEqual(schema.is_valid("{\"age\": 30}"), false);
 }
 
+test "object constraints - required applies without properties and checks presence only" {
+    const schema_str =
+        \\{
+        \\  "required": ["foo"]
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("{\"foo\": 1}"));
+    try std.testing.expect(schema.is_valid("{\"foo\": null}"));
+    try std.testing.expect(schema.is_valid("{\"foo\": false}"));
+    try std.testing.expect(!schema.is_valid("{}"));
+}
+
+test "object constraints - required is ignored for non-objects" {
+    const schema_str =
+        \\{
+        \\  "required": ["foo"]
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("42"));
+    try std.testing.expect(schema.is_valid("\"hello\""));
+    try std.testing.expect(schema.is_valid("true"));
+    try std.testing.expect(schema.is_valid("[]"));
+    try std.testing.expect(schema.is_valid("null"));
+}
+
 test "object constraints - additionalProperties" {
     const schema_str =
         \\{
@@ -1103,6 +1134,39 @@ test "dependentRequired - trigger present requires dependents (draft 2020-12)" {
     try std.testing.expect(!schema.is_valid("{\"credit_card\": 1234}"));
 }
 
+test "dependentRequired - trigger checks presence only (draft 2020-12)" {
+    const schema_str =
+        \\{
+        \\  "dependentRequired": {
+        \\    "credit_card": ["billing_address"]
+        \\  }
+        \\}
+    ;
+    var schema = try parse_with_revision(schema_str, .draft2020_12);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(!schema.is_valid("{\"credit_card\": null}"));
+    try std.testing.expect(schema.is_valid("{\"credit_card\": false, \"billing_address\": \"123 Main St\"}"));
+}
+
+test "dependentRequired - non-objects are valid (draft 2020-12)" {
+    const schema_str =
+        \\{
+        \\  "dependentRequired": {
+        \\    "credit_card": ["billing_address"]
+        \\  }
+        \\}
+    ;
+    var schema = try parse_with_revision(schema_str, .draft2020_12);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("42"));
+    try std.testing.expect(schema.is_valid("\"hello\""));
+    try std.testing.expect(schema.is_valid("true"));
+    try std.testing.expect(schema.is_valid("[]"));
+    try std.testing.expect(schema.is_valid("null"));
+}
+
 test "dependentRequired - multiple dependencies (draft 2019-09)" {
     const schema_str =
         \\{
@@ -1118,6 +1182,24 @@ test "dependentRequired - multiple dependencies (draft 2019-09)" {
     try std.testing.expect(schema.is_valid("{\"surname\": \"Doe\"}"));
     try std.testing.expect(!schema.is_valid("{\"name\": \"X\", \"surname\": \"Doe\"}"));
     try std.testing.expect(schema.is_valid("{\"name\": \"X\", \"surname\": \"Doe\", \"given_name\": \"John\"}"));
+}
+
+test "dependentRequired - transitive dependencies (draft 2019-09)" {
+    const schema_str =
+        \\{
+        \\  "dependentRequired": {
+        \\    "foo": ["bar"],
+        \\    "bar": ["baz"]
+        \\  }
+        \\}
+    ;
+    var schema = try parse_with_revision(schema_str, .draft2019_09);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(!schema.is_valid("{\"foo\": 1}"));
+    try std.testing.expect(!schema.is_valid("{\"foo\": 1, \"bar\": 2}"));
+    try std.testing.expect(schema.is_valid("{\"foo\": 1, \"bar\": 2, \"baz\": 3}"));
+    try std.testing.expect(schema.is_valid("{\"bar\": 2, \"baz\": 3}"));
 }
 
 test "allOf with duplicate empty subschemas does not hang" {

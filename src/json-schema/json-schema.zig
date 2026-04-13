@@ -77,6 +77,8 @@ pub const Schema = struct {
         if_constraint: ?*const Constraint = null,
         then_constraint: ?*const Constraint = null,
         else_constraint: ?*const Constraint = null,
+        required: []u64 = &.{},
+        dependent_required: []DependentRequiredEntry = &.{},
         @"const": u64 = 0,
 
         pub const Kind = union(enum) {
@@ -102,8 +104,6 @@ pub const Schema = struct {
             min_items: u64,
             max_properties: u64,
             min_properties: u64,
-            required: []u64,
-            dependent_required: []DependentRequiredEntry,
             multiple_of_i64: i64,
             multiple_of_f64: f64,
             pattern: pcre.Regex,
@@ -218,6 +218,41 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
                 }
             }
         }
+
+        for (constraint.required) |required_property_hash| {
+            var key_iter = value.kind.object.key_iterator();
+            while (key_iter.next()) |key_ptr| {
+                const key_hash = json.hashed.compute_string_hash(key_ptr.*);
+                if (key_hash == required_property_hash) break;
+            } else return false;
+        }
+
+        for (constraint.dependent_required) |entry| {
+            var trigger_present = false;
+            var trigger_iter = value.kind.object.key_iterator();
+            while (trigger_iter.next()) |key_ptr| {
+                const key_hash = json.hashed.compute_string_hash(key_ptr.*);
+                if (key_hash == entry.trigger_property_hash) {
+                    trigger_present = true;
+                    break;
+                }
+            }
+
+            if (!trigger_present) continue;
+
+            for (entry.required_property_hashes) |required_property_hash| {
+                var dependent_present = false;
+                var dependent_iter = value.kind.object.key_iterator();
+                while (dependent_iter.next()) |key_ptr| {
+                    const key_hash = json.hashed.compute_string_hash(key_ptr.*);
+                    if (key_hash == required_property_hash) {
+                        dependent_present = true;
+                        break;
+                    }
+                }
+                if (!dependent_present) return false;
+            }
+        }
     }
 
     const kind_result = switch (constraint.kind) {
@@ -313,53 +348,6 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
             .integer => |int_val| @as(f64, @floatFromInt(int_val)) > min_f64,
             .float => |float_val| float_val > min_f64,
             else => true,
-        },
-        .required => |required_property_hashes| blk: {
-            if (value.kind != .object) {
-                break :blk true;
-            }
-
-            for (required_property_hashes) |required_property_hash| {
-                var key_iter = value.kind.object.key_iterator();
-                while (key_iter.next()) |key_ptr| {
-                    const key_hash = json.hashed.compute_string_hash(key_ptr.*);
-                    if (key_hash == required_property_hash) break;
-                } else break :blk false;
-            }
-            break :blk true;
-        },
-        .dependent_required => |entries| blk: {
-            if (value.kind != .object) {
-                break :blk true;
-            }
-
-            for (entries) |entry| {
-                var trigger_present = false;
-                var trigger_iter = value.kind.object.key_iterator();
-                while (trigger_iter.next()) |key_ptr| {
-                    const key_hash = json.hashed.compute_string_hash(key_ptr.*);
-                    if (key_hash == entry.trigger_property_hash) {
-                        trigger_present = true;
-                        break;
-                    }
-                }
-
-                if (!trigger_present) continue;
-
-                for (entry.required_property_hashes) |required_property_hash| {
-                    var dependent_present = false;
-                    var dependent_iter = value.kind.object.key_iterator();
-                    while (dependent_iter.next()) |key_ptr| {
-                        const key_hash = json.hashed.compute_string_hash(key_ptr.*);
-                        if (key_hash == required_property_hash) {
-                            dependent_present = true;
-                            break;
-                        }
-                    }
-                    if (!dependent_present) break :blk false;
-                }
-            }
-            break :blk true;
         },
         .not => |constraint_to_invert| !try check(arena, constraint_to_invert, value),
         .multiple_of_f64 => |multiple_of| blk: {
@@ -683,12 +671,8 @@ fn parse_into_constraint(ctx: *ParseContext, schema: *const HashableJsonValue, c
     parse_applicator__properties(ctx, obj, constraint) catch {};
     parse_applicator__pattern_properties(ctx, obj, constraint) catch {};
     parse_applicator__additional_properties(ctx, obj, constraint) catch {};
-    if (parse_validation__required_properties(ctx, obj) catch null) |required_properties| {
-        try chain_with(ctx, constraint, required_properties);
-    }
-    if (parse_validation__dependent_required(ctx, obj) catch null) |dependent_required| {
-        try chain_with(ctx, constraint, dependent_required);
-    }
+    try parse_validation__required_properties(ctx, obj, constraint);
+    try parse_validation__dependent_required(ctx, obj, constraint);
     if (parse_applicator_not(ctx, obj) catch null) |not| {
         try chain_with(ctx, constraint, not);
     }
@@ -1093,11 +1077,15 @@ fn parse_applicator__additional_properties(ctx: *ParseContext, obj: *const Hasha
     constraint.additional_properties = try parse_constraint(ctx, additional_properties_ptr.*);
 }
 
-fn parse_validation__required_properties(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
+fn parse_validation__required_properties(
+    ctx: *ParseContext,
+    obj: *const HashableJsonValue.Kind.Object,
+    constraint: *Schema.Constraint,
+) !void {
     if (ctx.revision == .draft3) {
         // Draft3 style: "required": true inside each property definition
-        const properties_value = (obj.get_const("properties") orelse return null).*;
-        if (properties_value.kind != .object) return null;
+        const properties_value = (obj.get_const("properties") orelse return).*;
+        if (properties_value.kind != .object) return;
 
         var required_properties: base.ArenaList(u64) = .empty;
         var property_iter = properties_value.kind.object.const_iterator();
@@ -1106,20 +1094,17 @@ fn parse_validation__required_properties(ctx: *ParseContext, obj: *const Hashabl
             const required_field = (entry.value_ptr.*.kind.object.get_const("required") orelse continue).*;
             if (required_field.kind != .bool) continue;
             if (required_field.kind.bool) {
-                // Hash the property name as a string for required check
                 try required_properties.append(ctx.usage_arena, json.hashed.compute_string_hash(entry.key_ptr.*));
             }
         }
 
-        if (required_properties.items.len == 0) return null;
-        return .{
-            .required = required_properties.items,
-        };
+        constraint.required = required_properties.items;
+        return;
     }
 
     // Draft4+ style: "required" is an array of property names at the object level
-    const required_properties_value = (obj.get_const("required") orelse return null).*;
-    if (required_properties_value.kind != .array) return null;
+    const required_properties_value = (obj.get_const("required") orelse return).*;
+    if (required_properties_value.kind != .array) return;
 
     var required_properties = try base.ArenaList(u64).init_capacity(ctx.usage_arena, required_properties_value.kind.array.count());
     var iter = required_properties_value.kind.array.iter();
@@ -1127,15 +1112,16 @@ fn parse_validation__required_properties(ctx: *ParseContext, obj: *const Hashabl
         if (required_property.kind != .string) continue;
         required_properties.append_assume_capacity(required_property.hash);
     }
-    if (required_properties.items.len == 0) return null;
-    return .{
-        .required = required_properties.items,
-    };
+    constraint.required = required_properties.items;
 }
 
-fn parse_validation__dependent_required(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
-    const dependent_required_value = (obj.get_const("dependentRequired") orelse return null).*;
-    if (dependent_required_value.kind != .object) return null;
+fn parse_validation__dependent_required(
+    ctx: *ParseContext,
+    obj: *const HashableJsonValue.Kind.Object,
+    constraint: *Schema.Constraint,
+) !void {
+    const dependent_required_value = (obj.get_const("dependentRequired") orelse return).*;
+    if (dependent_required_value.kind != .object) return;
 
     var entries = try base.ArenaList(Schema.Constraint.DependentRequiredEntry).init_capacity(
         ctx.usage_arena,
@@ -1160,10 +1146,7 @@ fn parse_validation__dependent_required(ctx: *ParseContext, obj: *const Hashable
         });
     }
 
-    if (entries.items.len == 0) return null;
-    return .{
-        .dependent_required = entries.items,
-    };
+    constraint.dependent_required = entries.items;
 }
 
 fn parse_applicator_not(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
