@@ -23,6 +23,7 @@ This project uses **jj** (Jujutsu), not git. Use jj commands instead of git:
 ## Code Style
 - **Naming**: snake_case for variables/functions, PascalCase for types, SCREAMING_CASE for constants
 - **Methods**: Never name the first parameter `self`. Use a descriptive name (e.g., `arena`, `store`, `gap_buf`)
+- **Type-directed syntax**: Prefer Zig's point-free, type-directed forms when the type is already known. Use `.tag` instead of `Type.tag`, `.{ ... }` instead of `Type{ ... }`, and `.from_value(args)` or `const obj: Object = .from_value(args)` instead of `Object.from_value(args)` when the expected type makes the namespace unambiguous. Use the explicit `Type.foo(...)` form only when the type is not already known or when it materially improves clarity.
 - **Memory**: Use `Arena` from `src/base/` for allocations. Use `arena.scoped()` / `scoped.release()` for temporary allocations
 - **Lists**: Use `ArenaList` instead of `std.ArrayList` - it integrates with Arena and avoids realloc/memcpy
 - **Comments**: Use `//!` for module-level docs, `///` for item docs. Minimal inline comments

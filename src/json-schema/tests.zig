@@ -409,6 +409,54 @@ test "number constraints - exclusive bounds reject equal integer and float value
     try std.testing.expect(schema.is_valid("\"15\""));
 }
 
+test "number constraints - lower bounds combine to the stricter constraint" {
+    var inclusive_schema = try parse(
+        \\{
+        \\  "minimum": 5,
+        \\  "exclusiveMinimum": 3
+        \\}
+    );
+    defer inclusive_schema.arena.deinit();
+
+    try std.testing.expect(!inclusive_schema.is_valid("4.9"));
+    try std.testing.expect(inclusive_schema.is_valid("5"));
+
+    var exclusive_schema = try parse(
+        \\{
+        \\  "minimum": 3,
+        \\  "exclusiveMinimum": 3
+        \\}
+    );
+    defer exclusive_schema.arena.deinit();
+
+    try std.testing.expect(!exclusive_schema.is_valid("3"));
+    try std.testing.expect(exclusive_schema.is_valid("3.1"));
+}
+
+test "number constraints - upper bounds combine to the stricter constraint" {
+    var inclusive_schema = try parse(
+        \\{
+        \\  "maximum": 5,
+        \\  "exclusiveMaximum": 8
+        \\}
+    );
+    defer inclusive_schema.arena.deinit();
+
+    try std.testing.expect(inclusive_schema.is_valid("5"));
+    try std.testing.expect(!inclusive_schema.is_valid("5.1"));
+
+    var exclusive_schema = try parse(
+        \\{
+        \\  "maximum": 5,
+        \\  "exclusiveMaximum": 5
+        \\}
+    );
+    defer exclusive_schema.arena.deinit();
+
+    try std.testing.expect(!exclusive_schema.is_valid("5"));
+    try std.testing.expect(exclusive_schema.is_valid("4.9"));
+}
+
 test "array constraints - minItems and maxItems" {
     const schema_str =
         \\{
