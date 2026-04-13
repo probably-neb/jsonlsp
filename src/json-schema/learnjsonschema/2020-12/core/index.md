@@ -6,12 +6,12 @@
 
 ## Pages
 
-- [$anchor](anchor/index.md)
-- [$comment](comment/index.md)
-- [$defs](defs/index.md)
-- [$dynamicAnchor](dynamicanchor/index.md)
-- [$dynamicRef](dynamicref/index.md)
-- [$id](id/index.md)
-- [$ref](ref/index.md)
-- [$schema](schema/index.md)
-- [$vocabulary](vocabulary/index.md)
+- [$anchor](anchor.md)
+- [$comment](comment.md)
+- [$defs](defs.md)
+- [$dynamicAnchor](dynamicanchor.md)
+- [$dynamicRef](dynamicref.md)
+- [$id](id.md)
+- [$ref](ref.md)
+- [$schema](schema.md)
+- [$vocabulary](vocabulary.md)

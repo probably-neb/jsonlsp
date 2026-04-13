@@ -6,5 +6,5 @@
 
 ## Pages
 
-- [unevaluatedItems](unevaluateditems/index.md)
-- [unevaluatedProperties](unevaluatedproperties/index.md)
+- [unevaluatedItems](unevaluateditems.md)
+- [unevaluatedProperties](unevaluatedproperties.md)

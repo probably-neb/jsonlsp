@@ -6,10 +6,10 @@
 
 ## Pages
 
-- [default](default/index.md)
-- [deprecated](deprecated/index.md)
-- [description](description/index.md)
-- [examples](examples/index.md)
-- [readOnly](readonly/index.md)
-- [title](title/index.md)
-- [writeOnly](writeonly/index.md)
+- [default](default.md)
+- [deprecated](deprecated.md)
+- [description](description.md)
+- [examples](examples.md)
+- [readOnly](readonly.md)
+- [title](title.md)
+- [writeOnly](writeonly.md)

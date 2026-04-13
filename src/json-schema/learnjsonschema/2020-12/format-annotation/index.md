@@ -6,4 +6,4 @@
 
 ## Pages
 
-- [format](format/index.md)
+- [format](format.md)

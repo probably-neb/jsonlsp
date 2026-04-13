@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import sys
 import urllib.request
 from dataclasses import dataclass
@@ -36,8 +37,17 @@ class Page:
     source_url: str
 
     @property
+    def is_index_page(self) -> bool:
+        return len([part for part in self.rel_path.split("/") if part]) <= 1
+
+    @property
     def output_path(self) -> Path:
-        return OUTPUT_ROOT / self.dialect / self.rel_path / "index.md"
+        if self.is_index_page:
+            if not self.rel_path:
+                return OUTPUT_ROOT / self.dialect / "index.md"
+            return OUTPUT_ROOT / self.dialect / self.rel_path / "index.md"
+        parts = [part for part in self.rel_path.split("/") if part]
+        return OUTPUT_ROOT / self.dialect / "/".join(parts[:-1]) / f"{parts[-1]}.md"
 
     @property
     def title_hint(self) -> str:
@@ -155,7 +165,10 @@ def route_to_output(route: str) -> str:
     route = route.strip("/")
     if not route:
         return "index.md"
-    return "/".join(route.split("/")) + "/index.md"
+    parts = [part for part in route.split("/") if part]
+    if len(parts) <= 1:
+        return "/".join(parts + ["index.md"])
+    return "/".join(parts[:-1] + [f"{parts[-1]}.md"])
 
 
 def relative_link(from_path: Path, target_route: str) -> str:
@@ -339,7 +352,7 @@ def build_index_pages(pages: Iterable[Page]) -> None:
             keyword_pages = [page for page in vocabulary_pages if page.rel_path != vocabulary]
             for page in sorted(keyword_pages, key=lambda item: item.rel_path):
                 title = read_generated_title(page.output_path)
-                vocab_lines.append(f"- [{title}]({page.title_hint}/index.md)")
+                vocab_lines.append(f"- [{title}]({page.title_hint}.md)")
             vocab_lines.append("")
             vocab_index = OUTPUT_ROOT / dialect / vocabulary / "index.md"
             vocab_index.parent.mkdir(parents=True, exist_ok=True)
@@ -381,6 +394,8 @@ def main() -> int:
     sitemap = fetch_text(SITEMAP_URL)
     source_lookup = build_source_lookup()
     pages = parse_sitemap(sitemap, source_lookup)
+    if OUTPUT_ROOT.exists():
+        shutil.rmtree(OUTPUT_ROOT)
     OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
 
     for page in pages:

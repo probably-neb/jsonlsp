@@ -6,7 +6,7 @@
 
 ## Pages
 
-- [$comment](comment/index.md)
-- [$id](id/index.md)
-- [$ref](ref/index.md)
-- [$schema](schema/index.md)
+- [$comment](comment.md)
+- [$id](id.md)
+- [$ref](ref.md)
+- [$schema](schema.md)

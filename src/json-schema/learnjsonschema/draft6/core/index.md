@@ -6,6 +6,6 @@
 
 ## Pages
 
-- [$id](id/index.md)
-- [$ref](ref/index.md)
-- [$schema](schema/index.md)
+- [$id](id.md)
+- [$ref](ref.md)
+- [$schema](schema.md)

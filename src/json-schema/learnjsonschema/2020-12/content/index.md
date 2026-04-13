@@ -6,6 +6,6 @@
 
 ## Pages
 
-- [contentEncoding](contentencoding/index.md)
-- [contentMediaType](contentmediatype/index.md)
-- [contentSchema](contentschema/index.md)
+- [contentEncoding](contentencoding.md)
+- [contentMediaType](contentmediatype.md)
+- [contentSchema](contentschema.md)
