@@ -2,6 +2,7 @@ const std = @import("std");
 
 const ModuleSpec = struct {
     name: []const u8,
+    // TODO: getter (derive from name)
     path: []const u8,
     add_to_exe: bool = false,
     install_lib: bool = false,
@@ -118,8 +119,9 @@ pub fn build(b: *std.Build) void {
     }
     exe_mod.addImport("lsp", externals.lsp);
 
-    inline for (module_specs, 0..) |_, i| {
+    inline for (0..modules.len) |i| {
         const module_tests = b.addTest(.{
+            .name = module_specs[i].name,
             .root_module = modules[i],
             .filters = test_filters,
         });
@@ -128,6 +130,7 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&run_module_tests.step);
     }
 
+    // TODO: remove module_by_name calls, this should be handled by import loop
     const mod_base = module_by_name(&module_specs, &modules, "base");
     const mod_json_schema = module_by_name(&module_specs, &modules, "json-schema");
     const mod_server = module_by_name(&module_specs, &modules, "server");

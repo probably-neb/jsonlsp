@@ -2,6 +2,9 @@
   - [x] Make gap buffer data structure
   - [x] Make json parsing have a "feed" construct that feeds ranges of bytes into the parser
   - [x] handle incremental edit messages and just reparse the entire document
+  - [ ] fuzz
+- [ ] Flatten json schema constraint type
+- [ ] Add parse cache to json schema checking
 - [ ] Improve document memory usage
   - [ ] create segmented arena, that subdivides allocated address space into regions
   - [ ] use segmented arena for document storage, where each piece of document has enough space for the absolute max, but memory is only committed as needed based on bucket sizes
