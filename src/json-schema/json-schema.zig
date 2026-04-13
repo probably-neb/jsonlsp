@@ -710,7 +710,15 @@ const TypeMap = packed struct(u8) {
             },
             'b' => types.boolean = std.mem.eql(u8, str, "boolean"),
             'o' => types.object = std.mem.eql(u8, str, "object"),
-            'a' => types.array = std.mem.eql(u8, str, "array"),
+            'a' => if (str.len > 1) {
+                switch (str[1]) {
+                    'r' => types.array = std.mem.eql(u8, str, "array"),
+                    'n' => if (std.mem.eql(u8, str, "any")) {
+                        types.* = @bitCast(@as(u8, 0xFF));
+                    },
+                    else => {},
+                }
+            },
             'i' => types.integer = std.mem.eql(u8, str, "integer"),
             's' => types.string = std.mem.eql(u8, str, "string"),
             else => {},
