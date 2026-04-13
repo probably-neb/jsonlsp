@@ -198,6 +198,45 @@ test "type constraint - object" {
     try std.testing.expectEqual(schema.is_valid("null"), false);
 }
 
+test "type constraint - array of types" {
+    const schema_str =
+        \\{
+        \\  "type": ["boolean", "array"]
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("true"));
+    try std.testing.expect(schema.is_valid("false"));
+    try std.testing.expect(schema.is_valid("[]"));
+    try std.testing.expect(schema.is_valid("[1, 2, 3]"));
+
+    try std.testing.expect(!schema.is_valid("1234"));
+    try std.testing.expect(!schema.is_valid("\"foo\""));
+    try std.testing.expect(!schema.is_valid("null"));
+    try std.testing.expect(!schema.is_valid("{}"));
+}
+
+test "type constraint - siblings stay conjunctive with anyOf" {
+    const schema_str =
+        \\{
+        \\  "type": ["string", "boolean"],
+        \\  "anyOf": [
+        \\    { "type": "string", "minLength": 3 },
+        \\    { "type": "integer" }
+        \\  ]
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("\"hello\""));
+    try std.testing.expect(!schema.is_valid("\"hi\""));
+    try std.testing.expect(!schema.is_valid("true"));
+    try std.testing.expect(!schema.is_valid("42"));
+}
+
 test "string constraints - minLength and maxLength" {
     const schema_str =
         \\{
@@ -223,6 +262,36 @@ test "string constraints - minLength and maxLength" {
     try std.testing.expectEqual(schema.is_valid("123"), false);
 }
 
+test "string constraints - minLength counts Unicode code points and ignores non-strings" {
+    const schema_str =
+        \\{
+        \\  "minLength": 3
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("\"foo\""));
+    try std.testing.expect(schema.is_valid("\"こんにちは\""));
+    try std.testing.expect(!schema.is_valid("\"hi\""));
+    try std.testing.expect(schema.is_valid("55"));
+}
+
+test "string constraints - maxLength counts Unicode code points and ignores non-strings" {
+    const schema_str =
+        \\{
+        \\  "maxLength": 3
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("\"foo\""));
+    try std.testing.expect(schema.is_valid("\"hi\""));
+    try std.testing.expect(!schema.is_valid("\"こんにちは\""));
+    try std.testing.expect(schema.is_valid("55"));
+}
+
 test "string constraints - pattern" {
     const schema_str =
         \\{
@@ -241,6 +310,21 @@ test "string constraints - pattern" {
     try std.testing.expectEqual(schema.is_valid("\"ABC\""), false);
     try std.testing.expectEqual(schema.is_valid("\"hello123\""), false);
     try std.testing.expectEqual(schema.is_valid("\"hello world\""), false);
+}
+
+test "string constraints - pattern is unanchored, case-sensitive, and ignores non-strings" {
+    const schema_str =
+        \\{
+        \\  "pattern": "es"
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("\"expression\""));
+    try std.testing.expect(!schema.is_valid("\"EXPRESSION\""));
+    try std.testing.expect(!schema.is_valid("\"foo\""));
+    try std.testing.expect(schema.is_valid("1234"));
 }
 
 test "number constraints - minimum and maximum" {
@@ -287,6 +371,42 @@ test "number constraints - exclusiveMinimum and exclusiveMaximum" {
     try std.testing.expectEqual(schema.is_valid("100"), false);
     try std.testing.expectEqual(schema.is_valid("-1"), false);
     try std.testing.expectEqual(schema.is_valid("101"), false);
+}
+
+test "number constraints - minimum and maximum compare integer and float values consistently" {
+    const schema_str =
+        \\{
+        \\  "minimum": 10,
+        \\  "maximum": 10
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("10"));
+    try std.testing.expect(schema.is_valid("10.0"));
+    try std.testing.expect(!schema.is_valid("9.9"));
+    try std.testing.expect(!schema.is_valid("10.1"));
+    try std.testing.expect(schema.is_valid("\"10\""));
+}
+
+test "number constraints - exclusive bounds reject equal integer and float values and ignore non-numbers" {
+    const schema_str =
+        \\{
+        \\  "exclusiveMinimum": 10,
+        \\  "exclusiveMaximum": 20
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(!schema.is_valid("10"));
+    try std.testing.expect(!schema.is_valid("10.0"));
+    try std.testing.expect(schema.is_valid("10.1"));
+    try std.testing.expect(schema.is_valid("19.9"));
+    try std.testing.expect(!schema.is_valid("20"));
+    try std.testing.expect(!schema.is_valid("20.0"));
+    try std.testing.expect(schema.is_valid("\"15\""));
 }
 
 test "array constraints - minItems and maxItems" {
@@ -390,6 +510,27 @@ test "array constraints - uniqueItems composes with minItems" {
     try std.testing.expectEqual(schema.is_valid("[1, 2]"), true);
     try std.testing.expectEqual(schema.is_valid("[1]"), false);
     try std.testing.expectEqual(schema.is_valid("[1, 1]"), false);
+}
+
+test "array constraints - minItems and maxItems ignore non-arrays" {
+    const schema_str =
+        \\{
+        \\  "minItems": 1,
+        \\  "maxItems": 2
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("\"hello\""));
+    try std.testing.expect(schema.is_valid("42"));
+    try std.testing.expect(schema.is_valid("true"));
+    try std.testing.expect(schema.is_valid("null"));
+
+    try std.testing.expect(!schema.is_valid("[]"));
+    try std.testing.expect(schema.is_valid("[1]"));
+    try std.testing.expect(schema.is_valid("[1, 2]"));
+    try std.testing.expect(!schema.is_valid("[1, 2, 3]"));
 }
 
 test "object constraints - required properties" {
@@ -562,6 +703,58 @@ test "enum constraint" {
     try std.testing.expectEqual(schema.is_valid("\"yellow\""), false);
     try std.testing.expectEqual(schema.is_valid("43"), false);
     try std.testing.expectEqual(schema.is_valid("false"), false);
+}
+
+test "enum constraint treats integer and float representations as equal" {
+    const schema_str =
+        \\{
+        \\  "enum": [1, 2.0, 3]
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("1"));
+    try std.testing.expect(schema.is_valid("1.0"));
+    try std.testing.expect(schema.is_valid("2"));
+    try std.testing.expect(schema.is_valid("2.0"));
+    try std.testing.expect(!schema.is_valid("4"));
+    try std.testing.expect(!schema.is_valid("\"1\""));
+}
+
+test "enum constraint supports heterogeneous values including object and array equality" {
+    const schema_str =
+        \\{
+        \\  "enum": ["red", 123, true, {"foo": "bar", "baz": 1}, [1, 2], null]
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("true"));
+    try std.testing.expect(schema.is_valid("{\"baz\":1,\"foo\":\"bar\"}"));
+    try std.testing.expect(schema.is_valid("[1,2]"));
+    try std.testing.expect(!schema.is_valid("{\"foo\":\"baz\",\"baz\":1}"));
+    try std.testing.expect(!schema.is_valid("[2,1]"));
+}
+
+test "enum constraint stays conjunctive with anyOf siblings" {
+    const schema_str =
+        \\{
+        \\  "enum": ["foo", 42, true],
+        \\  "anyOf": [
+        \\    { "type": "string", "minLength": 3 },
+        \\    { "type": "integer", "minimum": 100 }
+        \\  ]
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("\"foo\""));
+    try std.testing.expect(!schema.is_valid("42"));
+    try std.testing.expect(!schema.is_valid("true"));
+    try std.testing.expect(!schema.is_valid("100"));
 }
 
 test "const constraint" {
@@ -934,6 +1127,59 @@ test "multipleOf constraint" {
     try std.testing.expectEqual(schema.is_valid("1.7"), false);
 }
 
+test "multipleOf constraint - integer divisors follow docs examples" {
+    const schema_str =
+        \\{
+        \\  "multipleOf": 5
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("10"));
+    try std.testing.expect(schema.is_valid("-5"));
+    try std.testing.expect(schema.is_valid("15.0"));
+    try std.testing.expect(schema.is_valid("0"));
+    try std.testing.expect(!schema.is_valid("8"));
+    try std.testing.expect(schema.is_valid("\"100000\""));
+}
+
+test "multipleOf constraint - fractional divisors follow docs examples" {
+    const schema_str =
+        \\{
+        \\  "multipleOf": 0.01
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("2"));
+    try std.testing.expect(schema.is_valid("5.1"));
+    try std.testing.expect(schema.is_valid("-12.34"));
+    try std.testing.expect(!schema.is_valid("1.234"));
+    try std.testing.expect(schema.is_valid("0"));
+    try std.testing.expect(schema.is_valid("\"100000\""));
+}
+
+test "multipleOf constraint - siblings stay conjunctive with anyOf" {
+    const schema_str =
+        \\{
+        \\  "anyOf": [
+        \\    { "type": "integer" },
+        \\    { "type": "string" }
+        \\  ],
+        \\  "multipleOf": 2
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("4"));
+    try std.testing.expect(!schema.is_valid("3"));
+    try std.testing.expect(schema.is_valid("\"word\""));
+    try std.testing.expect(!schema.is_valid("true"));
+}
+
 test "object constraints - minProperties and maxProperties" {
     const schema_str =
         \\{
@@ -959,6 +1205,28 @@ test "object constraints - minProperties and maxProperties" {
     // Non-objects are not affected
     try std.testing.expectEqual(schema.is_valid("[]"), false); // fails type check
     try std.testing.expectEqual(schema.is_valid("\"string\""), false); // fails type check
+}
+
+test "object constraints - minProperties and maxProperties ignore non-objects" {
+    const schema_str =
+        \\{
+        \\  "minProperties": 1,
+        \\  "maxProperties": 2
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("\"hello\""));
+    try std.testing.expect(schema.is_valid("42"));
+    try std.testing.expect(schema.is_valid("true"));
+    try std.testing.expect(schema.is_valid("[]"));
+    try std.testing.expect(schema.is_valid("null"));
+
+    try std.testing.expect(!schema.is_valid("{}"));
+    try std.testing.expect(schema.is_valid("{\"a\": 1}"));
+    try std.testing.expect(schema.is_valid("{\"a\": 1, \"b\": 2}"));
+    try std.testing.expect(!schema.is_valid("{\"a\": 1, \"b\": 2, \"c\": 3}"));
 }
 
 test "$ref with definitions" {
@@ -1049,6 +1317,80 @@ test "$ref recursive schema" {
     try std.testing.expect(schema.is_valid("{\"value\": 1, \"child\": {\"value\": 2, \"child\": {\"value\": 3}}}"));
     try std.testing.expect(!schema.is_valid("{\"value\": \"not an int\"}"));
     try std.testing.expect(!schema.is_valid("{\"value\": 1, \"child\": {\"value\": \"bad\"}}"));
+}
+
+test "$ref overrides siblings in draft7" {
+    const schema_str =
+        \\{
+        \\  "$schema": "http://json-schema.org/draft-07/schema#",
+        \\  "$defs": {
+        \\    "positiveInteger": {
+        \\      "type": "integer",
+        \\      "minimum": 0
+        \\    }
+        \\  },
+        \\  "$ref": "#/$defs/positiveInteger",
+        \\  "type": "string"
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("5"));
+    try std.testing.expect(!schema.is_valid("-1"));
+    try std.testing.expect(!schema.is_valid("\"five\""));
+}
+
+test "$ref stays conjunctive with siblings in 2020-12" {
+    const schema_str =
+        \\{
+        \\  "$schema": "https://json-schema.org/draft/2020-12/schema",
+        \\  "$defs": {
+        \\    "positiveInteger": {
+        \\      "type": "integer",
+        \\      "minimum": 0
+        \\    }
+        \\  },
+        \\  "$ref": "#/$defs/positiveInteger",
+        \\  "maximum": 10
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("0"));
+    try std.testing.expect(schema.is_valid("10"));
+    try std.testing.expect(!schema.is_valid("11"));
+    try std.testing.expect(!schema.is_valid("-1"));
+    try std.testing.expect(!schema.is_valid("\"5\""));
+}
+
+test "$ref stays conjunctive with siblings in 2020-12 inside anyOf branch" {
+    const schema_str =
+        \\{
+        \\  "$schema": "https://json-schema.org/draft/2020-12/schema",
+        \\  "$defs": {
+        \\    "smallString": {
+        \\      "type": "string",
+        \\      "maxLength": 5
+        \\    }
+        \\  },
+        \\  "anyOf": [
+        \\    {
+        \\      "$ref": "#/$defs/smallString",
+        \\      "minLength": 3
+        \\    },
+        \\    { "const": 42 }
+        \\  ]
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expect(schema.is_valid("\"four\""));
+    try std.testing.expect(!schema.is_valid("\"hi\""));
+    try std.testing.expect(!schema.is_valid("\"toolong\""));
+    try std.testing.expect(schema.is_valid("42"));
 }
 
 test "$ref pointer escape segment slash (~1)" {

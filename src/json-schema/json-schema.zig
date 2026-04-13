@@ -63,61 +63,56 @@ pub const Schema = struct {
     arena: Arena,
 
     pub const Constraint = struct {
-        kind: Kind,
         flags: packed struct {
             additional_items: bool = false,
             unique_items: bool = false,
             @"const": bool = false,
+            false_schema: bool = false,
+            any_of_present: bool = false,
+            one_of_present: bool = false,
         } = .{},
         prefix_items: ?*const Constraint.Node = null,
         items: ?*const Constraint = null,
         properties: []Property = &.{},
         additional_properties: ?*const Constraint = null,
         pattern_properties: []PatternProperty = &.{},
+        all_of: ?*const Constraint.Node = null,
+        any_of: ?*const Constraint.Node = null,
+        one_of: ?*const Constraint.Node = null,
+        not_constraint: ?*const Constraint = null,
+        ref_constraint: ?*const Constraint = null,
         if_constraint: ?*const Constraint = null,
         then_constraint: ?*const Constraint = null,
         else_constraint: ?*const Constraint = null,
         required: []u64 = &.{},
         dependent_required: []DependentRequiredEntry = &.{},
+        types: ?[]ValidationType = null,
+        min_len: ?u64 = null,
+        max_len: ?u64 = null,
+        min_items: ?u64 = null,
+        max_items: ?u64 = null,
+        min_properties: ?u64 = null,
+        max_properties: ?u64 = null,
+        min_i64: ?i64 = null,
+        max_i64: ?i64 = null,
+        min_f64: ?f64 = null,
+        max_f64: ?f64 = null,
+        min_i64_exclusive: ?i64 = null,
+        max_i64_exclusive: ?i64 = null,
+        min_f64_exclusive: ?f64 = null,
+        max_f64_exclusive: ?f64 = null,
+        multiple_of_i64: ?i64 = null,
+        multiple_of_f64: ?f64 = null,
+        pattern: ?pcre.Regex = null,
         @"const": u64 = 0,
-
-        pub const Kind = union(enum) {
-            true: void,
-            false: void,
-            type: []ValidationType,
-            all: ?*const Node, // corresponds to allOf,
-            any: ?*const Node, // corresponds to anyOf,
-            one: ?*const Node, // corresponds to oneOf,
-            not: *const Constraint,
-            @"enum": []u64,
-            min_len: u64,
-            max_len: u64,
-            min_i64: i64,
-            max_i64: i64,
-            min_f64: f64,
-            max_f64: f64,
-            min_i64_exclusive: i64,
-            max_i64_exclusive: i64,
-            min_f64_exclusive: f64,
-            max_f64_exclusive: f64,
-            max_items: u64,
-            min_items: u64,
-            max_properties: u64,
-            min_properties: u64,
-            multiple_of_i64: i64,
-            multiple_of_f64: f64,
-            pattern: pcre.Regex,
-            ref: *const Constraint,
-        };
+        @"enum": ?[]u64 = null,
 
         pub const DependentRequiredEntry = struct {
             trigger_property_hash: u64,
             required_property_hashes: []u64,
         };
 
-        pub const zero: Constraint = .{
-            .kind = .true,
-        };
+        pub const zero: Constraint = .{};
 
         pub const Node = struct {
             constraint: *const Constraint,
@@ -152,6 +147,139 @@ pub const Schema = struct {
 fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const HashableJsonValue) !bool {
     if (constraint.flags.@"const" and value.hash != constraint.@"const") {
         return false;
+    }
+    if (constraint.@"enum") |hashes| {
+        for (hashes) |hash| {
+            if (hash == value.hash) break;
+        } else {
+            return false;
+        }
+    }
+    if (constraint.min_len) |min_len| {
+        if (value.kind == .string and (std.unicode.utf8CountCodepoints(value.kind.string) catch 0) < min_len) {
+            return false;
+        }
+    }
+    if (constraint.max_len) |max_len| {
+        if (value.kind == .string and (std.unicode.utf8CountCodepoints(value.kind.string) catch 0) > max_len) {
+            return false;
+        }
+    }
+    if (constraint.pattern) |regex| {
+        if (value.kind == .string) {
+            const matches = try regex.matches(value.kind.string, .{});
+            if (matches == null) {
+                return false;
+            }
+        }
+    }
+    if (constraint.min_items) |min_items| {
+        if (value.kind == .array and value.kind.array.count() < min_items) {
+            return false;
+        }
+    }
+    if (constraint.max_items) |max_items| {
+        if (value.kind == .array and value.kind.array.count() > max_items) {
+            return false;
+        }
+    }
+    if (constraint.min_properties) |min_properties| {
+        if (value.kind == .object and value.kind.object.count() < min_properties) {
+            return false;
+        }
+    }
+    if (constraint.max_properties) |max_properties| {
+        if (value.kind == .object and value.kind.object.count() > max_properties) {
+            return false;
+        }
+    }
+    if (constraint.max_i64) |max_int| {
+        switch (value.kind) {
+            .integer => |int_val| if (int_val > max_int) return false,
+            .float => |float_val| if (float_val > @as(f64, @floatFromInt(max_int))) return false,
+            else => {},
+        }
+    }
+    if (constraint.min_i64) |min_int| {
+        switch (value.kind) {
+            .integer => |int_val| if (int_val < min_int) return false,
+            .float => |float_val| if (float_val < @as(f64, @floatFromInt(min_int))) return false,
+            else => {},
+        }
+    }
+    if (constraint.max_f64) |max_f64| {
+        switch (value.kind) {
+            .integer => |int_val| if (@as(f64, @floatFromInt(int_val)) > max_f64) return false,
+            .float => |float_val| if (float_val > max_f64) return false,
+            else => {},
+        }
+    }
+    if (constraint.min_f64) |min_f64| {
+        switch (value.kind) {
+            .integer => |int_val| if (@as(f64, @floatFromInt(int_val)) < min_f64) return false,
+            .float => |float_val| if (float_val < min_f64) return false,
+            else => {},
+        }
+    }
+    if (constraint.max_i64_exclusive) |max_int| {
+        switch (value.kind) {
+            .integer => |int_val| if (int_val >= max_int) return false,
+            .float => |float_val| if (float_val >= @as(f64, @floatFromInt(max_int))) return false,
+            else => {},
+        }
+    }
+    if (constraint.min_i64_exclusive) |min_int| {
+        switch (value.kind) {
+            .integer => |int_val| if (int_val <= min_int) return false,
+            .float => |float_val| if (float_val <= @as(f64, @floatFromInt(min_int))) return false,
+            else => {},
+        }
+    }
+    if (constraint.max_f64_exclusive) |max_f64| {
+        switch (value.kind) {
+            .integer => |int_val| if (@as(f64, @floatFromInt(int_val)) >= max_f64) return false,
+            .float => |float_val| if (float_val >= max_f64) return false,
+            else => {},
+        }
+    }
+    if (constraint.min_f64_exclusive) |min_f64| {
+        switch (value.kind) {
+            .integer => |int_val| if (@as(f64, @floatFromInt(int_val)) <= min_f64) return false,
+            .float => |float_val| if (float_val <= min_f64) return false,
+            else => {},
+        }
+    }
+    if (constraint.multiple_of_f64) |multiple_of| {
+        if (multiple_of == 0.0) {
+            return false;
+        }
+        const float_val = switch (value.kind) {
+            .integer => |int_val| @as(f64, @floatFromInt(int_val)),
+            .float => |fv| fv,
+            else => null,
+        };
+        if (float_val) |fv| {
+            const quotient = fv / multiple_of;
+            const diff = @abs(quotient - @round(quotient));
+            if (!(diff < 1e-9)) {
+                return false;
+            }
+        }
+    }
+    if (constraint.multiple_of_i64) |multiple_of| {
+        if (multiple_of == 0) {
+            return false;
+        }
+        const int_val = switch (value.kind) {
+            .integer => |iv| iv,
+            .float => |fv| float_as_int(fv),
+            else => null,
+        };
+        if (int_val) |iv| {
+            if (@rem(iv, multiple_of) != 0) {
+                return false;
+            }
+        }
     }
     if (value.kind == .array) {
         if (constraint.flags.unique_items) {
@@ -255,130 +383,62 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
         }
     }
 
-    const kind_result = switch (constraint.kind) {
-        .true => true,
-        .false => false,
-        .type => |v_types| blk: {
-            var result = false;
-            for (v_types) |v_type| {
-                result = result or switch (v_type) {
-                    .string => value.kind == .string,
-                    .object => value.kind == .object,
-                    .array => value.kind == .array,
-                    .number => value.kind == .float or value.kind == .integer,
-                    .boolean => value.kind == .bool,
-                    .null => value.kind == .null,
-                    .integer => value.kind == .integer,
-                };
-            }
-            break :blk result;
-        },
-        .all => |first_child| blk: {
-            var result = true;
-            var cur_node = first_child;
-            while (cur_node) |node| : (cur_node = node.next) {
-                result = result and try check(arena, node.constraint, value);
-            }
-            break :blk result;
-        },
-        .any => |first_child| blk: {
-            var result = false;
-            var cur_node = first_child;
-            while (cur_node) |node| : (cur_node = node.next) {
-                result = result or try check(arena, node.constraint, value);
-            }
-            break :blk result;
-        },
-        .one => |first_child| blk: {
-            var count: u32 = 0;
-            var cur_node = first_child;
-            while (cur_node) |node| : (cur_node = node.next) {
-                count += @intFromBool(try check(arena, node.constraint, value));
-            }
-            break :blk count == 1;
-        },
-        .@"enum" => |hashes| blk: {
-            for (hashes) |hash| {
-                if (hash == value.hash) break :blk true;
-            }
-            break :blk false;
-        },
-        .min_len => |min_len| value.kind != .string or (std.unicode.utf8CountCodepoints(value.kind.string) catch 0) >= min_len,
-        .max_len => |max_len| value.kind != .string or (std.unicode.utf8CountCodepoints(value.kind.string) catch 0) <= max_len,
-        .max_items => |max_items| value.kind != .array or value.kind.array.count() <= max_items,
-        .min_items => |min_items| value.kind != .array or value.kind.array.count() >= min_items,
-        .max_properties => |max_properties| value.kind != .object or value.kind.object.count() <= max_properties,
-        .min_properties => |min_properties| value.kind != .object or value.kind.object.count() >= min_properties,
-        .max_i64 => |max_int| switch (value.kind) {
-            .integer => |int_val| int_val <= max_int,
-            .float => |float_val| float_val <= @as(f64, @floatFromInt(max_int)),
-            else => true,
-        },
-        .min_i64 => |min_int| switch (value.kind) {
-            .integer => |int_val| int_val >= min_int,
-            .float => |float_val| float_val >= @as(f64, @floatFromInt(min_int)),
-            else => true,
-        },
-        .max_f64 => |max_f64| switch (value.kind) {
-            .integer => |int_val| @as(f64, @floatFromInt(int_val)) <= max_f64,
-            .float => |float_val| float_val <= max_f64,
-            else => true,
-        },
-        .min_f64 => |min_f64| switch (value.kind) {
-            .integer => |int_val| @as(f64, @floatFromInt(int_val)) >= min_f64,
-            .float => |float_val| float_val >= min_f64,
-            else => true,
-        },
-        .max_i64_exclusive => |max_int| switch (value.kind) {
-            .integer => |int_val| int_val < max_int,
-            .float => |float_val| float_val < @as(f64, @floatFromInt(max_int)),
-            else => true,
-        },
-        .min_i64_exclusive => |min_int| switch (value.kind) {
-            .integer => |int_val| int_val > min_int,
-            .float => |float_val| float_val > @as(f64, @floatFromInt(min_int)),
-            else => true,
-        },
-        .max_f64_exclusive => |max_f64| switch (value.kind) {
-            .integer => |int_val| @as(f64, @floatFromInt(int_val)) < max_f64,
-            .float => |float_val| float_val < max_f64,
-            else => true,
-        },
-        .min_f64_exclusive => |min_f64| switch (value.kind) {
-            .integer => |int_val| @as(f64, @floatFromInt(int_val)) > min_f64,
-            .float => |float_val| float_val > min_f64,
-            else => true,
-        },
-        .not => |constraint_to_invert| !try check(arena, constraint_to_invert, value),
-        .multiple_of_f64 => |multiple_of| blk: {
-            if (multiple_of == 0.0) break :blk false;
-            const float_val = switch (value.kind) {
-                .integer => |int_val| @as(f64, @floatFromInt(int_val)),
-                .float => |fv| fv,
-                else => 0.0,
+    if (constraint.types) |types| {
+        var result = false;
+        for (types) |v_type| {
+            result = result or switch (v_type) {
+                .string => value.kind == .string,
+                .object => value.kind == .object,
+                .array => value.kind == .array,
+                .number => value.kind == .float or value.kind == .integer,
+                .boolean => value.kind == .bool,
+                .null => value.kind == .null,
+                .integer => value.kind == .integer,
             };
-            const quotient = float_val / multiple_of;
-            const diff = @abs(quotient - @round(quotient));
-            break :blk diff < 1e-9;
-        },
-        .multiple_of_i64 => |multiple_of| blk: {
-            if (multiple_of == 0) break :blk false;
-            const int_val = switch (value.kind) {
-                .integer => |iv| iv,
-                .float => |fv| float_as_int(fv) orelse break :blk false,
-                else => 0,
-            };
-            break :blk @rem(int_val, multiple_of) == 0;
-        },
-        .pattern => |regex| blk: {
-            if (value.kind != .string) break :blk true;
-            const matches = try regex.matches(value.kind.string, .{});
-            break :blk matches != null;
-        },
-        .ref => |referenced_constraint| try check(arena, referenced_constraint, value),
-    };
-    if (!kind_result) {
+        }
+        if (!result) {
+            return false;
+        }
+    }
+
+    if (constraint.flags.false_schema) {
         return false;
+    }
+    if (constraint.ref_constraint) |referenced_constraint| {
+        if (!try check(arena, referenced_constraint, value)) {
+            return false;
+        }
+    }
+    if (constraint.not_constraint) |constraint_to_invert| {
+        if (try check(arena, constraint_to_invert, value)) {
+            return false;
+        }
+    }
+    var cur_all_of = constraint.all_of;
+    while (cur_all_of) |node| : (cur_all_of = node.next) {
+        if (!try check(arena, node.constraint, value)) {
+            return false;
+        }
+    }
+    if (constraint.flags.any_of_present) {
+        var result = false;
+        var cur_any_of = constraint.any_of;
+        while (cur_any_of) |node| : (cur_any_of = node.next) {
+            result = result or try check(arena, node.constraint, value);
+        }
+        if (!result) {
+            return false;
+        }
+    }
+    if (constraint.flags.one_of_present) {
+        var count: u32 = 0;
+        var cur_one_of = constraint.one_of;
+        while (cur_one_of) |node| : (cur_one_of = node.next) {
+            count += @intFromBool(try check(arena, node.constraint, value));
+        }
+        if (count != 1) {
+            return false;
+        }
     }
     if (constraint.if_constraint) |if_constraint| {
         if (try check(arena, if_constraint, value)) {
@@ -592,10 +652,7 @@ fn parse_into_constraint(ctx: *ParseContext, schema: *const HashableJsonValue, c
     constraint.* = .zero;
 
     if (schema.kind == .bool) {
-        constraint.* = switch (schema.kind.bool) {
-            true => .{ .kind = .true },
-            false => .{ .kind = .false },
-        };
+        constraint.flags.false_schema = !schema.kind.bool;
         return;
     }
     if (schema.kind != .object) {
@@ -604,7 +661,7 @@ fn parse_into_constraint(ctx: *ParseContext, schema: *const HashableJsonValue, c
     const obj = &schema.kind.object;
 
     if (obj.count() == 0) {
-        constraint.* = .{ .kind = .true };
+        constraint.* = .zero;
         return;
     }
 
@@ -620,51 +677,26 @@ fn parse_into_constraint(ctx: *ParseContext, schema: *const HashableJsonValue, c
             break :parse_ref;
         }
         if (try resolve_ref(ctx, ref.kind.string)) |target| {
-            try chain_with(ctx, constraint, .{ .ref = target });
+            constraint.ref_constraint = target;
         }
         // In draft4-7, $ref overrides all siblings
         if (ref_overrides_siblings(ctx.revision)) {
             return;
         }
     }
-    // todo: error
-    if (parse_validation__type(ctx, obj) catch null) |types| {
-        try chain_with(ctx, constraint, types);
-    }
-    if (parse_validation__min_length(obj)) |min_length| {
-        try chain_with(ctx, constraint, min_length);
-    }
-    if (parse_validation__max_length(obj)) |max_length| {
-        try chain_with(ctx, constraint, max_length);
-    }
-    if (parse_validation__min(obj)) |min| {
-        try chain_with(ctx, constraint, min);
-    }
-    if (parse_validation__max(obj)) |max| {
-        try chain_with(ctx, constraint, max);
-    }
-    if (parse_validation__exclusive_min(obj)) |exclusive_min| {
-        try chain_with(ctx, constraint, exclusive_min);
-    }
-    if (parse_validation__exclusive_max(obj)) |exclusive_max| {
-        try chain_with(ctx, constraint, exclusive_max);
-    }
-    if (parse_validation__min_items(obj)) |min_items| {
-        try chain_with(ctx, constraint, min_items);
-    }
-    if (parse_validation__max_items(obj)) |max_items| {
-        try chain_with(ctx, constraint, max_items);
-    }
-    if (parse_validation__min_properties(obj)) |min_properties| {
-        try chain_with(ctx, constraint, min_properties);
-    }
-    if (parse_validation__max_properties(obj)) |max_properties| {
-        try chain_with(ctx, constraint, max_properties);
-    }
+    parse_validation__type(ctx, obj, constraint) catch {};
+    parse_validation__min_length(obj, constraint);
+    parse_validation__max_length(obj, constraint);
+    parse_validation__min(obj, constraint);
+    parse_validation__max(obj, constraint);
+    parse_validation__exclusive_min(obj, constraint);
+    parse_validation__exclusive_max(obj, constraint);
+    parse_validation__min_items(obj, constraint);
+    parse_validation__max_items(obj, constraint);
+    parse_validation__min_properties(obj, constraint);
+    parse_validation__max_properties(obj, constraint);
     parse_validation__const(obj, constraint);
-    if (parse_validation__enum(ctx, obj) catch null) |@"enum"| {
-        try chain_with(ctx, constraint, @"enum");
-    }
+    try parse_validation__enum(ctx, obj, constraint);
     parse_validation__unique_items(obj, constraint);
     parse_applicator__prefix_items(ctx, obj, constraint) catch {};
     parse_applicator__items(ctx, obj, constraint) catch {};
@@ -673,25 +705,23 @@ fn parse_into_constraint(ctx: *ParseContext, schema: *const HashableJsonValue, c
     parse_applicator__additional_properties(ctx, obj, constraint) catch {};
     try parse_validation__required_properties(ctx, obj, constraint);
     try parse_validation__dependent_required(ctx, obj, constraint);
-    if (parse_applicator_not(ctx, obj) catch null) |not| {
-        try chain_with(ctx, constraint, not);
+    if (parse_applicator_not(ctx, obj) catch null) |not_constraint| {
+        constraint.not_constraint = not_constraint;
     }
     if (parse_applicator__all_of(ctx, obj) catch null) |all_of| {
-        try chain_with(ctx, constraint, all_of);
+        constraint.all_of = all_of;
     }
     if (parse_applicator__any_of(ctx, obj) catch null) |any_of| {
-        try chain_with(ctx, constraint, any_of);
+        constraint.flags.any_of_present = true;
+        constraint.any_of = any_of;
     }
     if (parse_applicator__one_of(ctx, obj) catch null) |one_of| {
-        try chain_with(ctx, constraint, one_of);
+        constraint.flags.one_of_present = true;
+        constraint.one_of = one_of;
     }
     try parse_applicator__if_then_else(ctx, obj, constraint);
-    if (parse_validation__multiple_of(obj)) |multiple_of| {
-        try chain_with(ctx, constraint, multiple_of);
-    }
-    if (parse_validation__pattern(ctx, obj) catch null) |pattern| {
-        try chain_with(ctx, constraint, pattern);
-    }
+    parse_validation__multiple_of(obj, constraint);
+    parse_validation__pattern(ctx, obj, constraint) catch {};
 }
 
 fn parse_node(ctx: *ParseContext, schema: *const HashableJsonValue) ParseError!*Schema.Constraint.Node {
@@ -713,58 +743,6 @@ fn parse_constraint(ctx: *ParseContext, schema: *const HashableJsonValue) ParseE
 
     try parse_into_constraint(ctx, schema, constraint);
     return constraint;
-}
-
-fn chain_with(ctx: *ParseContext, from: *Schema.Constraint, new_kind: Schema.Constraint.Kind) !void {
-    if (from.kind == .all) {
-        const first = from.kind.all orelse {
-            const new_constraint = try ctx.usage_arena.create(Schema.Constraint);
-            new_constraint.* = .zero;
-            new_constraint.kind = new_kind;
-            const new_node = try ctx.usage_arena.create(Schema.Constraint.Node);
-            new_node.* = .{
-                .constraint = new_constraint,
-                .next = null,
-            };
-            from.kind = .{ .all = new_node };
-            return;
-        };
-        var tail = first;
-        while (tail.next) |next| {
-            tail = next;
-        }
-
-        const new_constraint = try ctx.usage_arena.create(Schema.Constraint);
-        new_constraint.* = .zero;
-        new_constraint.kind = new_kind;
-
-        const new_node = try ctx.usage_arena.create(Schema.Constraint.Node);
-        new_node.* = .{
-            .constraint = new_constraint,
-            .next = null,
-        };
-        @constCast(tail).next = new_node;
-    } else if (from.kind != .true) {
-        const first_constraint = try ctx.usage_arena.create(Schema.Constraint);
-        first_constraint.* = from.*;
-
-        const second_constraint = try ctx.usage_arena.create(Schema.Constraint);
-        second_constraint.* = .zero;
-        second_constraint.kind = new_kind;
-
-        const nodes = try ctx.usage_arena.alloc(Schema.Constraint.Node, 2);
-        nodes[0] = .{
-            .constraint = first_constraint,
-            .next = &nodes[1],
-        };
-        nodes[1] = .{
-            .constraint = second_constraint,
-            .next = null,
-        };
-        from.* = .{ .kind = .{ .all = &nodes[0] } };
-    } else {
-        from.kind = new_kind;
-    }
 }
 
 fn parse_array_of_constraints(ctx: *ParseContext, arr: *const @FieldType(HashableJsonValue.Kind, "array")) !?*const Schema.Constraint.Node {
@@ -814,14 +792,14 @@ const ValidationType = enum {
     });
 };
 
-fn parse_validation__type(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
-    const ty = (obj.get_const("type") orelse return null).*;
+fn parse_validation__type(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) !void {
+    const ty = (obj.get_const("type") orelse return).*;
     switch (ty.kind) {
         .string => |v_type_str| {
             const v_type = try ctx.usage_arena.create(ValidationType);
             // todo: error
-            v_type.* = ValidationType.Map.get(v_type_str) orelse return null;
-            return .{ .type = v_type[0..1] };
+            v_type.* = ValidationType.Map.get(v_type_str) orelse return;
+            constraint.types = v_type[0..1];
         },
         .array => |*arr| {
             var v_types: base.ArenaList(ValidationType) = try .init_capacity(ctx.usage_arena, arr.count());
@@ -834,139 +812,139 @@ fn parse_validation__type(ctx: *ParseContext, obj: *const HashableJsonValue.Kind
                 const v_type = ValidationType.Map.get(v_type_item.kind.string) orelse continue;
                 v_types.append_assume_capacity(v_type);
             }
-            return .{ .type = v_types.items };
+            constraint.types = v_types.items;
         },
-        else => return null,
+        else => {},
     }
 }
 
 /// https://www.learnjsonschema.com/2020-12/validation/minlength/
-fn parse_validation__min_length(obj: *const HashableJsonValue.Kind.Object) ?Schema.Constraint.Kind {
-    const min_len = (obj.get_const("minLength") orelse return null).*;
+fn parse_validation__min_length(obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) void {
+    const min_len = (obj.get_const("minLength") orelse return).*;
     switch (min_len.kind) {
         .integer => |int_val| {
-            return .{ .min_len = std.math.lossyCast(u64, int_val) };
+            constraint.min_len = std.math.lossyCast(u64, int_val);
         },
-        else => return null,
+        else => {},
     }
 }
 
 /// https://www.learnjsonschema.com/2020-12/validation/maxlength/
-fn parse_validation__max_length(obj: *const HashableJsonValue.Kind.Object) ?Schema.Constraint.Kind {
-    const min_len = (obj.get_const("maxLength") orelse return null).*;
-    switch (min_len.kind) {
+fn parse_validation__max_length(obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) void {
+    const max_len = (obj.get_const("maxLength") orelse return).*;
+    switch (max_len.kind) {
         .integer => |int_val| {
-            return .{ .max_len = std.math.lossyCast(u64, int_val) };
+            constraint.max_len = std.math.lossyCast(u64, int_val);
         },
-        else => return null,
+        else => {},
     }
 }
 
 /// https://www.learnjsonschema.com/2020-12/validation/minimum/
-fn parse_validation__min(obj: *const HashableJsonValue.Kind.Object) ?Schema.Constraint.Kind {
-    const min_val = (obj.get_const("minimum") orelse return null).*;
+fn parse_validation__min(obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) void {
+    const min_val = (obj.get_const("minimum") orelse return).*;
     switch (min_val.kind) {
         .integer => |int_val| {
-            return .{ .min_i64 = int_val };
+            constraint.min_i64 = int_val;
         },
         .float => |float_val| {
-            return .{ .min_f64 = float_val };
+            constraint.min_f64 = float_val;
         },
-        else => return null,
+        else => {},
     }
 }
 
 /// https://www.learnjsonschema.com/2020-12/validation/maximum/
-fn parse_validation__max(obj: *const HashableJsonValue.Kind.Object) ?Schema.Constraint.Kind {
-    const max_val = (obj.get_const("maximum") orelse return null).*;
+fn parse_validation__max(obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) void {
+    const max_val = (obj.get_const("maximum") orelse return).*;
     switch (max_val.kind) {
         .integer => |int_val| {
-            return .{ .max_i64 = int_val };
+            constraint.max_i64 = int_val;
         },
         .float => |float_val| {
-            return .{ .max_f64 = float_val };
+            constraint.max_f64 = float_val;
         },
-        else => return null,
+        else => {},
     }
 }
 
 /// https://www.learnjsonschema.com/2020-12/validation/exclusiveminimum/
-fn parse_validation__exclusive_min(obj: *const HashableJsonValue.Kind.Object) ?Schema.Constraint.Kind {
-    const min_val = (obj.get_const("exclusiveMinimum") orelse return null).*;
+fn parse_validation__exclusive_min(obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) void {
+    const min_val = (obj.get_const("exclusiveMinimum") orelse return).*;
     switch (min_val.kind) {
         .integer => |int_val| {
-            return .{ .min_i64_exclusive = int_val };
+            constraint.min_i64_exclusive = int_val;
         },
         .float => |float_val| {
-            return .{ .min_f64_exclusive = float_val };
+            constraint.min_f64_exclusive = float_val;
         },
-        else => return null,
+        else => {},
     }
 }
 
 /// https://www.learnjsonschema.com/2020-12/validation/exclusivemaximum/
-fn parse_validation__exclusive_max(obj: *const HashableJsonValue.Kind.Object) ?Schema.Constraint.Kind {
-    const max_val = (obj.get_const("exclusiveMaximum") orelse return null).*;
+fn parse_validation__exclusive_max(obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) void {
+    const max_val = (obj.get_const("exclusiveMaximum") orelse return).*;
     switch (max_val.kind) {
         .integer => |int_val| {
-            return .{ .max_i64_exclusive = int_val };
+            constraint.max_i64_exclusive = int_val;
         },
         .float => |float_val| {
-            return .{ .max_f64_exclusive = float_val };
+            constraint.max_f64_exclusive = float_val;
         },
-        else => return null,
+        else => {},
     }
 }
 
-fn parse_validation__min_items(obj: *const HashableJsonValue.Kind.Object) ?Schema.Constraint.Kind {
-    const min_items = (obj.get_const("minItems") orelse return null).*;
+fn parse_validation__min_items(obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) void {
+    const min_items = (obj.get_const("minItems") orelse return).*;
     switch (min_items.kind) {
         .integer => |int_val| {
-            return .{ .min_items = std.math.lossyCast(u64, int_val) };
+            constraint.min_items = std.math.lossyCast(u64, int_val);
         },
         .float => |flt_val| {
-            return .{ .min_items = std.math.lossyCast(u64, flt_val) };
+            constraint.min_items = std.math.lossyCast(u64, flt_val);
         },
-        else => return null,
+        else => {},
     }
 }
 
-fn parse_validation__max_items(obj: *const HashableJsonValue.Kind.Object) ?Schema.Constraint.Kind {
-    const max_items = (obj.get_const("maxItems") orelse return null).*;
+fn parse_validation__max_items(obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) void {
+    const max_items = (obj.get_const("maxItems") orelse return).*;
     switch (max_items.kind) {
         .integer => |int_val| {
-            return .{ .max_items = std.math.lossyCast(u64, int_val) };
+            constraint.max_items = std.math.lossyCast(u64, int_val);
         },
         .float => |flt_val| {
-            return .{ .max_items = std.math.lossyCast(u64, flt_val) };
+            constraint.max_items = std.math.lossyCast(u64, flt_val);
         },
-        else => return null,
+        else => {},
     }
 }
 
-fn parse_validation__min_properties(obj: *const HashableJsonValue.Kind.Object) ?Schema.Constraint.Kind {
-    const min_properties = (obj.get_const("minProperties") orelse return null).*;
+fn parse_validation__min_properties(obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) void {
+    const min_properties = (obj.get_const("minProperties") orelse return).*;
     switch (min_properties.kind) {
         .integer => |int_val| {
-            return .{ .min_properties = std.math.lossyCast(u64, int_val) };
+            constraint.min_properties = std.math.lossyCast(u64, int_val);
         },
         .float => |flt_val| {
-            return .{ .min_properties = std.math.lossyCast(u64, flt_val) };
+            constraint.min_properties = std.math.lossyCast(u64, flt_val);
         },
-        else => return null,
+        else => {},
     }
 }
 
-fn parse_validation__max_properties(obj: *const HashableJsonValue.Kind.Object) ?Schema.Constraint.Kind {
-    const max_properties = (obj.get_const("maxProperties") orelse return null).*;
+fn parse_validation__max_properties(obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) void {
+    const max_properties = (obj.get_const("maxProperties") orelse return).*;
     switch (max_properties.kind) {
         .integer => |int_val| {
-            return .{ .max_properties = std.math.lossyCast(u64, int_val) };
+            constraint.max_properties = std.math.lossyCast(u64, int_val);
         },
         .float => |flt_val| {
-            return .{ .max_properties = std.math.lossyCast(u64, flt_val) };
+            constraint.max_properties = std.math.lossyCast(u64, flt_val);
         },
-        else => return null,
+        else => {},
     }
 }
 
@@ -976,19 +954,18 @@ fn parse_validation__const(obj: *const HashableJsonValue.Kind.Object, constraint
     constraint.@"const" = value.hash;
 }
 
-fn parse_validation__enum(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
-    const value = (obj.get_const("enum") orelse return null).*;
+fn parse_validation__enum(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) !void {
+    const value = (obj.get_const("enum") orelse return).*;
     if (value.kind != .array) {
-        return .{ .@"enum" = &.{} };
+        constraint.@"enum" = &.{};
+        return;
     }
     var hashes: base.ArenaList(u64) = try .init_capacity(ctx.usage_arena, value.kind.array.count());
     var iter = value.kind.array.iter();
     while (iter.next()) |item| {
         hashes.append_assume_capacity(item.hash);
     }
-    return .{
-        .@"enum" = hashes.items,
-    };
+    constraint.@"enum" = hashes.items;
 }
 
 fn parse_validation__unique_items(obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) void {
@@ -1149,96 +1126,56 @@ fn parse_validation__dependent_required(
     constraint.dependent_required = entries.items;
 }
 
-fn parse_applicator_not(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
+fn parse_applicator_not(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?*const Schema.Constraint {
     const sub_schema = (obj.get_const("not") orelse return null).*;
-    return .{
-        .not = try parse_constraint(ctx, sub_schema),
-    };
+    return try parse_constraint(ctx, sub_schema);
 }
 
-fn parse_applicator__all_of(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
+fn parse_applicator__all_of(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?*const Schema.Constraint.Node {
     const items = (obj.get_const("allOf") orelse return null).*;
     if (items.kind != .array) return null;
-
-    const count = items.kind.array.count();
-    if (count == 0) return .{ .all = null };
-
-    const nodes = try ctx.usage_arena.alloc(Schema.Constraint.Node, count);
-    var iter = items.kind.array.iter();
-    var i: usize = 0;
-    while (iter.next()) |item| : (i += 1) {
-        nodes[i] = .{
-            .constraint = try parse_constraint(ctx, item),
-            .next = if (i + 1 < count) &nodes[i + 1] else null,
-        };
-    }
-
-    return .{ .all = &nodes[0] };
+    return try parse_array_of_constraints(ctx, &items.kind.array);
 }
 
-fn parse_applicator__any_of(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
+fn parse_applicator__any_of(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?*const Schema.Constraint.Node {
     const items = (obj.get_const("anyOf") orelse return null).*;
     if (items.kind != .array) return null;
-
-    const count = items.kind.array.count();
-    if (count == 0) return .{ .any = null };
-
-    const nodes = try ctx.usage_arena.alloc(Schema.Constraint.Node, count);
-    var iter = items.kind.array.iter();
-    var i: usize = 0;
-    while (iter.next()) |item| : (i += 1) {
-        nodes[i] = .{
-            .constraint = try parse_constraint(ctx, item),
-            .next = if (i + 1 < count) &nodes[i + 1] else null,
-        };
-    }
-
-    return .{ .any = &nodes[0] };
+    return try parse_array_of_constraints(ctx, &items.kind.array);
 }
 
-fn parse_applicator__one_of(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
+fn parse_applicator__one_of(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?*const Schema.Constraint.Node {
     const items = (obj.get_const("oneOf") orelse return null).*;
     if (items.kind != .array) return null;
+    return try parse_array_of_constraints(ctx, &items.kind.array);
+}
 
-    const count = items.kind.array.count();
-    if (count == 0) return .{ .one = null };
-
-    const nodes = try ctx.usage_arena.alloc(Schema.Constraint.Node, count);
-    var iter = items.kind.array.iter();
-    var i: usize = 0;
-    while (iter.next()) |item| : (i += 1) {
-        nodes[i] = .{
-            .constraint = try parse_constraint(ctx, item),
-            .next = if (i + 1 < count) &nodes[i + 1] else null,
-        };
+fn parse_validation__multiple_of(obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) void {
+    const multiple_of = (obj.get_const("multipleOf") orelse return).*;
+    switch (multiple_of.kind) {
+        .float => |float_val| {
+            constraint.multiple_of_f64 = float_val;
+        },
+        .integer => |int_val| {
+            constraint.multiple_of_i64 = int_val;
+        },
+        else => {},
     }
-
-    return .{ .one = &nodes[0] };
 }
 
-fn parse_validation__multiple_of(obj: *const HashableJsonValue.Kind.Object) ?Schema.Constraint.Kind {
-    const multiple_of = (obj.get_const("multipleOf") orelse return null).*;
-    return switch (multiple_of.kind) {
-        .float => |float_val| .{ .multiple_of_f64 = float_val },
-        .integer => |int_val| .{ .multiple_of_i64 = int_val },
-        else => null,
-    };
-}
-
-fn parse_validation__pattern(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
-    const pattern = (obj.get_const("pattern") orelse return null).*;
-    if (pattern.kind != .string) return null;
+fn parse_validation__pattern(
+    ctx: *ParseContext,
+    obj: *const HashableJsonValue.Kind.Object,
+    constraint: *Schema.Constraint,
+) !void {
+    const pattern = (obj.get_const("pattern") orelse return).*;
+    if (pattern.kind != .string) return;
 
     const pattern_c = try ctx.usage_arena.allocator().dupeZ(u8, pattern.kind.string);
-    const re = try pcre.Regex.compile(pattern_c, .{
+    constraint.pattern = try pcre.Regex.compile(pattern_c, .{
         .Dotall = true,
         .JavascriptCompat = true,
         .Utf8 = true,
     });
-
-    return .{
-        .pattern = re,
-    };
 }
 
 fn parse_applicator__if_then_else(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) !void {
