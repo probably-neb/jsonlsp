@@ -41,6 +41,63 @@ pub const Value = struct {
         return val;
     }
 
+    pub fn as_object(self: *const Value) ?*const Value.Kind.Object {
+        switch (self.kind) {
+            .object => |obj| return obj,
+            else => return null,
+        }
+    }
+
+    pub fn as_array(self: *const Value) ?*const Value.Kind.Array {
+        switch (self.kind) {
+            .array => |arr| return arr,
+            else => return null,
+        }
+    }
+
+    pub fn as_string(self: *const Value) ?str8 {
+        switch (self.kind) {
+            .string => |str| return str,
+            else => return null,
+        }
+    }
+
+    pub fn as_bool(self: *const Value) ?bool {
+        switch (self.kind) {
+            .bool => |val| return val,
+            else => return null,
+        }
+    }
+
+    pub fn as_integer(self: *const Value) ?i64 {
+        switch (self.kind) {
+            .integer => |val| return val,
+            else => return null,
+        }
+    }
+
+    pub fn as_float(self: *const Value) ?f64 {
+        switch (self.kind) {
+            .float => |val| return val,
+            else => return null,
+        }
+    }
+
+    pub fn as_number(self: *const Value) ?f64 {
+        switch (self.kind) {
+            .integer => |val| return @floatFromInt(val),
+            .float => |val| return val,
+            else => return null,
+        }
+    }
+
+    pub fn as_null(self: *const Value) ?void {
+        switch (self.kind) {
+            .null => return {},
+            else => return null,
+        }
+    }
+
     pub const Kind_Tag = enum(u8) {
         null = 0,
         bool = 1,

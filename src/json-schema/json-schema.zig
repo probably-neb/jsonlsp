@@ -71,6 +71,9 @@ pub const Schema = struct {
         } = .{},
         prefix_items: ?*const Constraint.Node = null,
         items: ?*const Constraint = null,
+        properties: []Property = &.{},
+        additional_properties: ?*const Constraint = null,
+        pattern_properties: []PatternProperty = &.{},
         if_constraint: ?*const Constraint = null,
         then_constraint: ?*const Constraint = null,
         else_constraint: ?*const Constraint = null,
@@ -99,16 +102,6 @@ pub const Schema = struct {
             min_items: u64,
             max_properties: u64,
             min_properties: u64,
-            properties: struct {
-                first_property: ?*const Node,
-                additional: *const Constraint,
-                pattern_properties: []PatternProperty,
-            },
-            // todo: just store in slice, not actual constraint
-            property: struct {
-                name: str8,
-                constraint: *const Constraint,
-            },
             required: []u64,
             dependent_required: []DependentRequiredEntry,
             multiple_of_i64: i64,
@@ -134,6 +127,11 @@ pub const Schema = struct {
                 .constraint = &.zero,
                 .next = null,
             };
+        };
+
+        pub const Property = struct {
+            name: str8,
+            constraint: *const Constraint,
         };
 
         pub const PatternProperty = struct {
@@ -182,6 +180,41 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
             if (constraint.items) |items| {
                 while (arr_iter.next()) |item| {
                     if (!try check(arena, items, item)) return false;
+                }
+            }
+        }
+    }
+    if (value.kind == .object) {
+        const scratch = Arena.get_scratch(&.{arena});
+        defer scratch.release();
+
+        var checked_properties: std.StringArrayHashMapUnmanaged(void) = .empty;
+        defer checked_properties.deinit(scratch.arena.allocator());
+
+        for (constraint.properties) |property| {
+            const sub_value = (value.kind.object.get_const(property.name) orelse continue).*;
+            try checked_properties.put(scratch.arena.allocator(), property.name, {});
+            if (!try check(arena, property.constraint, sub_value)) {
+                return false;
+            }
+        }
+
+        var obj_iter = value.kind.object.const_iterator();
+        while (obj_iter.next()) |entry| {
+            var matched_pattern = false;
+            for (constraint.pattern_properties) |pattern_property| {
+                const matches = try pattern_property.pattern.matches(entry.key_ptr.*, .{});
+                if (matches != null) {
+                    matched_pattern = true;
+                    if (!try check(arena, pattern_property.constraint, entry.value_ptr.*)) {
+                        return false;
+                    }
+                }
+            }
+
+            if (!checked_properties.contains(entry.key_ptr.*) and !matched_pattern and constraint.additional_properties != null) {
+                if (!try check(arena, constraint.additional_properties.?, entry.value_ptr.*)) {
+                    return false;
                 }
             }
         }
@@ -281,43 +314,6 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
             .float => |float_val| float_val > min_f64,
             else => true,
         },
-        .properties => |properties| blk: {
-            if (value.kind != .object) {
-                break :blk true;
-            }
-            const scratch = Arena.get_scratch(&.{arena});
-            defer scratch.release();
-            var current_property = properties.first_property;
-            var checked_properties: std.StringArrayHashMapUnmanaged(void) = .empty;
-            defer checked_properties.deinit(scratch.arena.allocator());
-            while (current_property) |property_node| : (current_property = property_node.next) {
-                const property_constraint = property_node.constraint;
-                const sub_value = (value.kind.object.get_const(property_constraint.kind.property.name) orelse continue).*;
-                try checked_properties.put(scratch.arena.allocator(), property_constraint.kind.property.name, {});
-                if (!try check(arena, property_constraint.kind.property.constraint, sub_value)) {
-                    break :blk false;
-                }
-            }
-            var obj_iter = value.kind.object.const_iterator();
-            while (obj_iter.next()) |entry| {
-                var matched_pattern = false;
-                for (properties.pattern_properties) |pattern_prop| {
-                    const matches = try pattern_prop.pattern.matches(entry.key_ptr.*, .{});
-                    if (matches != null) {
-                        matched_pattern = true;
-                        if (!try check(arena, pattern_prop.constraint, entry.value_ptr.*)) {
-                            break :blk false;
-                        }
-                    }
-                }
-
-                if (!checked_properties.contains(entry.key_ptr.*) and !matched_pattern) {
-                    if (!try check(arena, properties.additional, entry.value_ptr.*)) break :blk false;
-                }
-            }
-            break :blk true;
-        },
-        .property => unreachable,
         .required => |required_property_hashes| blk: {
             if (value.kind != .object) {
                 break :blk true;
@@ -684,9 +680,9 @@ fn parse_into_constraint(ctx: *ParseContext, schema: *const HashableJsonValue, c
     parse_validation__unique_items(obj, constraint);
     parse_applicator__prefix_items(ctx, obj, constraint) catch {};
     parse_applicator__items(ctx, obj, constraint) catch {};
-    if (parse_applicator__properties(ctx, obj) catch null) |properties| {
-        try chain_with(ctx, constraint, properties);
-    }
+    parse_applicator__properties(ctx, obj, constraint) catch {};
+    parse_applicator__pattern_properties(ctx, obj, constraint) catch {};
+    parse_applicator__additional_properties(ctx, obj, constraint) catch {};
     if (parse_validation__required_properties(ctx, obj) catch null) |required_properties| {
         try chain_with(ctx, constraint, required_properties);
     }
@@ -1046,77 +1042,48 @@ fn parse_applicator__items(ctx: *ParseContext, obj: *const HashableJsonValue.Kin
     constraint.items = try parse_constraint(ctx, items);
 }
 
-fn parse_applicator__properties(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
-    const properties_ptr = obj.get_const("properties");
-    const pattern_properties_ptr = obj.get_const("patternProperties");
-    const additional_properties_ptr = obj.get_const("additionalProperties");
+fn parse_applicator__properties(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) !void {
+    const properties_ptr = obj.get_const("properties") orelse return;
+    if (properties_ptr.*.kind != .object) return;
 
-    const properties_value: ?*const HashableJsonValue = if (properties_ptr) |p| p.* else null;
-    const pattern_properties_value: ?*const HashableJsonValue = if (pattern_properties_ptr) |p| p.* else null;
-    const additional_properties_value: ?*const HashableJsonValue = if (additional_properties_ptr) |p| p.* else null;
-
-    // Return null if none of the three property-related keywords are present
-    if (properties_value == null and pattern_properties_value == null and additional_properties_value == null) {
-        return null;
+    const properties_obj = &properties_ptr.*.kind.object;
+    var properties = try base.ArenaList(Schema.Constraint.Property).init_capacity(ctx.usage_arena, properties_obj.count());
+    var property_iter = properties_obj.const_iterator();
+    while (property_iter.next()) |entry| {
+        properties.append_assume_capacity(.{
+            .name = try persist_string(ctx, entry.key_ptr.*),
+            .constraint = try parse_constraint(ctx, entry.value_ptr.*),
+        });
     }
+    constraint.properties = properties.items;
+}
 
-    // Parse properties
-    var first_property: ?*Schema.Constraint.Node = null;
-    if (properties_value) |props| {
-        if (props.kind == .object) {
-            var property_iter = props.kind.object.const_iterator();
-            const property_nodes = try ctx.usage_arena.alloc(Schema.Constraint.Node, props.kind.object.count());
-            var index: usize = 0;
-            while (property_iter.next()) |entry| : (index += 1) {
-                const property_constraint = try ctx.usage_arena.create(Schema.Constraint);
-                property_constraint.kind = .{
-                    .property = .{
-                        .name = try persist_string(ctx, entry.key_ptr.*),
-                        .constraint = try parse_constraint(ctx, entry.value_ptr.*),
-                    },
-                };
-                property_nodes[index] = .{
-                    .constraint = property_constraint,
-                    .next = if (index + 1 < property_nodes.len) &property_nodes[index + 1] else null,
-                };
-            }
-            if (property_nodes.len > 0) {
-                first_property = &property_nodes[0];
-            }
-        }
+fn parse_applicator__pattern_properties(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) !void {
+    const pattern_properties_ptr = obj.get_const("patternProperties") orelse return;
+    if (pattern_properties_ptr.*.kind != .object) return;
+
+    const pattern_properties_obj = &pattern_properties_ptr.*.kind.object;
+    var pattern_properties = try base.ArenaList(Schema.Constraint.PatternProperty).init_capacity(ctx.usage_arena, pattern_properties_obj.count());
+    var pattern_iter = pattern_properties_obj.const_iterator();
+    while (pattern_iter.next()) |entry| {
+        const pattern_c = try ctx.usage_arena.allocator().dupeZ(u8, entry.key_ptr.*);
+        // PERF: lazy compile
+        const re = pcre.Regex.compile(pattern_c, .{
+            .Dotall = true,
+            .JavascriptCompat = true,
+            .Utf8 = true,
+        }) catch continue;
+        pattern_properties.append_assume_capacity(.{
+            .pattern = re,
+            .constraint = try parse_constraint(ctx, entry.value_ptr.*),
+        });
     }
+    constraint.pattern_properties = pattern_properties.items;
+}
 
-    // Parse patternProperties
-    var pattern_properties: []Schema.Constraint.PatternProperty = &.{};
-    if (pattern_properties_value) |pattern_props| {
-        if (pattern_props.kind == .object) {
-            var pattern_property_list = try ctx.usage_arena.alloc(Schema.Constraint.PatternProperty, pattern_props.kind.object.count());
-            var pattern_iter = pattern_props.kind.object.const_iterator();
-            var pattern_index: usize = 0;
-            while (pattern_iter.next()) |entry| {
-                const pattern_c = try ctx.usage_arena.allocator().dupeZ(u8, entry.key_ptr.*);
-                const re = pcre.Regex.compile(pattern_c, .{
-                    .Dotall = true,
-                    .JavascriptCompat = true,
-                    .Utf8 = true,
-                }) catch continue; // Skip invalid patterns
-                pattern_property_list[pattern_index] = .{
-                    .pattern = re,
-                    .constraint = try parse_constraint(ctx, entry.value_ptr.*),
-                };
-                pattern_index += 1;
-            }
-            pattern_properties = pattern_property_list[0..pattern_index];
-        }
-    }
-
-    return .{
-        .properties = .{
-            .first_property = first_property,
-            .additional = if (additional_properties_value) |additional| try parse_constraint(ctx, additional) else @constCast(&Schema.Constraint.zero),
-            .pattern_properties = pattern_properties,
-        },
-    };
+fn parse_applicator__additional_properties(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) !void {
+    const additional_properties_ptr = obj.get_const("additionalProperties") orelse return;
+    constraint.additional_properties = try parse_constraint(ctx, additional_properties_ptr.*);
 }
 
 fn parse_validation__required_properties(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) !?Schema.Constraint.Kind {
@@ -1708,6 +1675,80 @@ test "object constraints - additionalProperties" {
     // Additional properties present
     try std.testing.expectEqual(schema.is_valid("{\"name\": \"John\", \"age\": 30}"), false);
     try std.testing.expectEqual(schema.is_valid("{\"extra\": \"field\"}"), false);
+}
+
+test "object constraints - properties do not require presence or restrict extras by default" {
+    const schema_str =
+        \\{
+        \\  "properties": {
+        \\    "name": { "type": "string" },
+        \\    "forbidden": false
+        \\  }
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expectEqual(schema.is_valid("{}"), true);
+    try std.testing.expectEqual(schema.is_valid("{\"name\": \"John\"}"), true);
+    try std.testing.expectEqual(schema.is_valid("{\"extra\": 42}"), true);
+    try std.testing.expectEqual(schema.is_valid("{\"forbidden\": 1}"), false);
+}
+
+test "object constraints - patternProperties" {
+    const schema_str =
+        \\{
+        \\  "patternProperties": {
+        \\    "^[a-z]+$": { "type": "integer" }
+        \\  }
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expectEqual(schema.is_valid("{\"foo\": 1, \"bar\": 2}"), true);
+    try std.testing.expectEqual(schema.is_valid("{\"CamelCase\": true, \"alphanumeric123\": \"ok\"}"), true);
+    try std.testing.expectEqual(schema.is_valid("{\"foo\": \"nope\"}"), false);
+}
+
+test "object constraints - overlapping patternProperties all apply" {
+    const schema_str =
+        \\{
+        \\  "patternProperties": {
+        \\    "^f": { "type": "string" },
+        \\    "o$": { "minLength": 3 }
+        \\  }
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expectEqual(schema.is_valid("{\"foo\": \"long\"}"), true);
+    try std.testing.expectEqual(schema.is_valid("{\"boo\": 1}"), true);
+    try std.testing.expectEqual(schema.is_valid("{\"foo\": \"xx\"}"), false);
+    try std.testing.expectEqual(schema.is_valid("{\"boo\": \"xx\"}"), false);
+}
+
+test "object constraints - properties and patternProperties both apply before additionalProperties" {
+    const schema_str =
+        \\{
+        \\  "properties": {
+        \\    "foo": { "type": "string" }
+        \\  },
+        \\  "patternProperties": {
+        \\    "^f": { "minLength": 3 }
+        \\  },
+        \\  "additionalProperties": { "type": "boolean" }
+        \\}
+    ;
+    var schema = try parse(schema_str);
+    defer schema.arena.deinit();
+
+    try std.testing.expectEqual(schema.is_valid("{\"foo\": \"long\", \"extra\": true}"), true);
+    try std.testing.expectEqual(schema.is_valid("{\"foo\": \"xx\"}"), false);
+    try std.testing.expectEqual(schema.is_valid("{\"foo\": 3}"), false);
+    try std.testing.expectEqual(schema.is_valid("{\"fizz\": 1}"), true);
+    try std.testing.expectEqual(schema.is_valid("{\"extra\": \"nope\"}"), false);
 }
 
 test "enum constraint" {
