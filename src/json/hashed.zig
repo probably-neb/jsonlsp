@@ -690,11 +690,15 @@ fn hash_number_into(hasher: *std.hash.Wyhash, value: f64) void {
     hasher.update(mem.asBytes(&value));
 }
 
+fn hash_hash_into(hasher: *std.hash.Wyhash, hash: u64) void {
+    hasher.update(mem.asBytes(&hash));
+}
+
 fn hash_array_into(hasher: *std.hash.Wyhash, arr: *const Value.Kind.Array) void {
     hasher.update(&[_]u8{@intFromEnum(Value.Kind_Tag.array)});
     var iter = arr.iter();
     while (iter.next()) |item| {
-        hash_value_into(hasher, item);
+        hash_hash_into(hasher, item.hash);
     }
 }
 
@@ -707,45 +711,37 @@ fn hash_object_into(hasher: *std.hash.Wyhash, obj: *const Value.Kind.Object) voi
     const scratch = Arena.get_scratch(&.{});
     defer scratch.release();
 
-    const keys = scratch.arena.alloc(str8, n) catch {
-        hash_object_unsorted(hasher, obj);
-        return;
-    };
-    const values = scratch.arena.alloc(*const Value, n) catch {
-        hash_object_unsorted(hasher, obj);
-        return;
-    };
-    const indices = scratch.arena.alloc(usize, n) catch {
+    const properties = scratch.arena.alloc(*const Value, n) catch {
         hash_object_unsorted(hasher, obj);
         return;
     };
 
-    var iter = obj.map.const_iterator();
+    var iter = obj.properties.iter();
     var i: usize = 0;
-    while (iter.next()) |entry| : (i += 1) {
-        keys[i] = entry.key_ptr.*;
-        values[i] = entry.value_ptr.*.kind.string.child orelse unreachable;
-        indices[i] = i;
+    while (iter.next()) |property| : (i += 1) {
+        properties[i] = property;
     }
 
     // Sort indices by key for consistent hashing regardless of insertion order
-    mem.sort(usize, indices, keys, struct {
-        pub fn less_than(k: []const str8, a: usize, b: usize) bool {
-            return mem.lessThan(u8, k[a], k[b]);
+    // PERF: sort by hash instead. Lexicographic sorting is not necessary.
+    mem.sort(*const Value, properties, {}, struct {
+        pub fn less_than(_: void, a: *const Value, b: *const Value) bool {
+            return mem.lessThan(u8, a.kind.string.value, b.kind.string.value);
         }
     }.less_than);
 
-    for (indices) |idx| {
-        hasher.update(keys[idx]);
-        hash_value_into(hasher, values[idx]);
+    for (properties) |property| {
+        hash_hash_into(hasher, property.hash);
+        hash_hash_into(hasher, property.kind.string.child.?.hash);
     }
 }
 
 fn hash_object_unsorted(hasher: *std.hash.Wyhash, obj: *const Value.Kind.Object) void {
-    var iter = obj.map.const_iterator();
-    while (iter.next()) |entry| {
-        hasher.update(entry.key_ptr.*);
-        hash_value_into(hasher, entry.value_ptr.*.kind.string.child orelse unreachable);
+    var iter = obj.properties.iter();
+    while (iter.next()) |property| {
+        const child = property.kind.string.child.?;
+        hash_hash_into(hasher, property.hash);
+        hash_hash_into(hasher, child.hash);
     }
 }
 
