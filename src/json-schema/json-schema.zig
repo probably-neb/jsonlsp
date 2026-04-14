@@ -114,6 +114,7 @@ pub const Schema = struct {
 
         pub const Property = struct {
             name: str8,
+            hash: u64,
             constraint: *const Constraint,
         };
 
@@ -259,12 +260,11 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
         const scratch = Arena.get_scratch(&.{arena});
         defer scratch.release();
 
-        // PERF: store hashes when parsing Value, and use them here instead of diffing str values
-        var checked_properties: XarMap(str8, void, 0) = .empty;
+        var checked_properties: XarMap(u64, void, 0) = .empty;
 
         for (constraint.properties) |property| {
             const sub_value = value.kind.object.get_const(property.name) orelse continue;
-            try checked_properties.put(scratch.arena, property.name, {});
+            try checked_properties.put(scratch.arena, property.hash, {});
             if (!try check(arena, property.constraint, sub_value)) {
                 return false;
             }
@@ -274,7 +274,7 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
         while (obj_iter.next()) |key_node| {
             const key_string = key_node.kind.string;
             const key = key_string.value;
-            const sub_value = key_string.child orelse unreachable;
+            const sub_value = key_string.child.?;
 
             var matched_pattern = false;
             for (constraint.pattern_properties) |pattern_property| {
@@ -287,7 +287,7 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
                 }
             }
 
-            if (!checked_properties.contains(key) and !matched_pattern and constraint.additional_properties != null) {
+            if (!checked_properties.contains(key_node.hash) and !matched_pattern and constraint.additional_properties != null) {
                 if (!try check(arena, constraint.additional_properties.?, sub_value)) {
                     return false;
                 }
@@ -295,19 +295,17 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
         }
 
         for (constraint.required) |required_property_hash| {
-            var key_iter = value.kind.object.map.key_iterator();
+            var key_iter = value.kind.object.properties.iter();
             while (key_iter.next()) |key_ptr| {
-                const key_hash = json.hashed.compute_string_hash(key_ptr.*);
-                if (key_hash == required_property_hash) break;
+                if (key_ptr.hash == required_property_hash) break;
             } else return false;
         }
 
         for (constraint.dependent_required) |entry| {
             var trigger_present = false;
-            var trigger_iter = value.kind.object.map.key_iterator();
+            var trigger_iter = value.kind.object.properties.iter();
             while (trigger_iter.next()) |key_ptr| {
-                const key_hash = json.hashed.compute_string_hash(key_ptr.*);
-                if (key_hash == entry.trigger_property_hash) {
+                if (key_ptr.hash == entry.trigger_property_hash) {
                     trigger_present = true;
                     break;
                 }
@@ -317,10 +315,9 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
 
             for (entry.required_property_hashes) |required_property_hash| {
                 var dependent_present = false;
-                var dependent_iter = value.kind.object.map.key_iterator();
+                var dependent_iter = value.kind.object.properties.iter();
                 while (dependent_iter.next()) |key_ptr| {
-                    const key_hash = json.hashed.compute_string_hash(key_ptr.*);
-                    if (key_hash == required_property_hash) {
+                    if (key_ptr.hash == required_property_hash) {
                         dependent_present = true;
                         break;
                     }
@@ -953,7 +950,8 @@ fn parse_applicator__properties(ctx: *ParseContext, obj: *const HashableJsonValu
         const key_string = key_node.kind.string;
         properties.append_assume_capacity(.{
             .name = try ctx.usage_arena.dupe(u8, key_string.value),
-            .constraint = try parse_constraint(ctx, key_string.child orelse unreachable),
+            .hash = key_node.hash,
+            .constraint = try parse_constraint(ctx, key_string.child.?),
         });
     }
     constraint.properties = properties.items;
@@ -976,7 +974,7 @@ fn parse_applicator__pattern_properties(ctx: *ParseContext, obj: *const Hashable
         }) catch continue;
         pattern_properties.append_assume_capacity(.{
             .pattern = re,
-            .constraint = try parse_constraint(ctx, key_string.child orelse unreachable),
+            .constraint = try parse_constraint(ctx, key_string.child.?),
         });
     }
     constraint.pattern_properties = pattern_properties.items;
@@ -987,6 +985,7 @@ fn parse_applicator__additional_properties(ctx: *ParseContext, obj: *const Hasha
     constraint.additional_properties = try parse_constraint(ctx, additional_properties_ptr);
 }
 
+// TODO: draft checking is brittle
 fn parse_validation__required_properties(
     ctx: *ParseContext,
     obj: *const HashableJsonValue.Kind.Object,
@@ -995,18 +994,17 @@ fn parse_validation__required_properties(
     if (ctx.revision == .draft3) {
         // Draft3 style: "required": true inside each property definition
         const properties_value = (obj.get_const("properties") orelse return).*;
-        if (properties_value.kind != .object) return;
+        const properties_object = properties_value.as_object() orelse return;
 
         var required_properties: base.ArenaList(u64) = .empty;
-        var property_iter = properties_value.kind.object.properties.iter();
+        var property_iter = properties_object.properties.iter();
         while (property_iter.next()) |key_node| {
-            const key_string = key_node.kind.string;
-            const property_schema = key_string.child orelse unreachable;
+            const property_schema = key_node.kind.string.child.?;
             if (property_schema.kind != .object) continue;
             const required_field = (property_schema.kind.object.get_const("required") orelse continue).*;
             if (required_field.kind != .bool) continue;
             if (required_field.kind.bool) {
-                try required_properties.append(ctx.usage_arena, json.hashed.compute_string_hash(key_string.value));
+                try required_properties.append(ctx.usage_arena, key_node.hash);
             }
         }
 
@@ -1042,7 +1040,7 @@ fn parse_validation__dependent_required(
     var iter = dependent_required_value.kind.object.properties.iter();
     while (iter.next()) |key_node| {
         const key_string = key_node.kind.string;
-        const dependent_value = key_string.child orelse unreachable;
+        const dependent_value = key_string.child.?;
         if (dependent_value.kind != .array) continue;
 
         var required_hashes = try base.ArenaList(u64).init_capacity(ctx.usage_arena, dependent_value.kind.array.count());
@@ -1055,7 +1053,7 @@ fn parse_validation__dependent_required(
         if (required_hashes.items.len == 0) continue;
 
         entries.append_assume_capacity(.{
-            .trigger_property_hash = json.hashed.compute_string_hash(key_string.value),
+            .trigger_property_hash = key_node.hash,
             .required_property_hashes = required_hashes.items,
         });
     }
