@@ -57,7 +57,7 @@ pub const Value = struct {
 
     pub fn as_string(self: *const Value) ?str8 {
         switch (self.kind) {
-            .string => |str| return str,
+            .string => |str| return str.value,
             else => return null,
         }
     }
@@ -113,13 +113,44 @@ pub const Value = struct {
         bool: bool,
         integer: i64,
         float: f64,
-        string: str8,
+        string: String,
         array: Array,
         object: Object,
 
+        pub const String = struct {
+            value: str8,
+            child: ?*Value = null,
+        };
+
         pub const Array = base.IntrusiveDoublyLinkedList(Value);
-        // TODO: make IntrusiveDoublyLinkedList so keys are stored as `Value`s
-        pub const Object = base.XarMap(str8, *Value, 4);
+
+        pub const Object = struct {
+            map: base.XarMap(str8, *Value, 4) = .empty,
+            properties: Properties = .zero,
+
+            pub const zero: Object = .{};
+            pub const Properties = base.IntrusiveDoublyLinkedList(Value);
+
+            pub fn count(obj: Object) usize {
+                return obj.map.count();
+            }
+
+            pub fn get_const(obj: *const Object, key: str8) ?*const Value {
+                const key_node = obj.map.get_const(key) orelse return null;
+                return switch (key_node.*.kind) {
+                    .string => |str| str.child,
+                    else => unreachable,
+                };
+            }
+
+            pub fn get(obj: *Object, key: str8) ?*Value {
+                const key_node = obj.map.get(key) orelse return null;
+                return switch (key_node.*.kind) {
+                    .string => |str| str.child,
+                    else => unreachable,
+                };
+            }
+        };
     };
 };
 
@@ -166,8 +197,7 @@ pub fn resolve_pointer(value: *const Value, pointer: str8) ?*const Value {
 
         switch (current.kind) {
             .object => |*obj| {
-                const ptr = obj.map.get_const(segment) orelse return null;
-                current = ptr.*;
+                current = obj.get_const(segment) orelse return null;
             },
             .array => |*arr| {
                 const index = std.fmt.parseInt(usize, segment, 10) catch return null;
@@ -206,8 +236,7 @@ pub fn resolve_pointer_mut(value: *Value, pointer: str8) ?*Value {
 
         switch (current.kind) {
             .object => |*obj| {
-                const ptr = obj.map.get(segment) orelse return null;
-                current = ptr.*;
+                current = obj.get(segment) orelse return null;
             },
             .array => |*arr| {
                 const index = std.fmt.parseInt(usize, segment, 10) catch return null;
@@ -307,7 +336,7 @@ fn parse_string(parser: *Parser) ParseError!*Value {
 
     return .value(
         try parser.arena.create(Value),
-        .{ .string = content },
+        .{ .string = .{ .value = content } },
         compute_string_hash(content),
     );
 }
@@ -382,15 +411,15 @@ fn parse_array(parser: *Parser) ParseError!*Value {
 fn parse_object(parser: *Parser) ParseError!*Value {
     parser.pos += 1; // consume '{'
 
-    var obj_map: Value.Kind.Object = .empty;
+    var obj: Value.Kind.Object = .zero;
 
     // Check for empty object
     if (parser.pos < parser.tokens.len and parser.tokens[parser.pos].kind == .r_curly) {
         parser.pos += 1;
         return .value(
             try parser.arena.create(Value),
-            .{ .object = obj_map },
-            compute_object_hash(&obj_map),
+            .{ .object = obj },
+            compute_object_hash(&obj),
         );
     }
 
@@ -399,7 +428,6 @@ fn parse_object(parser: *Parser) ParseError!*Value {
             return error.UnexpectedEndOfInput;
         }
 
-        // Parse key
         const key_token = parser.tokens[parser.pos];
         if (key_token.kind != .string) {
             return error.UnexpectedToken;
@@ -410,7 +438,6 @@ fn parse_object(parser: *Parser) ParseError!*Value {
         if (raw_key.len < 2) return error.InvalidString;
         const key = try unescape_string(parser.arena, raw_key[1 .. raw_key.len - 1]);
 
-        // Expect colon
         if (parser.pos >= parser.tokens.len) {
             return error.UnexpectedEndOfInput;
         }
@@ -419,11 +446,23 @@ fn parse_object(parser: *Parser) ParseError!*Value {
         }
         parser.pos += 1;
 
-        // Parse value
         const value = try parse_value(parser);
 
-        // Allocate value on arena and add to map for O(1) lookups
-        try obj_map.put(parser.arena, key, value);
+        const entry = try obj.map.get_or_put(parser.arena, key);
+        if (entry.found_existing) {
+            switch (entry.value_ptr.*.kind) {
+                .string => |*str| str.child = value,
+                else => unreachable,
+            }
+        } else {
+            const key_node: *Value = .value(
+                try parser.arena.create(Value),
+                .{ .string = .{ .value = entry.key_ptr.*, .child = value } },
+                compute_string_hash(entry.key_ptr.*),
+            );
+            obj.properties.append(key_node);
+            entry.value_ptr.* = key_node;
+        }
 
         if (parser.pos >= parser.tokens.len) {
             return error.UnexpectedEndOfInput;
@@ -442,8 +481,8 @@ fn parse_object(parser: *Parser) ParseError!*Value {
 
     return .value(
         try parser.arena.create(Value),
-        .{ .object = obj_map },
-        compute_object_hash(&obj_map),
+        .{ .object = obj },
+        compute_object_hash(&obj),
     );
 }
 
@@ -681,11 +720,11 @@ fn hash_object_into(hasher: *std.hash.Wyhash, obj: *const Value.Kind.Object) voi
         return;
     };
 
-    var iter = obj.const_iterator();
+    var iter = obj.map.const_iterator();
     var i: usize = 0;
     while (iter.next()) |entry| : (i += 1) {
         keys[i] = entry.key_ptr.*;
-        values[i] = entry.value_ptr.*;
+        values[i] = entry.value_ptr.*.kind.string.child orelse unreachable;
         indices[i] = i;
     }
 
@@ -703,10 +742,10 @@ fn hash_object_into(hasher: *std.hash.Wyhash, obj: *const Value.Kind.Object) voi
 }
 
 fn hash_object_unsorted(hasher: *std.hash.Wyhash, obj: *const Value.Kind.Object) void {
-    var iter = obj.const_iterator();
+    var iter = obj.map.const_iterator();
     while (iter.next()) |entry| {
         hasher.update(entry.key_ptr.*);
-        hash_value_into(hasher, entry.value_ptr.*);
+        hash_value_into(hasher, entry.value_ptr.*.kind.string.child orelse unreachable);
     }
 }
 
@@ -716,7 +755,7 @@ fn hash_value_into(hasher: *std.hash.Wyhash, value: *const Value) void {
         .bool => |b| hash_bool_into(hasher, b),
         .integer => |i| hash_number_into(hasher, @floatFromInt(i)),
         .float => |f| hash_number_into(hasher, f),
-        .string => |s| hash_string_into(hasher, s),
+        .string => |s| hash_string_into(hasher, s.value),
         .array => |*arr| hash_array_into(hasher, arr),
         .object => |*obj| hash_object_into(hasher, obj),
     }
@@ -805,7 +844,7 @@ test "parse strings" {
     defer arena.deinit();
 
     const result = try parse(&arena, "\"hello world\"");
-    try std.testing.expectEqualStrings("hello world", result.kind.string);
+    try std.testing.expectEqualStrings("hello world", result.as_string().?);
 }
 
 test "parse string with escapes" {
@@ -813,10 +852,10 @@ test "parse string with escapes" {
     defer arena.deinit();
 
     const result = try parse(&arena, "\"hello\\nworld\"");
-    try std.testing.expectEqualStrings("hello\nworld", result.kind.string);
+    try std.testing.expectEqualStrings("hello\nworld", result.as_string().?);
 
     const result2 = try parse(&arena, "\"tab\\there\"");
-    try std.testing.expectEqualStrings("tab\there", result2.kind.string);
+    try std.testing.expectEqualStrings("tab\there", result2.as_string().?);
 }
 
 test "parse empty array" {
@@ -843,7 +882,7 @@ test "parse empty object" {
     defer arena.deinit();
 
     const result = try parse(&arena, "{}");
-    try std.testing.expectEqual(@as(usize, 0), result.kind.object.map.count());
+    try std.testing.expectEqual(@as(usize, 0), result.kind.object.count());
 }
 
 test "parse object with values" {
@@ -853,12 +892,13 @@ test "parse object with values" {
     const result = try parse(&arena,
         \\{"name": "test", "value": 42}
     );
-    try std.testing.expectEqual(@as(usize, 2), result.kind.object.map.count());
+    try std.testing.expectEqual(@as(usize, 2), result.kind.object.count());
 
-    const name = result.kind.object.map.get_const("name").?.*;
-    try std.testing.expectEqualStrings("test", name.kind.string);
+    const name_key = result.kind.object.map.get_const("name").?.*;
+    try std.testing.expectEqualStrings("name", name_key.kind.string.value);
+    try std.testing.expectEqualStrings("test", name_key.kind.string.child.?.as_string().?);
 
-    const val = result.kind.object.map.get_const("value").?.*;
+    const val = result.kind.object.get_const("value").?;
     try std.testing.expectEqual(@as(i64, 42), val.kind.integer);
 }
 
@@ -869,12 +909,12 @@ test "parse nested structure" {
     const result = try parse(&arena,
         \\{"arr": [1, {"nested": true}], "obj": {"a": "b"}}
     );
-    try std.testing.expectEqual(@as(usize, 2), result.kind.object.map.count());
+    try std.testing.expectEqual(@as(usize, 2), result.kind.object.count());
 
-    const arr = result.kind.object.map.get_const("arr").?.*;
+    const arr = result.kind.object.get_const("arr").?;
     try std.testing.expectEqual(@as(usize, 2), arr.kind.array.len);
     try std.testing.expectEqual(@as(i64, 1), arr.kind.array.get(0).?.kind.integer);
-    try std.testing.expectEqual(true, arr.kind.array.get(1).?.kind.object.map.get_const("nested").?.*.kind.bool);
+    try std.testing.expectEqual(true, arr.kind.array.get(1).?.kind.object.get_const("nested").?.kind.bool);
 }
 
 test "hash consistency - same value same hash" {
@@ -939,7 +979,7 @@ test "resolve_pointer - root" {
     );
     const resolved = value.resolve_pointer("");
     try std.testing.expect(resolved != null);
-    try std.testing.expectEqual(@as(usize, 1), resolved.?.kind.object.map.count());
+    try std.testing.expectEqual(@as(usize, 1), resolved.?.kind.object.count());
 }
 
 test "resolve_pointer - simple path" {
@@ -952,7 +992,7 @@ test "resolve_pointer - simple path" {
 
     const resolved = value.resolve_pointer("/properties/name/type");
     try std.testing.expect(resolved != null);
-    try std.testing.expectEqualStrings("string", resolved.?.kind.string);
+    try std.testing.expectEqualStrings("string", resolved.?.as_string().?);
 }
 
 test "resolve_pointer - with fragment" {
@@ -965,7 +1005,7 @@ test "resolve_pointer - with fragment" {
 
     const resolved = value.resolve_pointer("#/properties/name/type");
     try std.testing.expect(resolved != null);
-    try std.testing.expectEqualStrings("string", resolved.?.kind.string);
+    try std.testing.expectEqualStrings("string", resolved.?.as_string().?);
 }
 
 test "resolve_pointer - array index" {
@@ -978,7 +1018,7 @@ test "resolve_pointer - array index" {
 
     const resolved = value.resolve_pointer("/items/1/type");
     try std.testing.expect(resolved != null);
-    try std.testing.expectEqualStrings("string", resolved.?.kind.string);
+    try std.testing.expectEqualStrings("string", resolved.?.as_string().?);
 }
 
 test "resolve_pointer - not found" {

@@ -35,7 +35,7 @@ pub const Revision = enum {
         const schema_uri = (schema.kind.object.get_const("$schema") orelse return .unknown).*;
         if (schema_uri.kind != .string) return .unknown;
 
-        const uri = schema_uri.kind.string;
+        const uri = schema_uri.kind.string.value;
         if (mem.indexOf(u8, uri, "draft-03") != null or mem.indexOf(u8, uri, "draft3") != null) {
             return .draft3;
         } else if (mem.indexOf(u8, uri, "draft-04") != null or mem.indexOf(u8, uri, "draft4") != null) {
@@ -157,12 +157,12 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
     }
 
     if (value.kind == .string) {
-        const len = std.unicode.utf8CountCodepoints(value.kind.string) catch 0;
+        const len = std.unicode.utf8CountCodepoints(value.kind.string.value) catch 0;
         if (len < constraint.min_len or len > constraint.max_len) {
             return false;
         }
         if (constraint.pattern) |regex| {
-            const matches = try regex.matches(value.kind.string, .{});
+            const matches = try regex.matches(value.kind.string.value, .{});
             if (matches == null) {
                 return false;
             }
@@ -263,35 +263,39 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
         var checked_properties: XarMap(str8, void, 0) = .empty;
 
         for (constraint.properties) |property| {
-            const sub_value = (value.kind.object.get_const(property.name) orelse continue).*;
+            const sub_value = value.kind.object.get_const(property.name) orelse continue;
             try checked_properties.put(scratch.arena, property.name, {});
             if (!try check(arena, property.constraint, sub_value)) {
                 return false;
             }
         }
 
-        var obj_iter = value.kind.object.const_iterator();
-        while (obj_iter.next()) |entry| {
+        var obj_iter = value.kind.object.properties.iter();
+        while (obj_iter.next()) |key_node| {
+            const key_string = key_node.kind.string;
+            const key = key_string.value;
+            const sub_value = key_string.child orelse unreachable;
+
             var matched_pattern = false;
             for (constraint.pattern_properties) |pattern_property| {
-                const matches = try pattern_property.pattern.matches(entry.key_ptr.*, .{});
+                const matches = try pattern_property.pattern.matches(key, .{});
                 if (matches != null) {
                     matched_pattern = true;
-                    if (!try check(arena, pattern_property.constraint, entry.value_ptr.*)) {
+                    if (!try check(arena, pattern_property.constraint, sub_value)) {
                         return false;
                     }
                 }
             }
 
-            if (!checked_properties.contains(entry.key_ptr.*) and !matched_pattern and constraint.additional_properties != null) {
-                if (!try check(arena, constraint.additional_properties.?, entry.value_ptr.*)) {
+            if (!checked_properties.contains(key) and !matched_pattern and constraint.additional_properties != null) {
+                if (!try check(arena, constraint.additional_properties.?, sub_value)) {
                     return false;
                 }
             }
         }
 
         for (constraint.required) |required_property_hash| {
-            var key_iter = value.kind.object.key_iterator();
+            var key_iter = value.kind.object.map.key_iterator();
             while (key_iter.next()) |key_ptr| {
                 const key_hash = json.hashed.compute_string_hash(key_ptr.*);
                 if (key_hash == required_property_hash) break;
@@ -300,7 +304,7 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
 
         for (constraint.dependent_required) |entry| {
             var trigger_present = false;
-            var trigger_iter = value.kind.object.key_iterator();
+            var trigger_iter = value.kind.object.map.key_iterator();
             while (trigger_iter.next()) |key_ptr| {
                 const key_hash = json.hashed.compute_string_hash(key_ptr.*);
                 if (key_hash == entry.trigger_property_hash) {
@@ -313,7 +317,7 @@ fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const Hash
 
             for (entry.required_property_hashes) |required_property_hash| {
                 var dependent_present = false;
-                var dependent_iter = value.kind.object.key_iterator();
+                var dependent_iter = value.kind.object.map.key_iterator();
                 while (dependent_iter.next()) |key_ptr| {
                     const key_hash = json.hashed.compute_string_hash(key_ptr.*);
                     if (key_hash == required_property_hash) {
@@ -435,7 +439,7 @@ pub fn resolve_pointer(value: *const HashableJsonValue, unescaped_pointer: []con
 
         switch (current.kind) {
             .object => |obj| {
-                current = (obj.get(segment) orelse return null).*;
+                current = obj.get_const(segment) orelse return null;
             },
             .array => |arr| {
                 const index = std.fmt.parseInt(usize, segment, 10) catch return null;
@@ -586,7 +590,7 @@ fn parse_into_constraint(ctx: *ParseContext, schema: *const HashableJsonValue, c
 
     if (obj.get_const("$id")) |id_ptr| {
         if (id_ptr.*.kind == .string) {
-            ctx.id_registry.put(ctx.parse_arena, id_ptr.*.kind.string, schema) catch {};
+            ctx.id_registry.put(ctx.parse_arena, id_ptr.*.kind.string.value, schema) catch {};
         }
     }
 
@@ -595,7 +599,7 @@ fn parse_into_constraint(ctx: *ParseContext, schema: *const HashableJsonValue, c
         if (ref.kind != .string) {
             break :parse_ref;
         }
-        if (try resolve_ref(ctx, ref.kind.string)) |target| {
+        if (try resolve_ref(ctx, ref.kind.string.value)) |target| {
             constraint.ref_constraint = target;
         }
         // In draft4-7, $ref overrides all siblings
@@ -746,7 +750,7 @@ fn parse_validation__type(obj: *const HashableJsonValue.Kind.Object, constraint:
     switch (ty.kind) {
         .string => |v_type_str| {
             found_type = true;
-            constraint.types.add(v_type_str);
+            constraint.types.add(v_type_str.value);
         },
         .array => |*arr| {
             var iter = arr.iter();
@@ -756,7 +760,7 @@ fn parse_validation__type(obj: *const HashableJsonValue.Kind.Object, constraint:
                     // todo: error
                     continue;
                 }
-                constraint.types.add(v_type_item.kind.string);
+                constraint.types.add(v_type_item.kind.string.value);
             }
         },
         else => {},
@@ -794,28 +798,28 @@ fn parse_validation__max_length(obj: *const HashableJsonValue.Kind.Object, const
 /// https://www.learnjsonschema.com/2020-12/validation/minimum/
 fn parse_validation__min(obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) void {
     const min_val_ptr = obj.get_const("minimum") orelse return;
-    const number = JsonNumber.from_json_value(min_val_ptr.*) orelse return;
+    const number = JsonNumber.from_json_value(min_val_ptr) orelse return;
     constraint.bounds.upsert_lower(number, false);
 }
 
 /// https://www.learnjsonschema.com/2020-12/validation/maximum/
 fn parse_validation__max(obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) void {
     const max_val_ptr = obj.get_const("maximum") orelse return;
-    const number = JsonNumber.from_json_value(max_val_ptr.*) orelse return;
+    const number = JsonNumber.from_json_value(max_val_ptr) orelse return;
     constraint.bounds.upsert_upper(number, false);
 }
 
 /// https://www.learnjsonschema.com/2020-12/validation/exclusiveminimum/
 fn parse_validation__exclusive_min(obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) void {
     const min_val_ptr = obj.get_const("exclusiveMinimum") orelse return;
-    const number = JsonNumber.from_json_value(min_val_ptr.*) orelse return;
+    const number = JsonNumber.from_json_value(min_val_ptr) orelse return;
     constraint.bounds.upsert_lower(number, true);
 }
 
 /// https://www.learnjsonschema.com/2020-12/validation/exclusivemaximum/
 fn parse_validation__exclusive_max(obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) void {
     const max_val_ptr = obj.get_const("exclusiveMaximum") orelse return;
-    const number = JsonNumber.from_json_value(max_val_ptr.*) orelse return;
+    const number = JsonNumber.from_json_value(max_val_ptr) orelse return;
     constraint.bounds.upsert_upper(number, true);
 }
 
@@ -923,13 +927,13 @@ fn parse_applicator__items(ctx: *ParseContext, obj: *const HashableJsonValue.Kin
 
     const items = blk: {
         if (obj.get_const("items")) |items_ptr| {
-            if (items_ptr.*.kind != .array) break :blk items_ptr.*;
+            if (items_ptr.*.kind != .array) break :blk items_ptr;
         }
         if (has_legacy_tuple_items and ctx.revision != .draft2020_12 and ctx.revision != .draft_next) {
             if (obj.get_const("additionalItems")) |additional_items_ptr| {
                 if (additional_items_ptr.*.kind != .array) {
                     constraint.flags.additional_items = true;
-                    break :blk additional_items_ptr.*;
+                    break :blk additional_items_ptr;
                 }
             }
         }
@@ -944,11 +948,12 @@ fn parse_applicator__properties(ctx: *ParseContext, obj: *const HashableJsonValu
 
     const properties_obj = &properties_ptr.*.kind.object;
     var properties = try base.ArenaList(Schema.Constraint.Property).init_capacity(ctx.usage_arena, properties_obj.count());
-    var property_iter = properties_obj.const_iterator();
-    while (property_iter.next()) |entry| {
+    var property_iter = properties_obj.properties.iter();
+    while (property_iter.next()) |key_node| {
+        const key_string = key_node.kind.string;
         properties.append_assume_capacity(.{
-            .name = try ctx.usage_arena.dupe(u8, entry.key_ptr.*),
-            .constraint = try parse_constraint(ctx, entry.value_ptr.*),
+            .name = try ctx.usage_arena.dupe(u8, key_string.value),
+            .constraint = try parse_constraint(ctx, key_string.child orelse unreachable),
         });
     }
     constraint.properties = properties.items;
@@ -960,10 +965,10 @@ fn parse_applicator__pattern_properties(ctx: *ParseContext, obj: *const Hashable
 
     const pattern_properties_obj = &pattern_properties_ptr.*.kind.object;
     var pattern_properties = try base.ArenaList(Schema.Constraint.PatternProperty).init_capacity(ctx.usage_arena, pattern_properties_obj.count());
-    var pattern_iter = pattern_properties_obj.const_iterator();
-    while (pattern_iter.next()) |entry| {
-        const pattern_c = try ctx.usage_arena.allocator().dupeZ(u8, entry.key_ptr.*);
-        // PERF: lazy compile
+    var pattern_iter = pattern_properties_obj.properties.iter();
+    while (pattern_iter.next()) |key_node| {
+        const key_string = key_node.kind.string;
+        const pattern_c = try ctx.usage_arena.allocator().dupeZ(u8, key_string.value);
         const re = pcre.Regex.compile(pattern_c, .{
             .Dotall = true,
             .JavascriptCompat = true,
@@ -971,7 +976,7 @@ fn parse_applicator__pattern_properties(ctx: *ParseContext, obj: *const Hashable
         }) catch continue;
         pattern_properties.append_assume_capacity(.{
             .pattern = re,
-            .constraint = try parse_constraint(ctx, entry.value_ptr.*),
+            .constraint = try parse_constraint(ctx, key_string.child orelse unreachable),
         });
     }
     constraint.pattern_properties = pattern_properties.items;
@@ -979,7 +984,7 @@ fn parse_applicator__pattern_properties(ctx: *ParseContext, obj: *const Hashable
 
 fn parse_applicator__additional_properties(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) !void {
     const additional_properties_ptr = obj.get_const("additionalProperties") orelse return;
-    constraint.additional_properties = try parse_constraint(ctx, additional_properties_ptr.*);
+    constraint.additional_properties = try parse_constraint(ctx, additional_properties_ptr);
 }
 
 fn parse_validation__required_properties(
@@ -993,13 +998,15 @@ fn parse_validation__required_properties(
         if (properties_value.kind != .object) return;
 
         var required_properties: base.ArenaList(u64) = .empty;
-        var property_iter = properties_value.kind.object.const_iterator();
-        while (property_iter.next()) |entry| {
-            if (entry.value_ptr.*.kind != .object) continue;
-            const required_field = (entry.value_ptr.*.kind.object.get_const("required") orelse continue).*;
+        var property_iter = properties_value.kind.object.properties.iter();
+        while (property_iter.next()) |key_node| {
+            const key_string = key_node.kind.string;
+            const property_schema = key_string.child orelse unreachable;
+            if (property_schema.kind != .object) continue;
+            const required_field = (property_schema.kind.object.get_const("required") orelse continue).*;
             if (required_field.kind != .bool) continue;
             if (required_field.kind.bool) {
-                try required_properties.append(ctx.usage_arena, json.hashed.compute_string_hash(entry.key_ptr.*));
+                try required_properties.append(ctx.usage_arena, json.hashed.compute_string_hash(key_string.value));
             }
         }
 
@@ -1032,12 +1039,14 @@ fn parse_validation__dependent_required(
         ctx.usage_arena,
         dependent_required_value.kind.object.count(),
     );
-    var iter = dependent_required_value.kind.object.const_iterator();
-    while (iter.next()) |entry| {
-        if (entry.value_ptr.*.kind != .array) continue;
+    var iter = dependent_required_value.kind.object.properties.iter();
+    while (iter.next()) |key_node| {
+        const key_string = key_node.kind.string;
+        const dependent_value = key_string.child orelse unreachable;
+        if (dependent_value.kind != .array) continue;
 
-        var required_hashes = try base.ArenaList(u64).init_capacity(ctx.usage_arena, entry.value_ptr.*.kind.array.count());
-        var req_iter = entry.value_ptr.*.kind.array.iter();
+        var required_hashes = try base.ArenaList(u64).init_capacity(ctx.usage_arena, dependent_value.kind.array.count());
+        var req_iter = dependent_value.kind.array.iter();
         while (req_iter.next()) |required_property| {
             if (required_property.kind != .string) continue;
             required_hashes.append_assume_capacity(required_property.hash);
@@ -1046,7 +1055,7 @@ fn parse_validation__dependent_required(
         if (required_hashes.items.len == 0) continue;
 
         entries.append_assume_capacity(.{
-            .trigger_property_hash = json.hashed.compute_string_hash(entry.key_ptr.*),
+            .trigger_property_hash = json.hashed.compute_string_hash(key_string.value),
             .required_property_hashes = required_hashes.items,
         });
     }
@@ -1055,7 +1064,7 @@ fn parse_validation__dependent_required(
 }
 
 fn parse_applicator_not(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) !void {
-    const sub_schema = (obj.get_const("not") orelse return).*;
+    const sub_schema = obj.get_const("not") orelse return;
     constraint.not_constraint = try parse_constraint(ctx, sub_schema);
 }
 
@@ -1098,7 +1107,7 @@ fn parse_validation__pattern(
     const pattern = (obj.get_const("pattern") orelse return).*;
     if (pattern.kind != .string) return;
 
-    const pattern_c = try ctx.usage_arena.allocator().dupeZ(u8, pattern.kind.string);
+    const pattern_c = try ctx.usage_arena.allocator().dupeZ(u8, pattern.kind.string.value);
     constraint.pattern = try pcre.Regex.compile(pattern_c, .{
         .Dotall = true,
         .JavascriptCompat = true,
@@ -1108,12 +1117,12 @@ fn parse_validation__pattern(
 
 fn parse_applicator__if_then_else(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) !void {
     const cond_value = obj.get_const("if") orelse return;
-    constraint.if_constraint = try parse_constraint(ctx, cond_value.*);
+    constraint.if_constraint = try parse_constraint(ctx, cond_value);
     if (obj.get_const("then")) |then| {
-        constraint.then_constraint = try parse_constraint(ctx, then.*);
+        constraint.then_constraint = try parse_constraint(ctx, then);
     }
     if (obj.get_const("else")) |elsa| {
-        constraint.else_constraint = try parse_constraint(ctx, elsa.*);
+        constraint.else_constraint = try parse_constraint(ctx, elsa);
     }
 }
 
