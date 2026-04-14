@@ -4,47 +4,90 @@ const json_schema = @import("json-schema.zig");
 const parse = json_schema.parse;
 const parse_with_revision = json_schema.parse_with_revision;
 
-test "boolean schema - true schema accepts everything" {
-    const schema_str = "true";
-    var schema = try parse(schema_str);
+const ValidationCase = struct {
+    []const u8,
+    bool,
+};
+
+fn expect_validation_cases(
+    schema_str: []const u8,
+    revision: ?json_schema.Revision,
+    cases: []const ValidationCase,
+) !void {
+    var schema = if (revision) |resolved_revision|
+        try parse_with_revision(schema_str, resolved_revision)
+    else
+        try parse(schema_str);
     defer schema.arena.deinit();
 
-    // True schema should accept any valid JSON
-    try std.testing.expectEqual(schema.is_valid("42"), true);
-    try std.testing.expectEqual(schema.is_valid("\"hello\""), true);
-    try std.testing.expectEqual(schema.is_valid("null"), true);
-    try std.testing.expectEqual(schema.is_valid("[]"), true);
-    try std.testing.expectEqual(schema.is_valid("{}"), true);
-    try std.testing.expectEqual(schema.is_valid("true"), true);
-    try std.testing.expectEqual(schema.is_valid("false"), true);
+    for (cases, 0..) |validation_case, case_index| {
+        const actual_valid = schema.is_valid(validation_case[0]);
+        if (actual_valid != validation_case[1]) {
+            std.debug.print(
+                \\validation case {d} failed
+                \\expected valid: {}
+                \\actual valid: {}
+                \\input JSON:
+                \\{s}
+                \\schema JSON:
+                \\{s}
+                \\
+            , .{
+                case_index,
+                validation_case[1],
+                actual_valid,
+                validation_case[0],
+                schema_str,
+            });
+            return error.TestUnexpectedResult;
+        }
+    }
+}
+
+test "boolean schema - true schema accepts everything" {
+    try expect_validation_cases("true", null, &.{
+        .{ "42", true },
+        .{
+            \\"hello"
+            ,
+            true,
+        },
+        .{ "null", true },
+        .{ "[]", true },
+        .{ "{}", true },
+        .{ "true", true },
+        .{ "false", true },
+    });
 }
 
 test "boolean schema - false schema rejects everything" {
-    const schema_str = "false";
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    // False schema should reject any JSON
-    try std.testing.expectEqual(schema.is_valid("42"), false);
-    try std.testing.expectEqual(schema.is_valid("\"hello\""), false);
-    try std.testing.expectEqual(schema.is_valid("null"), false);
-    try std.testing.expectEqual(schema.is_valid("[]"), false);
-    try std.testing.expectEqual(schema.is_valid("{}"), false);
-    try std.testing.expectEqual(schema.is_valid("true"), false);
-    try std.testing.expectEqual(schema.is_valid("false"), false);
+    try expect_validation_cases("false", null, &.{
+        .{ "42", false },
+        .{
+            \\"hello"
+            ,
+            false,
+        },
+        .{ "null", false },
+        .{ "[]", false },
+        .{ "{}", false },
+        .{ "true", false },
+        .{ "false", false },
+    });
 }
 
 test "empty object schema - accepts everything" {
-    const schema_str = "{}";
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    // Empty object schema should accept any valid JSON
-    try std.testing.expectEqual(schema.is_valid("42"), true);
-    try std.testing.expectEqual(schema.is_valid("\"test\""), true);
-    try std.testing.expectEqual(schema.is_valid("null"), true);
-    try std.testing.expectEqual(schema.is_valid("[]"), true);
-    try std.testing.expectEqual(schema.is_valid("{}"), true);
+    try expect_validation_cases("{}", null, &.{
+        .{ "42", true },
+        .{
+            \\"test"
+            ,
+            true,
+        },
+        .{ "null", true },
+        .{ "[]", true },
+        .{ "{}", true },
+    });
 }
 
 test "type constraint - string" {
@@ -53,19 +96,28 @@ test "type constraint - string" {
         \\  "type": "string"
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expectEqual(schema.is_valid("\"hello\""), true);
-    try std.testing.expectEqual(schema.is_valid("\"\""), true);
-    try std.testing.expectEqual(schema.is_valid("\"123\""), true);
-
-    // Should reject non-strings
-    try std.testing.expectEqual(schema.is_valid("123"), false);
-    try std.testing.expectEqual(schema.is_valid("true"), false);
-    try std.testing.expectEqual(schema.is_valid("null"), false);
-    try std.testing.expectEqual(schema.is_valid("[]"), false);
-    try std.testing.expectEqual(schema.is_valid("{}"), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\"hello"
+            ,
+            true,
+        },
+        .{
+            \\""
+            ,
+            true,
+        },
+        .{
+            \\"123"
+            ,
+            true,
+        },
+        .{ "123", false },
+        .{ "true", false },
+        .{ "null", false },
+        .{ "[]", false },
+        .{ "{}", false },
+    });
 }
 
 test "type constraint - number" {
@@ -74,22 +126,22 @@ test "type constraint - number" {
         \\  "type": "number"
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    // Should accept numbers
-    try std.testing.expectEqual(schema.is_valid("42"), true);
-    try std.testing.expectEqual(schema.is_valid("3.14"), true);
-    try std.testing.expectEqual(schema.is_valid("-10"), true);
-    try std.testing.expectEqual(schema.is_valid("0"), true);
-    try std.testing.expectEqual(schema.is_valid("1.5e10"), true);
-
-    // Should reject non-numbers
-    try std.testing.expectEqual(schema.is_valid("\"42\""), false);
-    try std.testing.expectEqual(schema.is_valid("true"), false);
-    try std.testing.expectEqual(schema.is_valid("null"), false);
-    try std.testing.expectEqual(schema.is_valid("[]"), false);
-    try std.testing.expectEqual(schema.is_valid("{}"), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "42", true },
+        .{ "3.14", true },
+        .{ "-10", true },
+        .{ "0", true },
+        .{ "1.5e10", true },
+        .{
+            \\"42"
+            ,
+            false,
+        },
+        .{ "true", false },
+        .{ "null", false },
+        .{ "[]", false },
+        .{ "{}", false },
+    });
 }
 
 test "type constraint - integer" {
@@ -98,20 +150,20 @@ test "type constraint - integer" {
         \\  "type": "integer"
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    // Should accept integers
-    try std.testing.expectEqual(schema.is_valid("42"), true);
-    try std.testing.expectEqual(schema.is_valid("-10"), true);
-    try std.testing.expectEqual(schema.is_valid("0"), true);
-
-    // Should reject non-integers
-    try std.testing.expectEqual(schema.is_valid("3.14"), false);
-    try std.testing.expectEqual(schema.is_valid("\"42\""), false);
-    try std.testing.expectEqual(schema.is_valid("true"), false);
-    try std.testing.expectEqual(schema.is_valid("null"), false);
-    try std.testing.expectEqual(schema.is_valid("[]"), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "42", true },
+        .{ "-10", true },
+        .{ "0", true },
+        .{ "3.14", false },
+        .{
+            \\"42"
+            ,
+            false,
+        },
+        .{ "true", false },
+        .{ "null", false },
+        .{ "[]", false },
+    });
 }
 
 test "type constraint - boolean" {
@@ -120,19 +172,19 @@ test "type constraint - boolean" {
         \\  "type": "boolean"
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    // Should accept booleans
-    try std.testing.expectEqual(schema.is_valid("true"), true);
-    try std.testing.expectEqual(schema.is_valid("false"), true);
-
-    // Should reject non-booleans
-    try std.testing.expectEqual(schema.is_valid("\"true\""), false);
-    try std.testing.expectEqual(schema.is_valid("1"), false);
-    try std.testing.expectEqual(schema.is_valid("0"), false);
-    try std.testing.expectEqual(schema.is_valid("null"), false);
-    try std.testing.expectEqual(schema.is_valid("[]"), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "true", true },
+        .{ "false", true },
+        .{
+            \\"true"
+            ,
+            false,
+        },
+        .{ "1", false },
+        .{ "0", false },
+        .{ "null", false },
+        .{ "[]", false },
+    });
 }
 
 test "type constraint - null" {
@@ -141,18 +193,18 @@ test "type constraint - null" {
         \\  "type": "null"
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    // Should accept null
-    try std.testing.expectEqual(schema.is_valid("null"), true);
-
-    // Should reject non-null
-    try std.testing.expectEqual(schema.is_valid("\"null\""), false);
-    try std.testing.expectEqual(schema.is_valid("0"), false);
-    try std.testing.expectEqual(schema.is_valid("false"), false);
-    try std.testing.expectEqual(schema.is_valid("[]"), false);
-    try std.testing.expectEqual(schema.is_valid("{}"), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "null", true },
+        .{
+            \\"null"
+            ,
+            false,
+        },
+        .{ "0", false },
+        .{ "false", false },
+        .{ "[]", false },
+        .{ "{}", false },
+    });
 }
 
 test "type constraint - array" {
@@ -161,20 +213,24 @@ test "type constraint - array" {
         \\  "type": "array"
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    // Should accept arrays
-    try std.testing.expectEqual(schema.is_valid("[]"), true);
-    try std.testing.expectEqual(schema.is_valid("[1, 2, 3]"), true);
-    try std.testing.expectEqual(schema.is_valid("[\"a\", \"b\"]"), true);
-    try std.testing.expectEqual(schema.is_valid("[true, false, null]"), true);
-
-    // Should reject non-arrays
-    try std.testing.expectEqual(schema.is_valid("{}"), false);
-    try std.testing.expectEqual(schema.is_valid("\"array\""), false);
-    try std.testing.expectEqual(schema.is_valid("123"), false);
-    try std.testing.expectEqual(schema.is_valid("null"), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "[]", true },
+        .{ "[1, 2, 3]", true },
+        .{
+            \\["a", "b"]
+            ,
+            true,
+        },
+        .{ "[true, false, null]", true },
+        .{ "{}", false },
+        .{
+            \\"array"
+            ,
+            false,
+        },
+        .{ "123", false },
+        .{ "null", false },
+    });
 }
 
 test "type constraint - object" {
@@ -183,19 +239,27 @@ test "type constraint - object" {
         \\  "type": "object"
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    // Should accept objects
-    try std.testing.expectEqual(schema.is_valid("{}"), true);
-    try std.testing.expectEqual(schema.is_valid("{\"key\": \"value\"}"), true);
-    try std.testing.expectEqual(schema.is_valid("{\"a\": 1, \"b\": 2}"), true);
-
-    // Should reject non-objects
-    try std.testing.expectEqual(schema.is_valid("[]"), false);
-    try std.testing.expectEqual(schema.is_valid("\"object\""), false);
-    try std.testing.expectEqual(schema.is_valid("123"), false);
-    try std.testing.expectEqual(schema.is_valid("null"), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "{}", true },
+        .{
+            \\{"key": "value"}
+            ,
+            true,
+        },
+        .{
+            \\{"a": 1, "b": 2}
+            ,
+            true,
+        },
+        .{ "[]", false },
+        .{
+            \\"object"
+            ,
+            false,
+        },
+        .{ "123", false },
+        .{ "null", false },
+    });
 }
 
 test "type constraint - array of types" {
@@ -204,18 +268,20 @@ test "type constraint - array of types" {
         \\  "type": ["boolean", "array"]
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("true"));
-    try std.testing.expect(schema.is_valid("false"));
-    try std.testing.expect(schema.is_valid("[]"));
-    try std.testing.expect(schema.is_valid("[1, 2, 3]"));
-
-    try std.testing.expect(!schema.is_valid("1234"));
-    try std.testing.expect(!schema.is_valid("\"foo\""));
-    try std.testing.expect(!schema.is_valid("null"));
-    try std.testing.expect(!schema.is_valid("{}"));
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "true", true },
+        .{ "false", true },
+        .{ "[]", true },
+        .{ "[1, 2, 3]", true },
+        .{ "1234", false },
+        .{
+            \\"foo"
+            ,
+            false,
+        },
+        .{ "null", false },
+        .{ "{}", false },
+    });
 }
 
 test "type constraint - siblings stay conjunctive with anyOf" {
@@ -228,13 +294,20 @@ test "type constraint - siblings stay conjunctive with anyOf" {
         \\  ]
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("\"hello\""));
-    try std.testing.expect(!schema.is_valid("\"hi\""));
-    try std.testing.expect(!schema.is_valid("true"));
-    try std.testing.expect(!schema.is_valid("42"));
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\"hello"
+            ,
+            true,
+        },
+        .{
+            \\"hi"
+            ,
+            false,
+        },
+        .{ "true", false },
+        .{ "42", false },
+    });
 }
 
 test "string constraints - minLength and maxLength" {
@@ -245,21 +318,39 @@ test "string constraints - minLength and maxLength" {
         \\  "maxLength": 5
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    // Valid lengths
-    try std.testing.expectEqual(schema.is_valid("\"ab\""), true);
-    try std.testing.expectEqual(schema.is_valid("\"abc\""), true);
-    try std.testing.expectEqual(schema.is_valid("\"abcde\""), true);
-
-    // Invalid lengths
-    try std.testing.expectEqual(schema.is_valid("\"a\""), false);
-    try std.testing.expectEqual(schema.is_valid("\"abcdef\""), false);
-    try std.testing.expectEqual(schema.is_valid("\"\""), false);
-
-    // Non-strings should fail
-    try std.testing.expectEqual(schema.is_valid("123"), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\"ab"
+            ,
+            true,
+        },
+        .{
+            \\"abc"
+            ,
+            true,
+        },
+        .{
+            \\"abcde"
+            ,
+            true,
+        },
+        .{
+            \\"a"
+            ,
+            false,
+        },
+        .{
+            \\"abcdef"
+            ,
+            false,
+        },
+        .{
+            \\""
+            ,
+            false,
+        },
+        .{ "123", false },
+    });
 }
 
 test "string constraints - minLength counts Unicode code points and ignores non-strings" {
@@ -268,13 +359,24 @@ test "string constraints - minLength counts Unicode code points and ignores non-
         \\  "minLength": 3
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("\"foo\""));
-    try std.testing.expect(schema.is_valid("\"こんにちは\""));
-    try std.testing.expect(!schema.is_valid("\"hi\""));
-    try std.testing.expect(schema.is_valid("55"));
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\"foo"
+            ,
+            true,
+        },
+        .{
+            \\"こんにちは"
+            ,
+            true,
+        },
+        .{
+            \\"hi"
+            ,
+            false,
+        },
+        .{ "55", true },
+    });
 }
 
 test "string constraints - maxLength counts Unicode code points and ignores non-strings" {
@@ -283,13 +385,24 @@ test "string constraints - maxLength counts Unicode code points and ignores non-
         \\  "maxLength": 3
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("\"foo\""));
-    try std.testing.expect(schema.is_valid("\"hi\""));
-    try std.testing.expect(!schema.is_valid("\"こんにちは\""));
-    try std.testing.expect(schema.is_valid("55"));
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\"foo"
+            ,
+            true,
+        },
+        .{
+            \\"hi"
+            ,
+            true,
+        },
+        .{
+            \\"こんにちは"
+            ,
+            false,
+        },
+        .{ "55", true },
+    });
 }
 
 test "string constraints - pattern" {
@@ -299,17 +412,33 @@ test "string constraints - pattern" {
         \\  "pattern": "^[a-z]+$"
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    // Matching pattern
-    try std.testing.expectEqual(schema.is_valid("\"abc\""), true);
-    try std.testing.expectEqual(schema.is_valid("\"hello\""), true);
-
-    // Not matching pattern
-    try std.testing.expectEqual(schema.is_valid("\"ABC\""), false);
-    try std.testing.expectEqual(schema.is_valid("\"hello123\""), false);
-    try std.testing.expectEqual(schema.is_valid("\"hello world\""), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\"abc"
+            ,
+            true,
+        },
+        .{
+            \\"hello"
+            ,
+            true,
+        },
+        .{
+            \\"ABC"
+            ,
+            false,
+        },
+        .{
+            \\"hello123"
+            ,
+            false,
+        },
+        .{
+            \\"hello world"
+            ,
+            false,
+        },
+    });
 }
 
 test "string constraints - pattern is unanchored, case-sensitive, and ignores non-strings" {
@@ -318,13 +447,24 @@ test "string constraints - pattern is unanchored, case-sensitive, and ignores no
         \\  "pattern": "es"
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("\"expression\""));
-    try std.testing.expect(!schema.is_valid("\"EXPRESSION\""));
-    try std.testing.expect(!schema.is_valid("\"foo\""));
-    try std.testing.expect(schema.is_valid("1234"));
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\"expression"
+            ,
+            true,
+        },
+        .{
+            \\"EXPRESSION"
+            ,
+            false,
+        },
+        .{
+            \\"foo"
+            ,
+            false,
+        },
+        .{ "1234", true },
+    });
 }
 
 test "number constraints - minimum and maximum" {
@@ -335,19 +475,15 @@ test "number constraints - minimum and maximum" {
         \\  "maximum": 100
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    // Valid range
-    try std.testing.expectEqual(schema.is_valid("0"), true);
-    try std.testing.expectEqual(schema.is_valid("50"), true);
-    try std.testing.expectEqual(schema.is_valid("100"), true);
-    try std.testing.expectEqual(schema.is_valid("99.99"), true);
-
-    // Outside range
-    try std.testing.expectEqual(schema.is_valid("-1"), false);
-    try std.testing.expectEqual(schema.is_valid("101"), false);
-    try std.testing.expectEqual(schema.is_valid("1000"), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "0", true },
+        .{ "50", true },
+        .{ "100", true },
+        .{ "99.99", true },
+        .{ "-1", false },
+        .{ "101", false },
+        .{ "1000", false },
+    });
 }
 
 test "number constraints - exclusiveMinimum and exclusiveMaximum" {
@@ -358,19 +494,15 @@ test "number constraints - exclusiveMinimum and exclusiveMaximum" {
         \\  "exclusiveMaximum": 100
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    // Valid range (exclusive)
-    try std.testing.expectEqual(schema.is_valid("0.1"), true);
-    try std.testing.expectEqual(schema.is_valid("50"), true);
-    try std.testing.expectEqual(schema.is_valid("99.99"), true);
-
-    // Invalid (at boundaries)
-    try std.testing.expectEqual(schema.is_valid("0"), false);
-    try std.testing.expectEqual(schema.is_valid("100"), false);
-    try std.testing.expectEqual(schema.is_valid("-1"), false);
-    try std.testing.expectEqual(schema.is_valid("101"), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "0.1", true },
+        .{ "50", true },
+        .{ "99.99", true },
+        .{ "0", false },
+        .{ "100", false },
+        .{ "-1", false },
+        .{ "101", false },
+    });
 }
 
 test "number constraints - minimum and maximum compare integer and float values consistently" {
@@ -380,14 +512,17 @@ test "number constraints - minimum and maximum compare integer and float values 
         \\  "maximum": 10
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("10"));
-    try std.testing.expect(schema.is_valid("10.0"));
-    try std.testing.expect(!schema.is_valid("9.9"));
-    try std.testing.expect(!schema.is_valid("10.1"));
-    try std.testing.expect(schema.is_valid("\"10\""));
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "10", true },
+        .{ "10.0", true },
+        .{ "9.9", false },
+        .{ "10.1", false },
+        .{
+            \\"10"
+            ,
+            true,
+        },
+    });
 }
 
 test "number constraints - exclusive bounds reject equal integer and float values and ignore non-numbers" {
@@ -397,64 +532,67 @@ test "number constraints - exclusive bounds reject equal integer and float value
         \\  "exclusiveMaximum": 20
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(!schema.is_valid("10"));
-    try std.testing.expect(!schema.is_valid("10.0"));
-    try std.testing.expect(schema.is_valid("10.1"));
-    try std.testing.expect(schema.is_valid("19.9"));
-    try std.testing.expect(!schema.is_valid("20"));
-    try std.testing.expect(!schema.is_valid("20.0"));
-    try std.testing.expect(schema.is_valid("\"15\""));
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "10", false },
+        .{ "10.0", false },
+        .{ "10.1", true },
+        .{ "19.9", true },
+        .{ "20", false },
+        .{ "20.0", false },
+        .{
+            \\"15"
+            ,
+            true,
+        },
+    });
 }
 
 test "number constraints - lower bounds combine to the stricter constraint" {
-    var inclusive_schema = try parse(
+    const inclusive_schema_str =
         \\{
         \\  "minimum": 5,
         \\  "exclusiveMinimum": 3
         \\}
-    );
-    defer inclusive_schema.arena.deinit();
+    ;
+    try expect_validation_cases(inclusive_schema_str, null, &.{
+        .{ "4.9", false },
+        .{ "5", true },
+    });
 
-    try std.testing.expect(!inclusive_schema.is_valid("4.9"));
-    try std.testing.expect(inclusive_schema.is_valid("5"));
-
-    var exclusive_schema = try parse(
+    const exclusive_schema_str =
         \\{
         \\  "minimum": 3,
         \\  "exclusiveMinimum": 3
         \\}
-    );
-    defer exclusive_schema.arena.deinit();
-
-    try std.testing.expect(!exclusive_schema.is_valid("3"));
-    try std.testing.expect(exclusive_schema.is_valid("3.1"));
+    ;
+    try expect_validation_cases(exclusive_schema_str, null, &.{
+        .{ "3", false },
+        .{ "3.1", true },
+    });
 }
 
 test "number constraints - upper bounds combine to the stricter constraint" {
-    var inclusive_schema = try parse(
+    const inclusive_schema_str =
         \\{
         \\  "maximum": 5,
         \\  "exclusiveMaximum": 8
         \\}
-    );
-    defer inclusive_schema.arena.deinit();
+    ;
+    try expect_validation_cases(inclusive_schema_str, null, &.{
+        .{ "5", true },
+        .{ "5.1", false },
+    });
 
-    try std.testing.expect(inclusive_schema.is_valid("5"));
-    try std.testing.expect(!inclusive_schema.is_valid("5.1"));
-
-    var exclusive_schema = try parse(
+    const exclusive_schema_str =
         \\{
         \\  "maximum": 5,
         \\  "exclusiveMaximum": 5
         \\}
-    );
-    defer exclusive_schema.arena.deinit();
-
-    try std.testing.expect(!exclusive_schema.is_valid("5"));
-    try std.testing.expect(exclusive_schema.is_valid("4.9"));
+    ;
+    try expect_validation_cases(exclusive_schema_str, null, &.{
+        .{ "5", false },
+        .{ "4.9", true },
+    });
 }
 
 test "array constraints - minItems and maxItems" {
@@ -465,17 +603,13 @@ test "array constraints - minItems and maxItems" {
         \\  "maxItems": 3
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    // Valid counts
-    try std.testing.expectEqual(schema.is_valid("[1]"), true);
-    try std.testing.expectEqual(schema.is_valid("[1, 2]"), true);
-    try std.testing.expectEqual(schema.is_valid("[1, 2, 3]"), true);
-
-    // Invalid counts
-    try std.testing.expectEqual(schema.is_valid("[]"), false);
-    try std.testing.expectEqual(schema.is_valid("[1, 2, 3, 4]"), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "[1]", true },
+        .{ "[1, 2]", true },
+        .{ "[1, 2, 3]", true },
+        .{ "[]", false },
+        .{ "[1, 2, 3, 4]", false },
+    });
 }
 
 test "array constraints - uniqueItems" {
@@ -485,17 +619,21 @@ test "array constraints - uniqueItems" {
         \\  "uniqueItems": true
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    // Unique items
-    try std.testing.expectEqual(schema.is_valid("[1, 2, 3]"), true);
-    try std.testing.expectEqual(schema.is_valid("[\"a\", \"b\", \"c\"]"), true);
-    try std.testing.expectEqual(schema.is_valid("[]"), true);
-
-    // Duplicate items
-    try std.testing.expectEqual(schema.is_valid("[1, 2, 1]"), false);
-    try std.testing.expectEqual(schema.is_valid("[\"a\", \"a\"]"), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "[1, 2, 3]", true },
+        .{
+            \\["a", "b", "c"]
+            ,
+            true,
+        },
+        .{ "[]", true },
+        .{ "[1, 2, 1]", false },
+        .{
+            \\["a", "a"]
+            ,
+            false,
+        },
+    });
 }
 
 test "array constraints - uniqueItems treats numerically equivalent values as duplicates" {
@@ -504,11 +642,10 @@ test "array constraints - uniqueItems treats numerically equivalent values as du
         \\  "uniqueItems": true
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("[1, 1.5]"));
-    try std.testing.expect(!schema.is_valid("[1, 1.0]"));
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "[1, 1.5]", true },
+        .{ "[1, 1.0]", false },
+    });
 }
 
 test "array constraints - uniqueItems treats object key order as duplicates" {
@@ -517,15 +654,16 @@ test "array constraints - uniqueItems treats object key order as duplicates" {
         \\  "uniqueItems": true
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(!schema.is_valid(
-        \\[
-        \\  {"a": 1, "b": 2},
-        \\  {"b": 2, "a": 1}
-        \\]
-    ));
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\[
+            \\  {"a": 1, "b": 2},
+            \\  {"b": 2, "a": 1}
+            \\]
+            ,
+            false,
+        },
+    });
 }
 
 test "array constraints - uniqueItems composes with items" {
@@ -536,12 +674,15 @@ test "array constraints - uniqueItems composes with items" {
         \\  "uniqueItems": true
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expectEqual(schema.is_valid("[1, 2, 3]"), true);
-    try std.testing.expectEqual(schema.is_valid("[1, 2, 1]"), false);
-    try std.testing.expectEqual(schema.is_valid("[1, \"2\", 3]"), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "[1, 2, 3]", true },
+        .{ "[1, 2, 1]", false },
+        .{
+            \\[1, "2", 3]
+            ,
+            false,
+        },
+    });
 }
 
 test "array constraints - uniqueItems composes with minItems" {
@@ -552,12 +693,11 @@ test "array constraints - uniqueItems composes with minItems" {
         \\  "uniqueItems": true
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expectEqual(schema.is_valid("[1, 2]"), true);
-    try std.testing.expectEqual(schema.is_valid("[1]"), false);
-    try std.testing.expectEqual(schema.is_valid("[1, 1]"), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "[1, 2]", true },
+        .{ "[1]", false },
+        .{ "[1, 1]", false },
+    });
 }
 
 test "array constraints - minItems and maxItems ignore non-arrays" {
@@ -567,18 +707,20 @@ test "array constraints - minItems and maxItems ignore non-arrays" {
         \\  "maxItems": 2
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("\"hello\""));
-    try std.testing.expect(schema.is_valid("42"));
-    try std.testing.expect(schema.is_valid("true"));
-    try std.testing.expect(schema.is_valid("null"));
-
-    try std.testing.expect(!schema.is_valid("[]"));
-    try std.testing.expect(schema.is_valid("[1]"));
-    try std.testing.expect(schema.is_valid("[1, 2]"));
-    try std.testing.expect(!schema.is_valid("[1, 2, 3]"));
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\"hello"
+            ,
+            true,
+        },
+        .{ "42", true },
+        .{ "true", true },
+        .{ "null", true },
+        .{ "[]", false },
+        .{ "[1]", true },
+        .{ "[1, 2]", true },
+        .{ "[1, 2, 3]", false },
+    });
 }
 
 test "object constraints - required properties" {
@@ -592,16 +734,24 @@ test "object constraints - required properties" {
         \\  "required": ["name"]
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    // Has required property
-    try std.testing.expectEqual(schema.is_valid("{\"name\": \"John\"}"), true);
-    try std.testing.expectEqual(schema.is_valid("{\"name\": \"John\", \"age\": 30}"), true);
-
-    // Missing required property
-    try std.testing.expectEqual(schema.is_valid("{}"), false);
-    try std.testing.expectEqual(schema.is_valid("{\"age\": 30}"), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\{"name": "John"}
+            ,
+            true,
+        },
+        .{
+            \\{"name": "John", "age": 30}
+            ,
+            true,
+        },
+        .{ "{}", false },
+        .{
+            \\{"age": 30}
+            ,
+            false,
+        },
+    });
 }
 
 test "object constraints - required applies without properties and checks presence only" {
@@ -610,13 +760,24 @@ test "object constraints - required applies without properties and checks presen
         \\  "required": ["foo"]
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("{\"foo\": 1}"));
-    try std.testing.expect(schema.is_valid("{\"foo\": null}"));
-    try std.testing.expect(schema.is_valid("{\"foo\": false}"));
-    try std.testing.expect(!schema.is_valid("{}"));
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\{"foo": 1}
+            ,
+            true,
+        },
+        .{
+            \\{"foo": null}
+            ,
+            true,
+        },
+        .{
+            \\{"foo": false}
+            ,
+            true,
+        },
+        .{ "{}", false },
+    });
 }
 
 test "object constraints - required is ignored for non-objects" {
@@ -625,14 +786,17 @@ test "object constraints - required is ignored for non-objects" {
         \\  "required": ["foo"]
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("42"));
-    try std.testing.expect(schema.is_valid("\"hello\""));
-    try std.testing.expect(schema.is_valid("true"));
-    try std.testing.expect(schema.is_valid("[]"));
-    try std.testing.expect(schema.is_valid("null"));
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "42", true },
+        .{
+            \\"hello"
+            ,
+            true,
+        },
+        .{ "true", true },
+        .{ "[]", true },
+        .{ "null", true },
+    });
 }
 
 test "object constraints - additionalProperties" {
@@ -645,16 +809,24 @@ test "object constraints - additionalProperties" {
         \\  "additionalProperties": false
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    // Only defined properties
-    try std.testing.expectEqual(schema.is_valid("{\"name\": \"John\"}"), true);
-    try std.testing.expectEqual(schema.is_valid("{}"), true);
-
-    // Additional properties present
-    try std.testing.expectEqual(schema.is_valid("{\"name\": \"John\", \"age\": 30}"), false);
-    try std.testing.expectEqual(schema.is_valid("{\"extra\": \"field\"}"), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\{"name": "John"}
+            ,
+            true,
+        },
+        .{ "{}", true },
+        .{
+            \\{"name": "John", "age": 30}
+            ,
+            false,
+        },
+        .{
+            \\{"extra": "field"}
+            ,
+            false,
+        },
+    });
 }
 
 test "object constraints - properties do not require presence or restrict extras by default" {
@@ -666,13 +838,24 @@ test "object constraints - properties do not require presence or restrict extras
         \\  }
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expectEqual(schema.is_valid("{}"), true);
-    try std.testing.expectEqual(schema.is_valid("{\"name\": \"John\"}"), true);
-    try std.testing.expectEqual(schema.is_valid("{\"extra\": 42}"), true);
-    try std.testing.expectEqual(schema.is_valid("{\"forbidden\": 1}"), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "{}", true },
+        .{
+            \\{"name": "John"}
+            ,
+            true,
+        },
+        .{
+            \\{"extra": 42}
+            ,
+            true,
+        },
+        .{
+            \\{"forbidden": 1}
+            ,
+            false,
+        },
+    });
 }
 
 test "object constraints - patternProperties" {
@@ -683,12 +866,23 @@ test "object constraints - patternProperties" {
         \\  }
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expectEqual(schema.is_valid("{\"foo\": 1, \"bar\": 2}"), true);
-    try std.testing.expectEqual(schema.is_valid("{\"CamelCase\": true, \"alphanumeric123\": \"ok\"}"), true);
-    try std.testing.expectEqual(schema.is_valid("{\"foo\": \"nope\"}"), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\{"foo": 1, "bar": 2}
+            ,
+            true,
+        },
+        .{
+            \\{"CamelCase": true, "alphanumeric123": "ok"}
+            ,
+            true,
+        },
+        .{
+            \\{"foo": "nope"}
+            ,
+            false,
+        },
+    });
 }
 
 test "object constraints - overlapping patternProperties all apply" {
@@ -700,13 +894,28 @@ test "object constraints - overlapping patternProperties all apply" {
         \\  }
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expectEqual(schema.is_valid("{\"foo\": \"long\"}"), true);
-    try std.testing.expectEqual(schema.is_valid("{\"boo\": 1}"), true);
-    try std.testing.expectEqual(schema.is_valid("{\"foo\": \"xx\"}"), false);
-    try std.testing.expectEqual(schema.is_valid("{\"boo\": \"xx\"}"), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\{"foo": "long"}
+            ,
+            true,
+        },
+        .{
+            \\{"boo": 1}
+            ,
+            true,
+        },
+        .{
+            \\{"foo": "xx"}
+            ,
+            false,
+        },
+        .{
+            \\{"boo": "xx"}
+            ,
+            false,
+        },
+    });
 }
 
 test "object constraints - properties and patternProperties both apply before additionalProperties" {
@@ -721,14 +930,33 @@ test "object constraints - properties and patternProperties both apply before ad
         \\  "additionalProperties": { "type": "boolean" }
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expectEqual(schema.is_valid("{\"foo\": \"long\", \"extra\": true}"), true);
-    try std.testing.expectEqual(schema.is_valid("{\"foo\": \"xx\"}"), false);
-    try std.testing.expectEqual(schema.is_valid("{\"foo\": 3}"), false);
-    try std.testing.expectEqual(schema.is_valid("{\"fizz\": 1}"), true);
-    try std.testing.expectEqual(schema.is_valid("{\"extra\": \"nope\"}"), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\{"foo": "long", "extra": true}
+            ,
+            true,
+        },
+        .{
+            \\{"foo": "xx"}
+            ,
+            false,
+        },
+        .{
+            \\{"foo": 3}
+            ,
+            false,
+        },
+        .{
+            \\{"fizz": 1}
+            ,
+            true,
+        },
+        .{
+            \\{"extra": "nope"}
+            ,
+            false,
+        },
+    });
 }
 
 test "enum constraint" {
@@ -737,20 +965,32 @@ test "enum constraint" {
         \\  "enum": ["red", "green", "blue", 42, null]
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    // Valid enum values
-    try std.testing.expectEqual(schema.is_valid("\"red\""), true);
-    try std.testing.expectEqual(schema.is_valid("\"green\""), true);
-    try std.testing.expectEqual(schema.is_valid("\"blue\""), true);
-    try std.testing.expectEqual(schema.is_valid("42"), true);
-    try std.testing.expectEqual(schema.is_valid("null"), true);
-
-    // Invalid enum values
-    try std.testing.expectEqual(schema.is_valid("\"yellow\""), false);
-    try std.testing.expectEqual(schema.is_valid("43"), false);
-    try std.testing.expectEqual(schema.is_valid("false"), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\"red"
+            ,
+            true,
+        },
+        .{
+            \\"green"
+            ,
+            true,
+        },
+        .{
+            \\"blue"
+            ,
+            true,
+        },
+        .{ "42", true },
+        .{ "null", true },
+        .{
+            \\"yellow"
+            ,
+            false,
+        },
+        .{ "43", false },
+        .{ "false", false },
+    });
 }
 
 test "enum constraint treats integer and float representations as equal" {
@@ -759,15 +999,18 @@ test "enum constraint treats integer and float representations as equal" {
         \\  "enum": [1, 2.0, 3]
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("1"));
-    try std.testing.expect(schema.is_valid("1.0"));
-    try std.testing.expect(schema.is_valid("2"));
-    try std.testing.expect(schema.is_valid("2.0"));
-    try std.testing.expect(!schema.is_valid("4"));
-    try std.testing.expect(!schema.is_valid("\"1\""));
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "1", true },
+        .{ "1.0", true },
+        .{ "2", true },
+        .{ "2.0", true },
+        .{ "4", false },
+        .{
+            \\"1"
+            ,
+            false,
+        },
+    });
 }
 
 test "enum constraint supports heterogeneous values including object and array equality" {
@@ -776,14 +1019,21 @@ test "enum constraint supports heterogeneous values including object and array e
         \\  "enum": ["red", 123, true, {"foo": "bar", "baz": 1}, [1, 2], null]
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("true"));
-    try std.testing.expect(schema.is_valid("{\"baz\":1,\"foo\":\"bar\"}"));
-    try std.testing.expect(schema.is_valid("[1,2]"));
-    try std.testing.expect(!schema.is_valid("{\"foo\":\"baz\",\"baz\":1}"));
-    try std.testing.expect(!schema.is_valid("[2,1]"));
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "true", true },
+        .{
+            \\{"baz":1,"foo":"bar"}
+            ,
+            true,
+        },
+        .{ "[1,2]", true },
+        .{
+            \\{"foo":"baz","baz":1}
+            ,
+            false,
+        },
+        .{ "[2,1]", false },
+    });
 }
 
 test "enum constraint stays conjunctive with anyOf siblings" {
@@ -796,13 +1046,16 @@ test "enum constraint stays conjunctive with anyOf siblings" {
         \\  ]
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("\"foo\""));
-    try std.testing.expect(!schema.is_valid("42"));
-    try std.testing.expect(!schema.is_valid("true"));
-    try std.testing.expect(!schema.is_valid("100"));
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\"foo"
+            ,
+            true,
+        },
+        .{ "42", false },
+        .{ "true", false },
+        .{ "100", false },
+    });
 }
 
 test "const constraint" {
@@ -811,16 +1064,20 @@ test "const constraint" {
         \\  "const": "fixed-value"
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    // Exact match
-    try std.testing.expectEqual(schema.is_valid("\"fixed-value\""), true);
-
-    // Different values
-    try std.testing.expectEqual(schema.is_valid("\"other-value\""), false);
-    try std.testing.expectEqual(schema.is_valid("null"), false);
-    try std.testing.expectEqual(schema.is_valid("42"), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\"fixed-value"
+            ,
+            true,
+        },
+        .{
+            \\"other-value"
+            ,
+            false,
+        },
+        .{ "null", false },
+        .{ "42", false },
+    });
 }
 
 test "const constraint treats integer and float representations as equal" {
@@ -829,12 +1086,11 @@ test "const constraint treats integer and float representations as equal" {
         \\  "const": 5
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("5"));
-    try std.testing.expect(schema.is_valid("5.0"));
-    try std.testing.expect(!schema.is_valid("5.5"));
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "5", true },
+        .{ "5.0", true },
+        .{ "5.5", false },
+    });
 }
 
 test "const constraint treats object key order as equal" {
@@ -846,21 +1102,24 @@ test "const constraint treats object key order as equal" {
         \\  }
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid(
-        \\{
-        \\  "age": 30,
-        \\  "name": "John Doe"
-        \\}
-    ));
-    try std.testing.expect(!schema.is_valid(
-        \\{
-        \\  "age": 31,
-        \\  "name": "John Doe"
-        \\}
-    ));
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\{
+            \\  "age": 30,
+            \\  "name": "John Doe"
+            \\}
+            ,
+            true,
+        },
+        .{
+            \\{
+            \\  "age": 31,
+            \\  "name": "John Doe"
+            \\}
+            ,
+            false,
+        },
+    });
 }
 
 test "const constraint composes with conflicting type" {
@@ -870,11 +1129,14 @@ test "const constraint composes with conflicting type" {
         \\  "type": "string"
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expectEqual(schema.is_valid("42"), false);
-    try std.testing.expectEqual(schema.is_valid("\"42\""), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "42", false },
+        .{
+            \\"42"
+            ,
+            false,
+        },
+    });
 }
 
 test "const constraint composes with other validators" {
@@ -884,11 +1146,18 @@ test "const constraint composes with other validators" {
         \\  "minLength": 5
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expectEqual(schema.is_valid("\"abc\""), false);
-    try std.testing.expectEqual(schema.is_valid("\"abcdef\""), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\"abc"
+            ,
+            false,
+        },
+        .{
+            \\"abcdef"
+            ,
+            false,
+        },
+    });
 }
 
 test "allOf combinator" {
@@ -901,18 +1170,18 @@ test "allOf combinator" {
         \\  ]
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    // Satisfies all constraints
-    try std.testing.expectEqual(schema.is_valid("50"), true);
-    try std.testing.expectEqual(schema.is_valid("0"), true);
-    try std.testing.expectEqual(schema.is_valid("100"), true);
-
-    // Fails one or more constraints
-    try std.testing.expectEqual(schema.is_valid("-1"), false);
-    try std.testing.expectEqual(schema.is_valid("101"), false);
-    try std.testing.expectEqual(schema.is_valid("\"50\""), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "50", true },
+        .{ "0", true },
+        .{ "100", true },
+        .{ "-1", false },
+        .{ "101", false },
+        .{
+            \\"50"
+            ,
+            false,
+        },
+    });
 }
 
 test "anyOf combinator" {
@@ -924,17 +1193,17 @@ test "anyOf combinator" {
         \\  ]
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    // Satisfies at least one
-    try std.testing.expectEqual(schema.is_valid("\"hello\""), true);
-    try std.testing.expectEqual(schema.is_valid("42"), true);
-
-    // Satisfies none
-    try std.testing.expectEqual(schema.is_valid("true"), false);
-    try std.testing.expectEqual(schema.is_valid("null"), false);
-    try std.testing.expectEqual(schema.is_valid("[]"), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\"hello"
+            ,
+            true,
+        },
+        .{ "42", true },
+        .{ "true", false },
+        .{ "null", false },
+        .{ "[]", false },
+    });
 }
 
 test "oneOf combinator" {
@@ -948,20 +1217,18 @@ test "oneOf combinator" {
         \\  ]
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    // Satisfies exactly one
-    try std.testing.expectEqual(schema.is_valid("10"), true); // multiple of 5 only
-    try std.testing.expectEqual(schema.is_valid("9"), false); // multiple of 3 twice
-
-    // Satisfies both (invalid for oneOf)
-    try std.testing.expectEqual(schema.is_valid("15"), false); // multiple of both 3 and 5
-    try std.testing.expectEqual(schema.is_valid("30"), false); // multiple of both 3 and 5
-
-    // Satisfies none
-    try std.testing.expectEqual(schema.is_valid("7"), false);
-    try std.testing.expectEqual(schema.is_valid("\"hello\""), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "10", true },
+        .{ "9", false },
+        .{ "15", false },
+        .{ "30", false },
+        .{ "7", false },
+        .{
+            \\"hello"
+            ,
+            false,
+        },
+    });
 }
 
 test "not combinator" {
@@ -972,18 +1239,22 @@ test "not combinator" {
         \\  }
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    // Not a string (valid)
-    try std.testing.expectEqual(schema.is_valid("42"), true);
-    try std.testing.expectEqual(schema.is_valid("true"), true);
-    try std.testing.expectEqual(schema.is_valid("null"), true);
-    try std.testing.expectEqual(schema.is_valid("[]"), true);
-
-    // Is a string (invalid)
-    try std.testing.expectEqual(schema.is_valid("\"hello\""), false);
-    try std.testing.expectEqual(schema.is_valid("\"\""), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "42", true },
+        .{ "true", true },
+        .{ "null", true },
+        .{ "[]", true },
+        .{
+            \\"hello"
+            ,
+            false,
+        },
+        .{
+            \\""
+            ,
+            false,
+        },
+    });
 }
 
 test "nested object validation" {
@@ -1004,30 +1275,28 @@ test "nested object validation" {
         \\  "required": ["user"]
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    // Valid nested object
-    const valid_input =
-        \\{
-        \\  "user": {
-        \\    "name": "John Doe",
-        \\    "email": "john@example.com"
-        \\  },
-        \\  "age": 30
-        \\}
-    ;
-    try std.testing.expectEqual(schema.is_valid(valid_input), true);
-
-    // Missing required nested property
-    const invalid_input =
-        \\{
-        \\  "user": {
-        \\    "name": "John Doe"
-        \\  }
-        \\}
-    ;
-    try std.testing.expectEqual(schema.is_valid(invalid_input), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\{
+            \\  "user": {
+            \\    "name": "John Doe",
+            \\    "email": "john@example.com"
+            \\  },
+            \\  "age": 30
+            \\}
+            ,
+            true,
+        },
+        .{
+            \\{
+            \\  "user": {
+            \\    "name": "John Doe"
+            \\  }
+            \\}
+            ,
+            false,
+        },
+    });
 }
 
 test "array items validation" {
@@ -1040,17 +1309,17 @@ test "array items validation" {
         \\  }
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    // All items valid
-    try std.testing.expectEqual(schema.is_valid("[1, 2, 3]"), true);
-    try std.testing.expectEqual(schema.is_valid("[0, 100, 50.5]"), true);
-    try std.testing.expectEqual(schema.is_valid("[]"), true);
-
-    // Some items invalid
-    try std.testing.expectEqual(schema.is_valid("[-1, 2, 3]"), false);
-    try std.testing.expectEqual(schema.is_valid("[\"1\", 2, 3]"), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "[1, 2, 3]", true },
+        .{ "[0, 100, 50.5]", true },
+        .{ "[]", true },
+        .{ "[-1, 2, 3]", false },
+        .{
+            \\["1", 2, 3]
+            ,
+            false,
+        },
+    });
 }
 
 test "array constraints - prefixItems does not require the full tuple length" {
@@ -1063,13 +1332,12 @@ test "array constraints - prefixItems does not require the full tuple length" {
         \\  ]
         \\}
     ;
-    var schema = try parse_with_revision(schema_str, .draft2020_12);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("[]"));
-    try std.testing.expect(schema.is_valid("[true]"));
-    try std.testing.expect(schema.is_valid("[true, 3]"));
-    try std.testing.expect(!schema.is_valid("[1]"));
+    try expect_validation_cases(schema_str, .draft2020_12, &.{
+        .{ "[]", true },
+        .{ "[true]", true },
+        .{ "[true, 3]", true },
+        .{ "[1]", false },
+    });
 }
 
 test "array constraints - additionalItems false rejects items beyond legacy tuple" {
@@ -1082,11 +1350,14 @@ test "array constraints - additionalItems false rejects items beyond legacy tupl
         \\  "additionalItems": false
         \\}
     ;
-    var schema = try parse_with_revision(schema_str, .draft4);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("[false, 35]"));
-    try std.testing.expect(!schema.is_valid("[false, 35, \"foo\"]"));
+    try expect_validation_cases(schema_str, .draft4, &.{
+        .{ "[false, 35]", true },
+        .{
+            \\[false, 35, "foo"]
+            ,
+            false,
+        },
+    });
 }
 
 test "array constraints - additionalItems is ignored without tuple items" {
@@ -1095,12 +1366,15 @@ test "array constraints - additionalItems is ignored without tuple items" {
         \\  "additionalItems": false
         \\}
     ;
-    var schema = try parse_with_revision(schema_str, .draft2019_09);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("[]"));
-    try std.testing.expect(schema.is_valid("[1, 2, 3]"));
-    try std.testing.expect(schema.is_valid("\"Hello World\""));
+    try expect_validation_cases(schema_str, .draft2019_09, &.{
+        .{ "[]", true },
+        .{ "[1, 2, 3]", true },
+        .{
+            \\"Hello World"
+            ,
+            true,
+        },
+    });
 }
 
 test "array constraints - 2020-12 ignores legacy additionalItems with prefixItems" {
@@ -1112,11 +1386,18 @@ test "array constraints - 2020-12 ignores legacy additionalItems with prefixItem
         \\  "additionalItems": false
         \\}
     ;
-    var schema = try parse_with_revision(schema_str, .draft2020_12);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("[\"x\"]"));
-    try std.testing.expect(schema.is_valid("[\"x\", 1]"));
+    try expect_validation_cases(schema_str, .draft2020_12, &.{
+        .{
+            \\["x"]
+            ,
+            true,
+        },
+        .{
+            \\["x", 1]
+            ,
+            true,
+        },
+    });
 }
 
 test "conditional applicators - only the selected branch applies" {
@@ -1136,21 +1417,28 @@ test "conditional applicators - only the selected branch applies" {
         \\  }
         \\}
     ;
-    var schema = try parse_with_revision(schema_str, .draft2020_12);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid(
-        \\{"kind": "card", "billing_address": "123 Main St"}
-    ));
-    try std.testing.expect(!schema.is_valid(
-        \\{"kind": "card", "email": "person@example.com"}
-    ));
-    try std.testing.expect(schema.is_valid(
-        \\{"email": "person@example.com"}
-    ));
-    try std.testing.expect(!schema.is_valid(
-        \\{"kind": "cash"}
-    ));
+    try expect_validation_cases(schema_str, .draft2020_12, &.{
+        .{
+            \\{"kind": "card", "billing_address": "123 Main St"}
+            ,
+            true,
+        },
+        .{
+            \\{"kind": "card", "email": "person@example.com"}
+            ,
+            false,
+        },
+        .{
+            \\{"email": "person@example.com"}
+            ,
+            true,
+        },
+        .{
+            \\{"kind": "cash"}
+            ,
+            false,
+        },
+    });
 }
 
 test "multipleOf constraint" {
@@ -1160,19 +1448,15 @@ test "multipleOf constraint" {
         \\  "multipleOf": 0.5
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    // Valid multiples
-    try std.testing.expectEqual(schema.is_valid("0"), true);
-    try std.testing.expectEqual(schema.is_valid("0.5"), true);
-    try std.testing.expectEqual(schema.is_valid("1"), true);
-    try std.testing.expectEqual(schema.is_valid("2.5"), true);
-    try std.testing.expectEqual(schema.is_valid("-1.5"), true);
-
-    // Not multiples
-    try std.testing.expectEqual(schema.is_valid("0.3"), false);
-    try std.testing.expectEqual(schema.is_valid("1.7"), false);
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "0", true },
+        .{ "0.5", true },
+        .{ "1", true },
+        .{ "2.5", true },
+        .{ "-1.5", true },
+        .{ "0.3", false },
+        .{ "1.7", false },
+    });
 }
 
 test "multipleOf constraint - integer divisors follow docs examples" {
@@ -1181,15 +1465,18 @@ test "multipleOf constraint - integer divisors follow docs examples" {
         \\  "multipleOf": 5
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("10"));
-    try std.testing.expect(schema.is_valid("-5"));
-    try std.testing.expect(schema.is_valid("15.0"));
-    try std.testing.expect(schema.is_valid("0"));
-    try std.testing.expect(!schema.is_valid("8"));
-    try std.testing.expect(schema.is_valid("\"100000\""));
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "10", true },
+        .{ "-5", true },
+        .{ "15.0", true },
+        .{ "0", true },
+        .{ "8", false },
+        .{
+            \\"100000"
+            ,
+            true,
+        },
+    });
 }
 
 test "multipleOf constraint - fractional divisors follow docs examples" {
@@ -1198,15 +1485,18 @@ test "multipleOf constraint - fractional divisors follow docs examples" {
         \\  "multipleOf": 0.01
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("2"));
-    try std.testing.expect(schema.is_valid("5.1"));
-    try std.testing.expect(schema.is_valid("-12.34"));
-    try std.testing.expect(!schema.is_valid("1.234"));
-    try std.testing.expect(schema.is_valid("0"));
-    try std.testing.expect(schema.is_valid("\"100000\""));
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "2", true },
+        .{ "5.1", true },
+        .{ "-12.34", true },
+        .{ "1.234", false },
+        .{ "0", true },
+        .{
+            \\"100000"
+            ,
+            true,
+        },
+    });
 }
 
 test "multipleOf constraint - siblings stay conjunctive with anyOf" {
@@ -1219,13 +1509,16 @@ test "multipleOf constraint - siblings stay conjunctive with anyOf" {
         \\  "multipleOf": 2
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("4"));
-    try std.testing.expect(!schema.is_valid("3"));
-    try std.testing.expect(schema.is_valid("\"word\""));
-    try std.testing.expect(!schema.is_valid("true"));
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "4", true },
+        .{ "3", false },
+        .{
+            \\"word"
+            ,
+            true,
+        },
+        .{ "true", false },
+    });
 }
 
 test "object constraints - minProperties and maxProperties" {
@@ -1236,23 +1529,35 @@ test "object constraints - minProperties and maxProperties" {
         \\  "maxProperties": 3
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    // Valid counts
-    try std.testing.expectEqual(schema.is_valid("{\"a\": 1}"), true);
-    try std.testing.expectEqual(schema.is_valid("{\"a\": 1, \"b\": 2}"), true);
-    try std.testing.expectEqual(schema.is_valid("{\"a\": 1, \"b\": 2, \"c\": 3}"), true);
-
-    // Too few properties
-    try std.testing.expectEqual(schema.is_valid("{}"), false);
-
-    // Too many properties
-    try std.testing.expectEqual(schema.is_valid("{\"a\": 1, \"b\": 2, \"c\": 3, \"d\": 4}"), false);
-
-    // Non-objects are not affected
-    try std.testing.expectEqual(schema.is_valid("[]"), false); // fails type check
-    try std.testing.expectEqual(schema.is_valid("\"string\""), false); // fails type check
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\{"a": 1}
+            ,
+            true,
+        },
+        .{
+            \\{"a": 1, "b": 2}
+            ,
+            true,
+        },
+        .{
+            \\{"a": 1, "b": 2, "c": 3}
+            ,
+            true,
+        },
+        .{ "{}", false },
+        .{
+            \\{"a": 1, "b": 2, "c": 3, "d": 4}
+            ,
+            false,
+        },
+        .{ "[]", false },
+        .{
+            \\"string"
+            ,
+            false,
+        },
+    });
 }
 
 test "object constraints - minProperties and maxProperties ignore non-objects" {
@@ -1262,19 +1567,33 @@ test "object constraints - minProperties and maxProperties ignore non-objects" {
         \\  "maxProperties": 2
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("\"hello\""));
-    try std.testing.expect(schema.is_valid("42"));
-    try std.testing.expect(schema.is_valid("true"));
-    try std.testing.expect(schema.is_valid("[]"));
-    try std.testing.expect(schema.is_valid("null"));
-
-    try std.testing.expect(!schema.is_valid("{}"));
-    try std.testing.expect(schema.is_valid("{\"a\": 1}"));
-    try std.testing.expect(schema.is_valid("{\"a\": 1, \"b\": 2}"));
-    try std.testing.expect(!schema.is_valid("{\"a\": 1, \"b\": 2, \"c\": 3}"));
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\"hello"
+            ,
+            true,
+        },
+        .{ "42", true },
+        .{ "true", true },
+        .{ "[]", true },
+        .{ "null", true },
+        .{ "{}", false },
+        .{
+            \\{"a": 1}
+            ,
+            true,
+        },
+        .{
+            \\{"a": 1, "b": 2}
+            ,
+            true,
+        },
+        .{
+            \\{"a": 1, "b": 2, "c": 3}
+            ,
+            false,
+        },
+    });
 }
 
 test "$ref with definitions" {
@@ -1292,13 +1611,28 @@ test "$ref with definitions" {
         \\  }
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("{\"count\": 5}"));
-    try std.testing.expect(schema.is_valid("{\"count\": 0}"));
-    try std.testing.expect(!schema.is_valid("{\"count\": -1}"));
-    try std.testing.expect(!schema.is_valid("{\"count\": \"five\"}"));
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\{"count": 5}
+            ,
+            true,
+        },
+        .{
+            \\{"count": 0}
+            ,
+            true,
+        },
+        .{
+            \\{"count": -1}
+            ,
+            false,
+        },
+        .{
+            \\{"count": "five"}
+            ,
+            false,
+        },
+    });
 }
 
 test "$ref with $defs (2019-09+ style)" {
@@ -1313,13 +1647,24 @@ test "$ref with $defs (2019-09+ style)" {
         \\  "$ref": "#/$defs/stringArray"
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("[\"a\", \"b\", \"c\"]"));
-    try std.testing.expect(schema.is_valid("[]"));
-    try std.testing.expect(!schema.is_valid("[\"a\", 1]"));
-    try std.testing.expect(!schema.is_valid("\"not an array\""));
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\["a", "b", "c"]
+            ,
+            true,
+        },
+        .{ "[]", true },
+        .{
+            \\["a", 1]
+            ,
+            false,
+        },
+        .{
+            \\"not an array"
+            ,
+            false,
+        },
+    });
 }
 
 test "$ref nested refs" {
@@ -1333,13 +1678,16 @@ test "$ref nested refs" {
         \\  "$ref": "#/definitions/c"
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("5"));
-    try std.testing.expect(schema.is_valid("-10"));
-    try std.testing.expect(!schema.is_valid("\"string\""));
-    try std.testing.expect(!schema.is_valid("1.5"));
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "5", true },
+        .{ "-10", true },
+        .{
+            \\"string"
+            ,
+            false,
+        },
+        .{ "1.5", false },
+    });
 }
 
 test "$ref recursive schema" {
@@ -1357,14 +1705,33 @@ test "$ref recursive schema" {
         \\  "$ref": "#/definitions/node"
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("{\"value\": 1}"));
-    try std.testing.expect(schema.is_valid("{\"value\": 1, \"child\": {\"value\": 2}}"));
-    try std.testing.expect(schema.is_valid("{\"value\": 1, \"child\": {\"value\": 2, \"child\": {\"value\": 3}}}"));
-    try std.testing.expect(!schema.is_valid("{\"value\": \"not an int\"}"));
-    try std.testing.expect(!schema.is_valid("{\"value\": 1, \"child\": {\"value\": \"bad\"}}"));
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\{"value": 1}
+            ,
+            true,
+        },
+        .{
+            \\{"value": 1, "child": {"value": 2}}
+            ,
+            true,
+        },
+        .{
+            \\{"value": 1, "child": {"value": 2, "child": {"value": 3}}}
+            ,
+            true,
+        },
+        .{
+            \\{"value": "not an int"}
+            ,
+            false,
+        },
+        .{
+            \\{"value": 1, "child": {"value": "bad"}}
+            ,
+            false,
+        },
+    });
 }
 
 test "$ref overrides siblings in draft7" {
@@ -1381,12 +1748,15 @@ test "$ref overrides siblings in draft7" {
         \\  "type": "string"
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("5"));
-    try std.testing.expect(!schema.is_valid("-1"));
-    try std.testing.expect(!schema.is_valid("\"five\""));
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "5", true },
+        .{ "-1", false },
+        .{
+            \\"five"
+            ,
+            false,
+        },
+    });
 }
 
 test "$ref stays conjunctive with siblings in 2020-12" {
@@ -1403,14 +1773,17 @@ test "$ref stays conjunctive with siblings in 2020-12" {
         \\  "maximum": 10
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("0"));
-    try std.testing.expect(schema.is_valid("10"));
-    try std.testing.expect(!schema.is_valid("11"));
-    try std.testing.expect(!schema.is_valid("-1"));
-    try std.testing.expect(!schema.is_valid("\"5\""));
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "0", true },
+        .{ "10", true },
+        .{ "11", false },
+        .{ "-1", false },
+        .{
+            \\"5"
+            ,
+            false,
+        },
+    });
 }
 
 test "$ref stays conjunctive with siblings in 2020-12 inside anyOf branch" {
@@ -1432,13 +1805,24 @@ test "$ref stays conjunctive with siblings in 2020-12 inside anyOf branch" {
         \\  ]
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("\"four\""));
-    try std.testing.expect(!schema.is_valid("\"hi\""));
-    try std.testing.expect(!schema.is_valid("\"toolong\""));
-    try std.testing.expect(schema.is_valid("42"));
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\"four"
+            ,
+            true,
+        },
+        .{
+            \\"hi"
+            ,
+            false,
+        },
+        .{
+            \\"toolong"
+            ,
+            false,
+        },
+        .{ "42", true },
+    });
 }
 
 test "$ref pointer escape segment slash (~1)" {
@@ -1450,11 +1834,14 @@ test "$ref pointer escape segment slash (~1)" {
         \\  "$ref": "#/$defs/slash~1field"
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("1"));
-    try std.testing.expect(!schema.is_valid("\"1\""));
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "1", true },
+        .{
+            \\"1"
+            ,
+            false,
+        },
+    });
 }
 
 test "$ref pointer escape segment tilde (~0)" {
@@ -1466,11 +1853,14 @@ test "$ref pointer escape segment tilde (~0)" {
         \\  "$ref": "#/$defs/tilde~0field"
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("\"ok\""));
-    try std.testing.expect(!schema.is_valid("1"));
+    try expect_validation_cases(schema_str, null, &.{
+        .{
+            \\"ok"
+            ,
+            true,
+        },
+        .{ "1", false },
+    });
 }
 
 test "$ref pointer escape segment percent (%25)" {
@@ -1482,11 +1872,14 @@ test "$ref pointer escape segment percent (%25)" {
         \\  "$ref": "#/$defs/percent%25field"
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("true"));
-    try std.testing.expect(!schema.is_valid("\"true\""));
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "true", true },
+        .{
+            \\"true"
+            ,
+            false,
+        },
+    });
 }
 
 test "$ref root pointer recursive object does not crash" {
@@ -1498,13 +1891,28 @@ test "$ref root pointer recursive object does not crash" {
         \\  "additionalProperties": false
         \\}
     ;
-    var schema = try parse_with_revision(schema_str, .draft4);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("{\"foo\": false}"));
-    try std.testing.expect(schema.is_valid("{\"foo\": {\"foo\": false}}"));
-    try std.testing.expect(!schema.is_valid("{\"bar\": false}"));
-    try std.testing.expect(!schema.is_valid("{\"foo\": {\"bar\": false}}"));
+    try expect_validation_cases(schema_str, .draft4, &.{
+        .{
+            \\{"foo": false}
+            ,
+            true,
+        },
+        .{
+            \\{"foo": {"foo": false}}
+            ,
+            true,
+        },
+        .{
+            \\{"bar": false}
+            ,
+            false,
+        },
+        .{
+            \\{"foo": {"bar": false}}
+            ,
+            false,
+        },
+    });
 }
 
 test "dependentRequired - trigger present requires dependents (draft 2020-12)" {
@@ -1515,13 +1923,24 @@ test "dependentRequired - trigger present requires dependents (draft 2020-12)" {
         \\  }
         \\}
     ;
-    var schema = try parse_with_revision(schema_str, .draft2020_12);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("{}"));
-    try std.testing.expect(schema.is_valid("{\"billing_address\": \"123 Main St\"}"));
-    try std.testing.expect(schema.is_valid("{\"credit_card\": 1234, \"billing_address\": \"123 Main St\"}"));
-    try std.testing.expect(!schema.is_valid("{\"credit_card\": 1234}"));
+    try expect_validation_cases(schema_str, .draft2020_12, &.{
+        .{ "{}", true },
+        .{
+            \\{"billing_address": "123 Main St"}
+            ,
+            true,
+        },
+        .{
+            \\{"credit_card": 1234, "billing_address": "123 Main St"}
+            ,
+            true,
+        },
+        .{
+            \\{"credit_card": 1234}
+            ,
+            false,
+        },
+    });
 }
 
 test "dependentRequired - trigger checks presence only (draft 2020-12)" {
@@ -1532,11 +1951,18 @@ test "dependentRequired - trigger checks presence only (draft 2020-12)" {
         \\  }
         \\}
     ;
-    var schema = try parse_with_revision(schema_str, .draft2020_12);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(!schema.is_valid("{\"credit_card\": null}"));
-    try std.testing.expect(schema.is_valid("{\"credit_card\": false, \"billing_address\": \"123 Main St\"}"));
+    try expect_validation_cases(schema_str, .draft2020_12, &.{
+        .{
+            \\{"credit_card": null}
+            ,
+            false,
+        },
+        .{
+            \\{"credit_card": false, "billing_address": "123 Main St"}
+            ,
+            true,
+        },
+    });
 }
 
 test "dependentRequired - non-objects are valid (draft 2020-12)" {
@@ -1547,14 +1973,17 @@ test "dependentRequired - non-objects are valid (draft 2020-12)" {
         \\  }
         \\}
     ;
-    var schema = try parse_with_revision(schema_str, .draft2020_12);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("42"));
-    try std.testing.expect(schema.is_valid("\"hello\""));
-    try std.testing.expect(schema.is_valid("true"));
-    try std.testing.expect(schema.is_valid("[]"));
-    try std.testing.expect(schema.is_valid("null"));
+    try expect_validation_cases(schema_str, .draft2020_12, &.{
+        .{ "42", true },
+        .{
+            \\"hello"
+            ,
+            true,
+        },
+        .{ "true", true },
+        .{ "[]", true },
+        .{ "null", true },
+    });
 }
 
 test "dependentRequired - multiple dependencies (draft 2019-09)" {
@@ -1565,13 +1994,24 @@ test "dependentRequired - multiple dependencies (draft 2019-09)" {
         \\  }
         \\}
     ;
-    var schema = try parse_with_revision(schema_str, .draft2019_09);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("{}"));
-    try std.testing.expect(schema.is_valid("{\"surname\": \"Doe\"}"));
-    try std.testing.expect(!schema.is_valid("{\"name\": \"X\", \"surname\": \"Doe\"}"));
-    try std.testing.expect(schema.is_valid("{\"name\": \"X\", \"surname\": \"Doe\", \"given_name\": \"John\"}"));
+    try expect_validation_cases(schema_str, .draft2019_09, &.{
+        .{ "{}", true },
+        .{
+            \\{"surname": "Doe"}
+            ,
+            true,
+        },
+        .{
+            \\{"name": "X", "surname": "Doe"}
+            ,
+            false,
+        },
+        .{
+            \\{"name": "X", "surname": "Doe", "given_name": "John"}
+            ,
+            true,
+        },
+    });
 }
 
 test "dependentRequired - transitive dependencies (draft 2019-09)" {
@@ -1583,13 +2023,28 @@ test "dependentRequired - transitive dependencies (draft 2019-09)" {
         \\  }
         \\}
     ;
-    var schema = try parse_with_revision(schema_str, .draft2019_09);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(!schema.is_valid("{\"foo\": 1}"));
-    try std.testing.expect(!schema.is_valid("{\"foo\": 1, \"bar\": 2}"));
-    try std.testing.expect(schema.is_valid("{\"foo\": 1, \"bar\": 2, \"baz\": 3}"));
-    try std.testing.expect(schema.is_valid("{\"bar\": 2, \"baz\": 3}"));
+    try expect_validation_cases(schema_str, .draft2019_09, &.{
+        .{
+            \\{"foo": 1}
+            ,
+            false,
+        },
+        .{
+            \\{"foo": 1, "bar": 2}
+            ,
+            false,
+        },
+        .{
+            \\{"foo": 1, "bar": 2, "baz": 3}
+            ,
+            true,
+        },
+        .{
+            \\{"bar": 2, "baz": 3}
+            ,
+            true,
+        },
+    });
 }
 
 test "allOf with duplicate empty subschemas does not hang" {
@@ -1601,13 +2056,16 @@ test "allOf with duplicate empty subschemas does not hang" {
         \\  ]
         \\}
     ;
-    var schema = try parse(schema_str);
-    defer schema.arena.deinit();
-
-    try std.testing.expect(schema.is_valid("1"));
-    try std.testing.expect(schema.is_valid("\"text\""));
-    try std.testing.expect(schema.is_valid("true"));
-    try std.testing.expect(schema.is_valid("null"));
-    try std.testing.expect(schema.is_valid("[]"));
-    try std.testing.expect(schema.is_valid("{}"));
+    try expect_validation_cases(schema_str, null, &.{
+        .{ "1", true },
+        .{
+            \\"text"
+            ,
+            true,
+        },
+        .{ "true", true },
+        .{ "null", true },
+        .{ "[]", true },
+        .{ "{}", true },
+    });
 }

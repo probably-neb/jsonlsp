@@ -118,6 +118,7 @@ pub const Value = struct {
         object: Object,
 
         pub const Array = base.IntrusiveDoublyLinkedList(Value);
+        // TODO: make IntrusiveDoublyLinkedList so keys are stored as `Value`s
         pub const Object = base.XarMap(str8, *Value, 4);
     };
 };

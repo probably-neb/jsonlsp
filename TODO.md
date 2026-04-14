@@ -3,6 +3,7 @@
   - [x] Make json parsing have a "feed" construct that feeds ranges of bytes into the parser
   - [x] handle incremental edit messages and just reparse the entire document
   - [ ] fuzz
+- [ ] Track key hashes in HashableJsonValue (and rename it). Fix places in check where hashes must be computed or strings used instead
 - [ ] Flatten json schema constraint type
 - [ ] Add parse cache to json schema checking
 - [ ] Fuzz json schema parsing/checking (can integrate with incremental edit fuzzing for full integration fuzzing)
