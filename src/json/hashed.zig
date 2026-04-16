@@ -43,7 +43,7 @@ pub const Value = struct {
 
     pub fn as_object(self: *const Value) ?*const Value.Kind.Object {
         switch (self.kind) {
-            .object => |obj| return obj,
+            .object => |*obj| return obj,
             else => return null,
         }
     }

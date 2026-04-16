@@ -1,17 +1,21 @@
-- [x] Handle incremental edits
-  - [x] Make gap buffer data structure
-  - [x] Make json parsing have a "feed" construct that feeds ranges of bytes into the parser
-  - [x] handle incremental edit messages and just reparse the entire document
-  - [ ] fuzz
-- [ ] Track key hashes in HashableJsonValue (and rename it). Fix places in check where hashes must be computed or strings used instead
+- [ ] remaining json-schema compat issues
+- [ ] Integrate Json schema validation
+  - [ ] Cleanup json-schema.zig to use Arena + other base types
+  - [ ] add error generation to json-schema generation
+  - [ ] Integrate it into the validation and diagnostics pipeline
 - [ ] Flatten json schema constraint type
 - [ ] Add parse cache to json schema checking
+- [ ] fuzz incremental edits
 - [ ] Fuzz json schema parsing/checking (can integrate with incremental edit fuzzing for full integration fuzzing)
 - [ ] Improve document memory usage
   - [ ] create segmented arena, that subdivides allocated address space into regions
   - [ ] use segmented arena for document storage, where each piece of document has enough space for the absolute max, but memory is only committed as needed based on bucket sizes
   - [ ] devise way to store/parse tree + tokens in constant space (using scratch arena as necessary of course)
-- [ ] Integrate Json schema validation
-  - [ ] Cleanup json-schema.zig to use Arena + other base types
-  - [ ] add error generation to json-schema generation
-  - [ ] Integrate it into the validation and diagnostics pipeline
+
+
+## DONE
+- [x] Handle incremental edits
+  - [x] Make gap buffer data structure
+  - [x] Make json parsing have a "feed" construct that feeds ranges of bytes into the parser
+  - [x] handle incremental edit messages and just reparse the entire document
+- [x] Track key hashes in HashableJsonValue (and rename it). Fix places in check where hashes must be computed or strings used instead

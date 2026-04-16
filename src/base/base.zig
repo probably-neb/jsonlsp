@@ -12,6 +12,7 @@ pub const IntrusiveDoublyLinkedList = @import("intrusive-linked-list.zig").Intru
 pub const meta = @import("meta.zig");
 pub const Xar = @import("xar.zig").Xar;
 pub const XarMap = @import("xar-map.zig").XarMap;
+pub const OOM = std.mem.Allocator.Error;
 
 test {
     std.testing.refAllDecls(@This());

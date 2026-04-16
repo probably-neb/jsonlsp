@@ -20,6 +20,8 @@ const pcre = @import("pcre");
 const json = @import("json");
 const HashableJsonValue = json.hashed.Value;
 
+const check = @import("./check.zig");
+
 pub const Revision = enum {
     draft3,
     draft4,
@@ -94,6 +96,8 @@ pub const Schema = struct {
         pattern: ?pcre.Regex = null,
         @"const": u64 = 0,
         @"enum": []u64 = &.{},
+        unevaluated_properties: ?*const Constraint = null,
+        unevaluated_items: ?*const Constraint = null,
 
         pub const DependentRequiredEntry = struct {
             trigger_property_hash: u64,
@@ -129,258 +133,13 @@ pub const Schema = struct {
         defer arena.release();
 
         const json_value = json.hashed.parse(&arena, input) catch return false;
-        return check(&arena, schema.root.constraint, json_value) catch return false;
+        var ctx = check.CheckContext{
+            .arena = &arena,
+            .depth = 0,
+        };
+        return check.check(&ctx, schema.root.constraint, json_value) catch return false;
     }
 };
-
-fn check(arena: *Arena, constraint: *const Schema.Constraint, value: *const HashableJsonValue) !bool {
-    if (constraint.flags.false_schema) {
-        return false;
-    }
-    if (constraint.flags.@"const" and value.hash != constraint.@"const") {
-        return false;
-    }
-    const types_ok = constraint.types == TypeMap.zero or switch (value.kind) {
-        .string => constraint.types.string,
-        .object => constraint.types.object,
-        .array => constraint.types.array,
-        .float => constraint.types.number,
-        .bool => constraint.types.boolean,
-        .null => constraint.types.null,
-        .integer => constraint.types.integer or constraint.types.number,
-    };
-    if (!types_ok) return false;
-
-    for (constraint.@"enum") |hash| {
-        if (hash == value.hash) break;
-    } else if (constraint.@"enum".len > 0) {
-        return false;
-    }
-
-    if (value.kind == .string) {
-        const len = std.unicode.utf8CountCodepoints(value.kind.string.value) catch 0;
-        if (len < constraint.min_len or len > constraint.max_len) {
-            return false;
-        }
-        if (constraint.pattern) |regex| {
-            const matches = try regex.matches(value.kind.string.value, .{});
-            if (matches == null) {
-                return false;
-            }
-        }
-    }
-    if (JsonNumber.from_json_value(value)) |number| {
-        if (!constraint.bounds.contains(number)) {
-            return false;
-        }
-    }
-    // TODO: combine with integer multiple_of
-    if (constraint.multiple_of_f64) |multiple_of| {
-        if (multiple_of == 0.0) {
-            return false;
-        }
-        const float_val = switch (value.kind) {
-            .integer => |int_val| @as(f64, @floatFromInt(int_val)),
-            .float => |fv| fv,
-            else => null,
-        };
-        if (float_val) |fv| {
-            const quotient = fv / multiple_of;
-            const diff = @abs(quotient - @round(quotient));
-            if (!(diff < 1e-9)) {
-                return false;
-            }
-        }
-    }
-    if (constraint.multiple_of_i64) |multiple_of| {
-        if (multiple_of == 0) {
-            return false;
-        }
-        const int_val = switch (value.kind) {
-            .integer => |iv| iv,
-            .float => |fv| float_as_int(fv),
-            else => null,
-        };
-        if (int_val) |iv| {
-            if (@rem(iv, multiple_of) != 0) {
-                return false;
-            }
-        }
-    }
-    if (value.kind == .array) {
-        const length = value.kind.array.count();
-        if (length < constraint.min_items) {
-            return false;
-        }
-        if (length > constraint.max_items) {
-            return false;
-        }
-        if (constraint.flags.unique_items) {
-            const scratch = Arena.get_scratch(&.{arena});
-            defer scratch.release();
-
-            var hashes: base.ArenaList(u64) = .empty;
-            try hashes.ensure_total_capacity(scratch.arena, length);
-
-            var arr_iter = value.kind.array.iter();
-            while (arr_iter.next()) |item| {
-                for (hashes.items) |hash| {
-                    if (hash == item.hash) {
-                        return false;
-                    }
-                }
-                hashes.append_assume_capacity(item.hash);
-            }
-        }
-        var arr_iter = value.kind.array.iter();
-
-        var prefix_item_node = constraint.prefix_items;
-        while (prefix_item_node) |prefix_item| : (prefix_item_node = prefix_item.next) {
-            const next = arr_iter.next() orelse break;
-            const ok = try check(arena, prefix_item.constraint, next);
-            if (!ok) return false;
-        }
-
-        if (!constraint.flags.additional_items or constraint.prefix_items != null) {
-            if (constraint.items) |items| {
-                while (arr_iter.next()) |item| {
-                    if (!try check(arena, items, item)) return false;
-                }
-            }
-        }
-    }
-    if (value.kind == .object) {
-        if (value.kind.object.count() < constraint.min_properties) {
-            return false;
-        }
-        if (value.kind.object.count() > constraint.max_properties) {
-            return false;
-        }
-
-        const scratch = Arena.get_scratch(&.{arena});
-        defer scratch.release();
-
-        var checked_properties: XarMap(u64, void, 0) = .empty;
-
-        for (constraint.properties) |property| {
-            const sub_value = value.kind.object.get_const(property.name) orelse continue;
-            try checked_properties.put(scratch.arena, property.hash, {});
-            if (!try check(arena, property.constraint, sub_value)) {
-                return false;
-            }
-        }
-
-        var obj_iter = value.kind.object.properties.iter();
-        while (obj_iter.next()) |key_node| {
-            const key_string = key_node.kind.string;
-            const key = key_string.value;
-            const sub_value = key_string.child.?;
-
-            var matched_pattern = false;
-            for (constraint.pattern_properties) |pattern_property| {
-                const matches = try pattern_property.pattern.matches(key, .{});
-                if (matches != null) {
-                    matched_pattern = true;
-                    if (!try check(arena, pattern_property.constraint, sub_value)) {
-                        return false;
-                    }
-                }
-            }
-
-            if (!checked_properties.contains(key_node.hash) and !matched_pattern and constraint.additional_properties != null) {
-                if (!try check(arena, constraint.additional_properties.?, sub_value)) {
-                    return false;
-                }
-            }
-        }
-
-        for (constraint.required) |required_property_hash| {
-            var key_iter = value.kind.object.properties.iter();
-            while (key_iter.next()) |key_ptr| {
-                if (key_ptr.hash == required_property_hash) break;
-            } else return false;
-        }
-
-        for (constraint.dependent_required) |entry| {
-            var trigger_present = false;
-            var trigger_iter = value.kind.object.properties.iter();
-            while (trigger_iter.next()) |key_ptr| {
-                if (key_ptr.hash == entry.trigger_property_hash) {
-                    trigger_present = true;
-                    break;
-                }
-            }
-
-            if (!trigger_present) continue;
-
-            for (entry.required_property_hashes) |required_property_hash| {
-                var dependent_present = false;
-                var dependent_iter = value.kind.object.properties.iter();
-                while (dependent_iter.next()) |key_ptr| {
-                    if (key_ptr.hash == required_property_hash) {
-                        dependent_present = true;
-                        break;
-                    }
-                }
-                if (!dependent_present) return false;
-            }
-        }
-    }
-
-    if (constraint.ref_constraint) |referenced_constraint| {
-        if (!try check(arena, referenced_constraint, value)) {
-            return false;
-        }
-    }
-    if (constraint.not_constraint) |constraint_to_invert| {
-        if (try check(arena, constraint_to_invert, value)) {
-            return false;
-        }
-    }
-    var cur_all_of = constraint.all_of;
-    while (cur_all_of) |node| : (cur_all_of = node.next) {
-        if (!try check(arena, node.constraint, value)) {
-            return false;
-        }
-    }
-
-    if (constraint.any_of != null) {
-        var result = false;
-        var cur_any_of = constraint.any_of;
-        while (cur_any_of) |node| : (cur_any_of = node.next) {
-            result = result or try check(arena, node.constraint, value);
-        }
-        if (!result) {
-            return false;
-        }
-    }
-
-    if (constraint.one_of != null) {
-        var count: u32 = 0;
-        var cur_one_of = constraint.one_of;
-        while (cur_one_of) |node| : (cur_one_of = node.next) {
-            count += @intFromBool(try check(arena, node.constraint, value));
-        }
-        if (count != 1) {
-            return false;
-        }
-    }
-
-    if (constraint.if_constraint) |if_constraint| {
-        if (try check(arena, if_constraint, value)) {
-            if (constraint.then_constraint) |then_constraint| {
-                if (!try check(arena, then_constraint, value)) {
-                    return false;
-                }
-            }
-        } else if (constraint.else_constraint) |else_constraint| {
-            if (!try check(arena, else_constraint, value)) {
-                return false;
-            }
-        }
-    }
-    return true;
-}
 
 pub fn parse(schema_contents: str8) !Schema {
     return parse_with_revision(schema_contents, null);
@@ -604,6 +363,7 @@ fn parse_into_constraint(ctx: *ParseContext, schema: *const HashableJsonValue, c
             return;
         }
     }
+
     parse_validation__type(obj, constraint) catch {};
     parse_validation__min_length(obj, constraint);
     parse_validation__max_length(obj, constraint);
@@ -632,6 +392,8 @@ fn parse_into_constraint(ctx: *ParseContext, schema: *const HashableJsonValue, c
     parse_applicator__if_then_else(ctx, obj, constraint) catch {};
     parse_validation__multiple_of(obj, constraint);
     parse_validation__pattern(ctx, obj, constraint) catch {};
+    parse_unevaluated__unevaluated_properties(ctx, obj, constraint) catch {};
+    parse_unevaluated__unevaluated_items(ctx, obj, constraint) catch {};
 }
 
 fn parse_node(ctx: *ParseContext, schema: *const HashableJsonValue) ParseError!*Schema.Constraint.Node {
@@ -672,7 +434,7 @@ fn parse_array_of_constraints(ctx: *ParseContext, arr: *const @FieldType(Hashabl
 
 /// The "type" field on an object
 /// https://www.learnjsonschema.com/2020-12/validation/type/
-const TypeMap = packed struct(u8) {
+pub const TypeMap = packed struct(u8) {
     /// The JSON null constant
     null: bool = false,
     /// The JSON true or false constants
@@ -729,16 +491,6 @@ const TypeMap = packed struct(u8) {
     pub fn is_empty(types: TypeMap) bool {
         return types == TypeMap.zero;
     }
-
-    pub const Map = std.StaticStringMap(HashableJsonValue.Kind_Tag).initComptime(.{
-        .{ "null", .null },
-        .{ "boolean", .boolean },
-        .{ "object", .object },
-        .{ "array", .array },
-        .{ "number", .float },
-        .{ "integer", .integer },
-        .{ "string", .string },
-    });
 };
 
 fn parse_validation__type(obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) !void {
@@ -1124,12 +876,14 @@ fn parse_applicator__if_then_else(ctx: *ParseContext, obj: *const HashableJsonVa
     }
 }
 
-fn float_as_int(float: f64) ?i64 {
-    if (@trunc(float) != float) return null;
-    const min_int: f64 = @floatFromInt(std.math.minInt(i64));
-    const max_int: f64 = @floatFromInt(std.math.maxInt(i64));
-    if (std.math.clamp(float, min_int, max_int) != float) return null;
-    return @intFromFloat(float);
+fn parse_unevaluated__unevaluated_properties(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) !void {
+    const unevaluated_properties = obj.get_const("unevaluatedProperties") orelse return;
+    constraint.unevaluated_properties = try parse_constraint(ctx, unevaluated_properties);
+}
+
+fn parse_unevaluated__unevaluated_items(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) !void {
+    const unevaluated_items = obj.get_const("unevaluatedItems") orelse return;
+    constraint.unevaluated_items = try parse_constraint(ctx, unevaluated_items);
 }
 
 fn ref_overrides_siblings(revision: Revision) bool {
@@ -1162,6 +916,7 @@ pub const JsonNumber = union(enum) {
         };
     }
 };
+
 pub const Bounds = struct {
     present: [2]bool = .{ false, false },
     exclusive: [2]bool = .{ false, false },
