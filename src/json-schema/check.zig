@@ -20,13 +20,11 @@ const MAX_CHECK_DEPTH: u16 = 64;
 pub const CheckContext = struct {
     depth: u16,
     arena: *Arena,
-    unchecked_items: [MAX_CHECK_DEPTH]?Item_List = .{null} ** MAX_CHECK_DEPTH,
-    checked_items: [MAX_CHECK_DEPTH]Item_List = .{base.IntrusiveDoublyLinkedList(Checked_Item).zero} ** MAX_CHECK_DEPTH,
-    unchecked_properties: [MAX_CHECK_DEPTH]?Property_List = .{null} ** MAX_CHECK_DEPTH,
-    checked_properties: [MAX_CHECK_DEPTH]Property_List = .{Property_List.zero} ** MAX_CHECK_DEPTH,
+    active_frames: [MAX_CHECK_DEPTH]Frame_List = .{Frame_List.zero} ** MAX_CHECK_DEPTH,
 
     const Item_List = base.IntrusiveDoublyLinkedList(Checked_Item);
     const Property_List = base.IntrusiveDoublyLinkedList(Checked_Property);
+    const Frame_List = base.IntrusiveDoublyLinkedList(Frame);
 
     const Checked_Item = struct {
         value: *const HashableJsonValue,
@@ -50,42 +48,107 @@ pub const CheckContext = struct {
         }
     };
 
-    const Save_Point = struct {
-        checked_item: ?*Checked_Item,
-        checked_property: ?*Checked_Property,
+    const Frame = struct {
+        constraint: *const Schema.Constraint,
+        instance: *const HashableJsonValue,
+        unevaluated_items: Item_List = .zero,
+        evaluated_items: Item_List = .zero,
+        unevaluated_props: Property_List = .zero,
+        evaluated_props: Property_List = .zero,
+        next: *Frame,
+        prev: *Frame,
     };
 
-    fn checked_savepoint(ctx: *CheckContext) Save_Point {
-        const save_point: Save_Point = .{
-            .checked_item = ctx.checked_items[ctx.depth].last(),
-            .checked_property = ctx.checked_properties[ctx.depth].last(),
+    const Save_Point = struct {
+        snapshots: ?*Frame_Save = null,
+    };
+
+    const Frame_Save = struct {
+        frame: *Frame,
+        item_tail: ?*Checked_Item,
+        property_tail: ?*Checked_Property,
+        next: ?*Frame_Save,
+    };
+
+    fn get_frame(ctx: *CheckContext, constraint: *const Schema.Constraint, instance: *const HashableJsonValue) ?*Frame {
+        var iter = ctx.active_frames[ctx.depth].iter();
+        while (iter.next()) |frame| {
+            if (frame.constraint == constraint and frame.instance == instance) {
+                return frame;
+            }
+        }
+        return null;
+    }
+
+    fn ensure_frame(ctx: *CheckContext, constraint: *const Schema.Constraint, instance: *const HashableJsonValue) OOM!*Frame {
+        if (ctx.get_frame(constraint, instance)) |frame| {
+            return frame;
+        }
+        const frame = try ctx.arena.create(Frame);
+        frame.* = .{
+            .constraint = constraint,
+            .instance = instance,
+            .next = undefined,
+            .prev = undefined,
         };
+        ctx.active_frames[ctx.depth].append(frame);
+        return frame;
+    }
+
+    fn checked_savepoint(ctx: *CheckContext) OOM!Save_Point {
+        var save_point = Save_Point{};
+        var iter = ctx.active_frames[ctx.depth].iter();
+        while (iter.next()) |frame| {
+            const snapshot = try ctx.arena.create(Frame_Save);
+            snapshot.* = .{
+                .frame = frame,
+                .item_tail = frame.evaluated_items.last(),
+                .property_tail = frame.evaluated_props.last(),
+                .next = save_point.snapshots,
+            };
+            save_point.snapshots = snapshot;
+        }
         return save_point;
     }
 
-    fn checked_rollback(ctx: *CheckContext, save_point: Save_Point) void {
-        if (ctx.unchecked_items[ctx.depth]) |*unchecked_list| {
-            while (ctx.checked_items[ctx.depth].last()) |cur| {
-                if (save_point.checked_item == cur) break;
-                _ = ctx.checked_items[ctx.depth].pop_last();
-                if (unchecked_list.last() == null or unchecked_list.last().?.index < cur.index) {
-                    unchecked_list.append(cur);
+    fn checked_rollback(_: *CheckContext, save_point: Save_Point) void {
+        var snapshot = save_point.snapshots;
+        while (snapshot) |frame_save| : (snapshot = frame_save.next) {
+            const unevaluated_items = &frame_save.frame.unevaluated_items;
+            while (frame_save.frame.evaluated_items.last()) |cur| {
+                if (frame_save.item_tail == cur) break;
+                _ = frame_save.frame.evaluated_items.pop_last();
+                if (unevaluated_items.first == null) {
+                    unevaluated_items.append(cur);
                     continue;
                 }
-                var pre_unchecked = unchecked_list.first;
-                while (pre_unchecked) |unchecked_item| : (pre_unchecked = unchecked_list.next_after(unchecked_item)) {
+                if (unevaluated_items.first.?.index > cur.index) {
+                    Item_List.insert_before(unevaluated_items.first.?, cur);
+                    continue;
+                }
+                if (unevaluated_items.last().?.index < cur.index) {
+                    unevaluated_items.append(cur);
+                    continue;
+                }
+                var inserted = false;
+                var pre_unchecked = unevaluated_items.first;
+                while (pre_unchecked) |unchecked_item| : (pre_unchecked = unevaluated_items.next_after(unchecked_item)) {
                     if (cur.index < unchecked_item.index) {
                         Item_List.insert_before(unchecked_item, cur);
+                        inserted = true;
                         break;
                     }
                 }
+                if (!inserted) {
+                    unevaluated_items.append(cur);
+                }
             }
-        }
-        if (ctx.unchecked_properties[ctx.depth]) |*unchecked_list| {
-            while (ctx.checked_properties[ctx.depth].last()) |cur| {
-                if (save_point.checked_property == cur) break;
-                _ = ctx.checked_properties[ctx.depth].pop_last();
-                unchecked_list.append(cur);
+
+            const unevaluated_props = &frame_save.frame.unevaluated_props;
+            while (frame_save.frame.evaluated_props.last()) |cur| {
+                if (frame_save.property_tail == cur) break;
+                _ = frame_save.frame.evaluated_props.pop_last();
+                unevaluated_props.append(cur);
             }
         }
     }
@@ -95,14 +158,14 @@ fn check_property(ctx: *CheckContext, constraint: *const Schema.Constraint, valu
     ctx.depth +|= 1;
     const result = try check(ctx, constraint, value.kind.string.child.?);
     ctx.depth -= 1;
-    const checked_list = &ctx.unchecked_properties[ctx.depth];
     if (result) {
-        if (checked_list.*) |*list| {
-            var iter = list.iter();
+        var frame_iter = ctx.active_frames[ctx.depth].iter();
+        while (frame_iter.next()) |frame| {
+            var iter = frame.unevaluated_props.iter();
             while (iter.next()) |item| {
-                if (item.value.hash == value.hash) {
-                    list.remove(item);
-                    ctx.checked_properties[ctx.depth].append(item);
+                if (item.value == value) {
+                    frame.unevaluated_props.remove(item);
+                    frame.evaluated_props.append(item);
                     break;
                 }
             }
@@ -115,15 +178,15 @@ fn check_item(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *
     ctx.depth +|= 1;
     const result = try check(ctx, constraint, value);
     ctx.depth -= 1;
-    const checked_list = &ctx.unchecked_items[ctx.depth];
     if (result) {
-        if (checked_list.*) |*list| {
-            var iter = list.iter();
+        var frame_iter = ctx.active_frames[ctx.depth].iter();
+        while (frame_iter.next()) |frame| {
+            var iter = frame.unevaluated_items.iter();
             while (iter.next()) |item| {
                 if (item.index == index) {
                     std.debug.assert(item.value.hash == value.hash);
-                    list.remove(item);
-                    ctx.checked_items[ctx.depth].append(item);
+                    frame.unevaluated_items.remove(item);
+                    frame.evaluated_items.append(item);
                     break;
                 }
             }
@@ -141,7 +204,7 @@ fn check_all(ctx: *CheckContext, node: ?*const Schema.Constraint.Node, value: *c
     var result = Check_All_Result{};
     var cur = node;
     while (cur) |n| : (cur = n.next) {
-        const save_point = ctx.checked_savepoint();
+        const save_point = try ctx.checked_savepoint();
         const ok = try check(ctx, n.constraint, value);
         if (!ok) {
             ctx.checked_rollback(save_point);
@@ -227,37 +290,41 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
             return false;
         }
     }
-    const initialize_unevaluated_items = constraint.unevaluated_items != null and ctx.unchecked_items[ctx.depth] == null and value.kind == .array;
-    if (initialize_unevaluated_items) {
-        ctx.unchecked_items[ctx.depth] = .{};
+    const needs_frame = (constraint.unevaluated_items != null and value.kind == .array) or (constraint.unevaluated_properties != null and value.kind == .object);
+    const existing_frame = if (needs_frame) ctx.get_frame(constraint, value) else null;
+    const created_frame = needs_frame and existing_frame == null;
+    const frame = if (existing_frame) |existing| existing else if (needs_frame) blk: {
+        const new_frame = try ctx.arena.create(CheckContext.Frame);
+        new_frame.* = .{
+            .constraint = constraint,
+            .instance = value,
+            .next = undefined,
+            .prev = undefined,
+        };
+        ctx.active_frames[ctx.depth].append(new_frame);
+        break :blk new_frame;
+    } else null;
+    if (constraint.unevaluated_items != null and value.kind == .array) {
+        frame.?.unevaluated_items = .{};
         var arr_iter = value.kind.array.iter();
         var arr_index: u32 = 0;
         while (arr_iter.next()) |item| : (arr_index += 1) {
             const item_value = try ctx.arena.create(CheckContext.Checked_Item);
             item_value.init(item, arr_index);
-            ctx.unchecked_items[ctx.depth].?.append(item_value);
+            frame.?.unevaluated_items.append(item_value);
         }
     }
-    defer if (initialize_unevaluated_items) {
-        // TODO: use free-list linked list
-        ctx.unchecked_items[ctx.depth] = null;
-        ctx.checked_items[ctx.depth].first = null;
-    };
-
-    const initialize_unevaluated_properties = constraint.unevaluated_properties != null and ctx.unchecked_properties[ctx.depth] == null and value.kind == .object;
-    if (initialize_unevaluated_properties) {
-        ctx.unchecked_properties[ctx.depth] = .{};
+    if (constraint.unevaluated_properties != null and value.kind == .object) {
+        frame.?.unevaluated_props = .{};
         var obj_iter = value.kind.object.properties.iter();
         while (obj_iter.next()) |property| {
             const prop_value = try ctx.arena.create(CheckContext.Checked_Property);
             prop_value.init(property);
-            ctx.unchecked_properties[ctx.depth].?.append(prop_value);
+            frame.?.unevaluated_props.append(prop_value);
         }
     }
-    defer if (initialize_unevaluated_properties) {
-        // TODO: use free-list linked list
-        ctx.unchecked_properties[ctx.depth] = null;
-        ctx.checked_properties[ctx.depth].first = null;
+    defer if (created_frame) {
+        ctx.active_frames[ctx.depth].remove(frame.?);
     };
 
     if (value.kind == .array) {
@@ -392,7 +459,7 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
         }
     }
     if (constraint.not_constraint) |constraint_to_invert| {
-        const save_point = ctx.checked_savepoint();
+        const save_point = try ctx.checked_savepoint();
         const result = try check(ctx, constraint_to_invert, value);
         ctx.checked_rollback(save_point);
         if (result) {
@@ -400,21 +467,21 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
         }
     }
 
-    const all_of_save_point = ctx.checked_savepoint();
+    const all_of_save_point = try ctx.checked_savepoint();
     const all_of_result = try check_all(ctx, constraint.all_of, value);
     if (constraint.all_of != null and all_of_result.count_ok != all_of_result.count) {
         ctx.checked_rollback(all_of_save_point);
         return false;
     }
 
-    const any_of_save_point = ctx.checked_savepoint();
+    const any_of_save_point = try ctx.checked_savepoint();
     const any_of_result = try check_all(ctx, constraint.any_of, value);
     if (constraint.any_of != null and any_of_result.count_ok == 0) {
         ctx.checked_rollback(any_of_save_point);
         return false;
     }
 
-    const one_of_save_point = ctx.checked_savepoint();
+    const one_of_save_point = try ctx.checked_savepoint();
     const one_of_result = try check_all(ctx, constraint.one_of, value);
     if (constraint.one_of != null and one_of_result.count_ok != 1) {
         ctx.checked_rollback(one_of_save_point);
@@ -436,10 +503,12 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
     }
 
     if (constraint.unevaluated_items) |unevaluated_items| {
-        if (ctx.unchecked_items[ctx.depth]) |*unchecked_items| {
+        if (ctx.get_frame(constraint, value)) |frame_for_constraint| {
+            const unchecked_items = &frame_for_constraint.unevaluated_items;
+
             var unchecked_item = unchecked_items.first;
             while (unchecked_item) |item| {
-                const next = if (item.next != unchecked_items.first) item.next else null;
+                const next = unchecked_items.next_after(item);
                 defer unchecked_item = next;
                 if (!try check_item(ctx, unevaluated_items, item.value, item.index)) {
                     return false;
@@ -448,10 +517,11 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
         }
     }
     if (constraint.unevaluated_properties) |unevaluated_properties_constraint| {
-        if (ctx.unchecked_properties[ctx.depth]) |*unchecked_properties| {
+        if (ctx.get_frame(constraint, value)) |frame_for_constraint| {
+            const unchecked_properties = &frame_for_constraint.unevaluated_props;
             var unchecked_prop = unchecked_properties.first;
             while (unchecked_prop) |prop| {
-                const next = if (prop.next != unchecked_properties.first) prop.next else null;
+                const next = unchecked_properties.next_after(prop);
                 defer unchecked_prop = next;
                 if (!try check_property(ctx, unevaluated_properties_constraint, prop.value)) {
                     return false;
