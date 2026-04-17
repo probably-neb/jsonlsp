@@ -98,6 +98,8 @@ pub const Schema = struct {
         @"enum": []u64 = &.{},
         unevaluated_properties: ?*const Constraint = null,
         unevaluated_items: ?*const Constraint = null,
+        contains: ?*const Constraint = null,
+        contains_bounds: Bounds = .default(.{ 1, null }),
 
         pub const DependentRequiredEntry = struct {
             trigger_property_hash: u64,
@@ -394,6 +396,7 @@ fn parse_into_constraint(ctx: *ParseContext, schema: *const HashableJsonValue, c
     parse_validation__pattern(ctx, obj, constraint) catch {};
     parse_unevaluated__unevaluated_properties(ctx, obj, constraint) catch {};
     parse_unevaluated__unevaluated_items(ctx, obj, constraint) catch {};
+    parse_applicator__contains(ctx, obj, constraint) catch {};
 }
 
 fn parse_node(ctx: *ParseContext, schema: *const HashableJsonValue) ParseError!*Schema.Constraint.Node {
@@ -886,6 +889,12 @@ fn parse_unevaluated__unevaluated_items(ctx: *ParseContext, obj: *const Hashable
     constraint.unevaluated_items = try parse_constraint(ctx, unevaluated_items);
 }
 
+fn parse_applicator__contains(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) !void {
+    const contains = obj.get_const("contains") orelse return;
+    constraint.contains = try parse_constraint(ctx, contains);
+    constraint.contains_bounds.upsert_from_keys("minContains", "maxContains", obj);
+}
+
 fn ref_overrides_siblings(revision: Revision) bool {
     return revision != .draft2019_09 and revision != .draft2020_12 and revision != .draft_next;
 }
@@ -918,6 +927,7 @@ pub const JsonNumber = union(enum) {
 };
 
 pub const Bounds = struct {
+    // TODO: remove present, just use int vals
     present: [2]bool = .{ false, false },
     exclusive: [2]bool = .{ false, false },
     values: [2]JsonNumber = .{
@@ -929,6 +939,17 @@ pub const Bounds = struct {
 
     const lower_idx = 0;
     const upper_idx = 1;
+
+    pub fn default(range: [2]?i64) Bounds {
+        var bounds = Bounds.zero;
+        if (range[lower_idx]) |v| {
+            bounds.upsert_lower(JsonNumber{ .int = v }, false);
+        }
+        if (range[upper_idx]) |v| {
+            bounds.upsert_upper(JsonNumber{ .int = v }, false);
+        }
+        return bounds;
+    }
 
     pub fn contains(bounds: Bounds, value: JsonNumber) bool {
         if (bounds.present[lower_idx]) {
@@ -969,6 +990,21 @@ pub const Bounds = struct {
         if (should_replace) {
             bounds.exclusive[idx] = exclusive;
             bounds.values[idx] = value;
+        }
+    }
+
+    fn upsert_from_keys(bounds: *Bounds, lower: str8, upper: str8, obj: *const HashableJsonValue.Kind.Object) void {
+        if (obj.get_const(lower)) |val| {
+            if (val.as_integer_lossy()) |v| {
+                bounds.present[lower_idx] = true;
+                bounds.values[lower_idx] = JsonNumber{ .int = v };
+            }
+        }
+        if (obj.get_const(upper)) |val| {
+            if (val.as_integer_lossy()) |v| {
+                bounds.present[upper_idx] = true;
+                bounds.values[upper_idx] = JsonNumber{ .int = v };
+            }
         }
     }
 };

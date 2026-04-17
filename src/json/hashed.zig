@@ -91,6 +91,14 @@ pub const Value = struct {
         }
     }
 
+    pub fn as_integer_lossy(self: *const Value) ?i64 {
+        switch (self.kind) {
+            .integer => |val| return val,
+            .float => |val| return std.math.lossyCast(i64, val),
+            else => return null,
+        }
+    }
+
     pub fn as_null(self: *const Value) ?void {
         switch (self.kind) {
             .null => return {},

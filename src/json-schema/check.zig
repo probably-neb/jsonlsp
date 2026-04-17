@@ -372,6 +372,26 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
                 }
             }
         }
+
+        if (constraint.contains) |contains| {
+            const contains_save_point = try ctx.checked_savepoint();
+            var contains_result = Check_All_Result{};
+            var iter = value.kind.array.iter();
+            var index: u32 = 0;
+            while (iter.next()) |item| : (index += 1) {
+                const save_point = try ctx.checked_savepoint();
+                const ok = try check_item(ctx, contains, item, index);
+                if (!ok) {
+                    ctx.checked_rollback(save_point);
+                }
+                contains_result.count += 1;
+                contains_result.count_ok += @intFromBool(ok);
+            }
+            if (!constraint.contains_bounds.contains(.{ .int = contains_result.count_ok })) {
+                ctx.checked_rollback(contains_save_point);
+                return false;
+            }
+        }
     }
     if (value.kind == .object) {
         if (value.kind.object.count() < constraint.min_properties) {
