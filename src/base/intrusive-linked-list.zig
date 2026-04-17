@@ -210,6 +210,14 @@ pub fn IntrusiveDoublyLinkedList(comptime T: type) type {
             return c;
         }
 
+        pub fn next_after(list: *const Self, node: *T) ?*T {
+            const first = list.first orelse return null;
+            if (node.next != first) {
+                return node.next;
+            }
+            return null;
+        }
+
         pub const Iter = struct {
             list: *const Self,
             node: ?*T,
