@@ -24,7 +24,8 @@ This project uses **jj** (Jujutsu), not git. Use jj commands instead of git:
 - **Naming**: snake_case for variables/functions, PascalCase for types, SCREAMING_CASE for constants
 - **Methods**: Never name the first parameter `self`. Use a descriptive name (e.g., `arena`, `store`, `gap_buf`)
 - **Type-directed syntax**: Prefer Zig's point-free, type-directed forms when the type is already known. Use `.tag` instead of `Type.tag`, `.{ ... }` instead of `Type{ ... }`, and `.from_value(args)` or `const obj: Object = .from_value(args)` instead of `Object.from_value(args)` when the expected type makes the namespace unambiguous. Use the explicit `Type.foo(...)` form only when the type is not already known or when it materially improves clarity.
-- **Memory**: Use `Arena` from `src/base/` for allocations. Use `arena.scoped()` / `scoped.release()` for temporary allocations
-- **Lists**: Use `ArenaList` instead of `std.ArrayList` - it integrates with Arena and avoids realloc/memcpy
+- **Memory**: Use `Arena` from `src/base/` for allocations. Use `arena.scoped()` / `scoped.release()` for temporary allocations on an existing arena. For true temporary allocations use `const scratch = Arena.get_scratch()` and corresponding `scratch.release()`
+- **Lists**: Use `ArenaList` instead of `std.ArrayList` - it integrates with Arena and avoids realloc/memcpy. Only can be used when no intermediate allocations are happening on the arena while the array is constructed. For cases where other allocations are needed on the same arena (e.g. copying strings, etc) use a `Xar`
 - **Comments**: Use `//!` for module-level docs, `///` for item docs. Minimal inline comments
 - **Tests**: Place `test` blocks at module bottom. Use `std.testing.refAllDecls(@This())` to ensure all decls compile
+- **Functions** Avoid trivial wrapper/helper functions that only forward or repack data. Inline the logic at the call site unless the wrapper adds meaningful abstractions or is reused enough to justify it
