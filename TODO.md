@@ -1,10 +1,14 @@
 - [ ] remaining json-schema compat issues
+  - [ ] remote ref
+  - [ ] remaining unhandled keys
+  - [ ] error generation
 - [ ] Integrate Json schema validation
-  - [ ] Cleanup json-schema.zig to use Arena + other base types
-  - [ ] add error generation to json-schema generation
-  - [ ] Integrate it into the validation and diagnostics pipeline
-- [ ] Flatten json schema constraint type
-- [ ] Add parse cache to json schema checking
+  - [ ] create "snapshot" structure
+    - syntax errors
+    - hashed json
+    - schema validation errors
+    - created from document state + previous snapshot
+  - [ ] integrate hashes into resilient parsing, for re-using of hashed json strucutres, errors, etc
 - [ ] fuzz incremental edits
 - [ ] Fuzz json schema parsing/checking (can integrate with incremental edit fuzzing for full integration fuzzing)
 - [ ] Improve document memory usage
@@ -19,3 +23,4 @@
   - [x] Make json parsing have a "feed" construct that feeds ranges of bytes into the parser
   - [x] handle incremental edit messages and just reparse the entire document
 - [x] Track key hashes in HashableJsonValue (and rename it). Fix places in check where hashes must be computed or strings used instead
+- [x] Flatten json schema constraint type

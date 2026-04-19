@@ -863,7 +863,11 @@ fn parse_applicator__one_of(ctx: *ParseContext, obj: *const HashableJsonValue.Ki
 }
 
 fn parse_validation__multiple_of(obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) void {
-    const multiple_of = (obj.get_const("multipleOf") orelse obj.get_const("divisibleBy") orelse return).*;
+    const multiple_of =
+        obj.get_const("multipleOf") orelse
+        obj.get_const("divisibleBy") orelse
+        return;
+
     switch (multiple_of.kind) {
         .float => |float_val| {
             constraint.multiple_of_f64 = float_val;
