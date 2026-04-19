@@ -471,6 +471,23 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
                 if (!dependent_present) return false;
             }
         }
+
+        for (constraint.dependent_schemas) |dependent_schema| {
+            var trigger_present = false;
+            var trigger_iter = value.kind.object.properties.iter();
+            while (trigger_iter.next()) |key_ptr| {
+                if (key_ptr.hash == dependent_schema.hash) {
+                    trigger_present = true;
+                    break;
+                }
+            }
+
+            if (!trigger_present) continue;
+            const save_point = try ctx.checked_savepoint();
+            const result = try check(ctx, dependent_schema.constraint, value);
+            ctx.checked_rollback(save_point);
+            if (!result) return false;
+        }
     }
 
     if (constraint.ref_constraint) |referenced_constraint| {

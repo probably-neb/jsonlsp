@@ -83,6 +83,7 @@ pub const Schema = struct {
         else_constraint: ?*const Constraint = null,
         required: []u64 = &.{},
         dependent_required: []DependentRequiredEntry = &.{},
+        dependent_schemas: []Property = &.{},
         types: TypeMap = .{},
         min_len: u64 = 0,
         max_len: u64 = std.math.maxInt(u64),
@@ -387,6 +388,8 @@ fn parse_into_constraint(ctx: *ParseContext, schema: *const HashableJsonValue, c
     parse_applicator__additional_properties(ctx, obj, constraint) catch {};
     parse_validation__required_properties(ctx, obj, constraint) catch {};
     parse_validation__dependent_required(ctx, obj, constraint) catch {};
+    parse_applicator__dependent_schemas(ctx, obj, constraint) catch {};
+    parse_validation__dependencies(ctx, obj, constraint) catch {};
     parse_applicator_not(ctx, obj, constraint) catch {};
     parse_applicator__all_of(ctx, obj, constraint) catch {};
     parse_applicator__any_of(ctx, obj, constraint) catch {};
@@ -698,18 +701,7 @@ fn parse_applicator__properties(ctx: *ParseContext, obj: *const HashableJsonValu
     const properties_ptr = obj.get_const("properties") orelse return;
     if (properties_ptr.*.kind != .object) return;
 
-    const properties_obj = &properties_ptr.*.kind.object;
-    var properties = try base.ArenaList(Schema.Constraint.Property).init_capacity(ctx.usage_arena, properties_obj.count());
-    var property_iter = properties_obj.properties.iter();
-    while (property_iter.next()) |key_node| {
-        const key_string = key_node.kind.string;
-        properties.append_assume_capacity(.{
-            .name = try ctx.usage_arena.dupe(u8, key_string.value),
-            .hash = key_node.hash,
-            .constraint = try parse_constraint(ctx, key_string.child.?),
-        });
-    }
-    constraint.properties = properties.items;
+    constraint.properties = try make_properties_list(ctx, &properties_ptr.*.kind.object);
 }
 
 fn parse_applicator__pattern_properties(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) !void {
@@ -785,20 +777,36 @@ fn parse_validation__dependent_required(
     obj: *const HashableJsonValue.Kind.Object,
     constraint: *Schema.Constraint,
 ) !void {
-    const dependent_required_value = (obj.get_const("dependentRequired") orelse return).*;
-    if (dependent_required_value.kind != .object) return;
+    const dependent_required_value = (obj.get_const("dependentRequired") orelse return);
+    const dependent_required_obj = dependent_required_value.as_object() orelse return;
+    constraint.dependent_required = try make_dependent_required_list(ctx, dependent_required_obj);
+}
 
-    var entries = try base.ArenaList(Schema.Constraint.DependentRequiredEntry).init_capacity(
+fn parse_applicator__dependent_schemas(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) !void {
+    const dependent_schemas_value = obj.get_const("dependentSchemas") orelse return;
+    const dependent_schemas_obj = dependent_schemas_value.as_object() orelse return;
+    constraint.dependent_schemas = try make_properties_list(ctx, dependent_schemas_obj);
+}
+
+fn parse_validation__dependencies(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) !void {
+    const dependencies = obj.get_const("dependencies") orelse return;
+    const dependencies_obj = dependencies.as_object() orelse return;
+    constraint.dependent_required = try make_dependent_required_list(ctx, dependencies_obj);
+    constraint.dependent_schemas = try make_properties_list(ctx, dependencies_obj);
+}
+
+fn make_dependent_required_list(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) ![]Schema.Constraint.DependentRequiredEntry {
+    var entries: base.ArenaList(Schema.Constraint.DependentRequiredEntry) = try .init_capacity(
         ctx.usage_arena,
-        dependent_required_value.kind.object.count(),
+        obj.count(),
     );
-    var iter = dependent_required_value.kind.object.properties.iter();
+    var iter = obj.properties.iter();
     while (iter.next()) |key_node| {
         const key_string = key_node.kind.string;
         const dependent_value = key_string.child.?;
         if (dependent_value.kind != .array) continue;
 
-        var required_hashes = try base.ArenaList(u64).init_capacity(ctx.usage_arena, dependent_value.kind.array.count());
+        var required_hashes: base.ArenaList(u64) = try .init_capacity(ctx.usage_arena, dependent_value.kind.array.count());
         var req_iter = dependent_value.kind.array.iter();
         while (req_iter.next()) |required_property| {
             if (required_property.kind != .string) continue;
@@ -813,7 +821,22 @@ fn parse_validation__dependent_required(
         });
     }
 
-    constraint.dependent_required = entries.items;
+    return entries.items;
+}
+
+// todo: combine with "properties" parsing
+fn make_properties_list(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object) ![]Schema.Constraint.Property {
+    var properties: base.ArenaList(Schema.Constraint.Property) = try .init_capacity(ctx.usage_arena, obj.count());
+    var property_iter = obj.properties.iter();
+    while (property_iter.next()) |key_node| {
+        const key_string = key_node.kind.string;
+        properties.append_assume_capacity(.{
+            .name = try ctx.usage_arena.dupe(u8, key_string.value),
+            .hash = key_node.hash,
+            .constraint = try parse_constraint(ctx, key_string.child.?),
+        });
+    }
+    return properties.items;
 }
 
 fn parse_applicator_not(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) !void {
@@ -840,7 +863,7 @@ fn parse_applicator__one_of(ctx: *ParseContext, obj: *const HashableJsonValue.Ki
 }
 
 fn parse_validation__multiple_of(obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) void {
-    const multiple_of = (obj.get_const("multipleOf") orelse return).*;
+    const multiple_of = (obj.get_const("multipleOf") orelse obj.get_const("divisibleBy") orelse return).*;
     switch (multiple_of.kind) {
         .float => |float_val| {
             constraint.multiple_of_f64 = float_val;
