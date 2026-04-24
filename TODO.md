@@ -1,14 +1,15 @@
 - [ ] remaining json-schema compat issues
   - [ ] remote ref
   - [ ] remaining unhandled keys
-  - [ ] error generation
-- [ ] Integrate Json schema validation
+- [ ] Json schema errors
+- [ ] snapshot system for document state
+  - [ ] integrate hashes into resilient parsing, for re-using of hashed json strucutres, errors, etc
   - [ ] create "snapshot" structure
     - syntax errors
     - hashed json
-    - schema validation errors
     - created from document state + previous snapshot
-  - [ ] integrate hashes into resilient parsing, for re-using of hashed json strucutres, errors, etc
+  - [ ] integrate json schema into state
+- [ ] json schema hover docs for values
 - [ ] fuzz incremental edits
 - [ ] Fuzz json schema parsing/checking (can integrate with incremental edit fuzzing for full integration fuzzing)
 - [ ] Improve document memory usage

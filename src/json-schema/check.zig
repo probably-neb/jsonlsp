@@ -21,6 +21,7 @@ pub const CheckContext = struct {
     depth: u16,
     arena: *Arena,
     active_frames: [MAX_CHECK_DEPTH]Frame_List = .{Frame_List.zero} ** MAX_CHECK_DEPTH,
+    errors: base.IntrusiveDoublyLinkedList(Error) = .zero,
 
     const Item_List = base.IntrusiveDoublyLinkedList(Checked_Item);
     const Property_List = base.IntrusiveDoublyLinkedList(Checked_Property);
@@ -575,4 +576,49 @@ fn float_as_int(float: f64) ?i64 {
     const max_int: f64 = @floatFromInt(std.math.maxInt(i64));
     if (std.math.clamp(float, min_int, max_int) != float) return null;
     return @intFromFloat(float);
+}
+
+pub const Error = struct {
+    code: Code,
+    message: []const u8,
+    instance_range: json.Token.Range,
+    next: *Error,
+    prev: *Error,
+    // todo:
+    // instance_path: []const u8,
+    // actual: *const HashableJsonValue,
+    // expected: *const HashableJsonValue,
+    // help: ?[]const u8,
+
+    pub const Code = enum {
+        any_error,
+    };
+};
+
+fn report_error(ctx: *CheckContext, value: *const HashableJsonValue) !void {
+    const err = try ctx.arena.create(Error);
+    err.* = Error{
+        .code = .any_error,
+        .message = "error",
+        .instance_range = value.range,
+        .next = undefined,
+        .prev = undefined,
+    };
+    ctx.errors.append(err);
+}
+
+pub const RenderedError = struct {
+    code: Error.Code,
+    message: []const u8,
+    source_range: json.Token.Range,
+};
+
+pub fn render_errors(arena: *Arena, errors: base.IntrusiveDoublyLinkedList(Error)) ![]const RenderedError {
+    _ = arena;
+    _ = errors;
+    return &.{};
+}
+
+test {
+    std.testing.refAllDecls(@This());
 }

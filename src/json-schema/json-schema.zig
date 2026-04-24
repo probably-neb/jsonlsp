@@ -20,7 +20,9 @@ const pcre = @import("pcre");
 const json = @import("json");
 const HashableJsonValue = json.hashed.Value;
 
-const check = @import("./check.zig");
+const check = @import("check.zig");
+pub const RenderedError = check.RenderedError;
+pub const render_errors = check.render_errors;
 
 pub const Revision = enum {
     draft3,
@@ -135,12 +137,20 @@ pub const Schema = struct {
         var arena = Arena.init(.{}) catch unreachable;
         defer arena.release();
 
-        const json_value = json.hashed.parse(&arena, input) catch return false;
+        const result = schema.validate(&arena, input) catch return false;
+        return result.valid;
+    }
+
+    pub const ValidateResult = struct { valid: bool, errors: @FieldType(check.CheckContext, "errors") };
+
+    pub fn validate(schema: *const Schema, arena: *Arena, input: str8) !ValidateResult {
+        const json_value = json.hashed.parse(arena, input) catch return .{ .valid = false, .errors = .zero };
         var ctx = check.CheckContext{
-            .arena = &arena,
+            .arena = arena,
             .depth = 0,
         };
-        return check.check(&ctx, schema.root.constraint, json_value) catch return false;
+        const ok = try check.check(&ctx, schema.root.constraint, json_value);
+        return .{ .valid = ok, .errors = ctx.errors };
     }
 };
 
@@ -1039,4 +1049,5 @@ pub const Bounds = struct {
 test {
     std.testing.refAllDecls(@This());
     std.testing.refAllDecls(@import("tests.zig"));
+    std.testing.refAllDecls(@import("error_tests.zig"));
 }

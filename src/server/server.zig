@@ -54,7 +54,7 @@ pub fn run(arena: *Arena, transport: *lsp.Transport) !void {
                 lsp.types.PublishDiagnosticsParams,
                 .{
                     .uri = document.uri,
-                    .version = document.version,
+                    .version = document.snapshot.version,
                     .diagnostics = diagnostics_buf[0..diagnostic_count],
                 },
                 .{ .emit_null_optional_fields = true },

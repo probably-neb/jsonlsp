@@ -36,7 +36,6 @@ const Tree_Kind = union(enum) {
 // TODO: don't store Arena, and create zero value
 pub const Tree_Root = struct {
     tree: Tree,
-    arena: *Arena,
     tokens: []const Token,
 };
 
@@ -44,7 +43,7 @@ const Tree = struct {
     kind: Tree_Kind,
     children: base.IntrusiveDoublyLinkedList(Child),
 
-    fn empty(kind: Tree_Kind) Tree {
+    pub fn empty(kind: Tree_Kind) Tree {
         return .{ .kind = kind, .children = .zero };
     }
 };
@@ -230,7 +229,6 @@ pub fn build_tree(parser: Parser) OOM!Tree_Root {
 
     return Tree_Root{
         // TODO: remove arena, just pass around trees
-        .arena = p.arena,
         .tree = stack.pop().?,
         .tokens = tokens,
     };

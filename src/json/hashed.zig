@@ -23,6 +23,7 @@ pub const Value = struct {
     kind: Kind,
     next: *Value,
     prev: *Value,
+    range: lexer.Token.Range,
 
     const This = @This();
 
@@ -33,11 +34,12 @@ pub const Value = struct {
         .prev = @constCast(&Value.zero),
     };
 
-    pub fn value(val: *Value, kind: Kind, hash: u64) *Value {
+    pub fn value(val: *Value, kind: Kind, hash: u64, range: lexer.Token.Range) *Value {
         val.kind = kind;
         val.hash = hash;
         val.next = val;
         val.prev = val;
+        val.range = range;
         return val;
     }
 
@@ -320,6 +322,7 @@ fn parse_null(parser: *Parser) ParseError!*Value {
         try parser.arena.create(Value),
         .null,
         compute_null_hash(),
+        prev_token_range(parser),
     );
 }
 
@@ -329,6 +332,7 @@ fn parse_bool(parser: *Parser, value: bool) ParseError!*Value {
         try parser.arena.create(Value),
         .{ .bool = value },
         compute_bool_hash(value),
+        prev_token_range(parser),
     );
 }
 
@@ -346,6 +350,7 @@ fn parse_string(parser: *Parser) ParseError!*Value {
         try parser.arena.create(Value),
         .{ .string = .{ .value = content } },
         compute_string_hash(content),
+        prev_token_range(parser),
     );
 }
 
@@ -361,6 +366,7 @@ fn parse_number(parser: *Parser) ParseError!*Value {
             .{ .integer = int_val },
             // hashed as float so 42.0 == 42
             compute_number_hash(@floatFromInt(int_val)),
+            prev_token_range(parser),
         );
     } else |_| {
         const float_val = std.fmt.parseFloat(f64, raw) catch return error.InvalidNumber;
@@ -368,21 +374,25 @@ fn parse_number(parser: *Parser) ParseError!*Value {
             try parser.arena.create(Value),
             .{ .float = float_val },
             compute_number_hash(float_val),
+            prev_token_range(parser),
         );
     }
 }
 
 fn parse_array(parser: *Parser) ParseError!*Value {
     parser.pos += 1; // consume '['
+    const range_start = prev_token_range(parser).start;
 
     // Check for empty array
     if (parser.pos < parser.tokens.len and parser.tokens[parser.pos].kind == .r_bracket) {
         parser.pos += 1;
+        const range_close = prev_token_range(parser).close;
         const arr: Value.Kind.Array = .zero;
         return .value(
             try parser.arena.create(Value),
             .{ .array = arr },
             compute_array_hash(&arr),
+            .{ .start = range_start, .close = range_close },
         );
     }
 
@@ -408,26 +418,31 @@ fn parse_array(parser: *Parser) ParseError!*Value {
             return error.UnexpectedToken;
         }
     }
+    const range_close = prev_token_range(parser).close;
 
     return .value(
         try parser.arena.create(Value),
         .{ .array = list },
         compute_array_hash(&list),
+        .{ .start = range_start, .close = range_close },
     );
 }
 
 fn parse_object(parser: *Parser) ParseError!*Value {
     parser.pos += 1; // consume '{'
+    const range_start = prev_token_range(parser).start;
 
     var obj: Value.Kind.Object = .zero;
 
     // Check for empty object
     if (parser.pos < parser.tokens.len and parser.tokens[parser.pos].kind == .r_curly) {
         parser.pos += 1;
+        const range_close = prev_token_range(parser).close;
         return .value(
             try parser.arena.create(Value),
             .{ .object = obj },
             compute_object_hash(&obj),
+            .{ .start = range_start, .close = range_close },
         );
     }
 
@@ -458,15 +473,13 @@ fn parse_object(parser: *Parser) ParseError!*Value {
 
         const entry = try obj.map.get_or_put(parser.arena, key);
         if (entry.found_existing) {
-            switch (entry.value_ptr.*.kind) {
-                .string => |*str| str.child = value,
-                else => unreachable,
-            }
+            entry.value_ptr.*.kind.string.child = value;
         } else {
             const key_node: *Value = .value(
                 try parser.arena.create(Value),
                 .{ .string = .{ .value = entry.key_ptr.*, .child = value } },
                 compute_string_hash(entry.key_ptr.*),
+                prev_token_range(parser),
             );
             obj.properties.append(key_node);
             entry.value_ptr.* = key_node;
@@ -487,10 +500,12 @@ fn parse_object(parser: *Parser) ParseError!*Value {
         }
     }
 
+    const range_close = prev_token_range(parser).close;
     return .value(
         try parser.arena.create(Value),
         .{ .object = obj },
         compute_object_hash(&obj),
+        .{ .start = range_start, .close = range_close },
     );
 }
 
@@ -799,6 +814,10 @@ fn compute_object_hash(obj: *const Value.Kind.Object) u64 {
     var hasher = std.hash.Wyhash.init(hash_seed);
     hash_object_into(&hasher, obj);
     return hasher.final();
+}
+
+fn prev_token_range(parser: *const Parser) lexer.Token.Range {
+    return parser.tokens[parser.pos - 1].range;
 }
 
 // ============================================================================

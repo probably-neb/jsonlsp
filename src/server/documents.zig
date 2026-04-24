@@ -13,24 +13,32 @@ const DOCUMENTS_MAX: usize = 4096;
 pub const Document = struct {
     next: usize,
     uri: []const u8,
-    version: i32,
     buf: GapBuffer,
     buf_arena: Arena,
     language_id: []const u8,
-    tree: ?json.resilient.Tree_Root,
-    lex_arena: Arena,
-    tree_arena: Arena,
+    snapshot: DocumentSnapshot,
 
     const zero = Document{
         .next = 0,
-        .lex_arena = .zero,
-        .tree_arena = .zero,
         .buf_arena = .zero,
         .uri = "",
-        .version = 0,
         .buf = .empty,
         .language_id = "",
-        .tree = null,
+        .snapshot = .zero,
+    };
+};
+
+const DocumentSnapshot = struct {
+    version: i32,
+    buf: []const u8,
+    arena: Arena,
+    tree_root: json.resilient.Tree_Root,
+
+    const zero = DocumentSnapshot{
+        .version = 0,
+        .buf = "",
+        .arena = .zero,
+        .tree_root = .{ .tokens = &.{}, .tree = .empty(.obj) },
     };
 };
 
@@ -104,26 +112,15 @@ pub const DocumentStore = struct {
         @memcpy(buf[0..contents.len], contents);
         const gap_buf = GapBuffer.init(buf, contents.len);
 
-        var lex_arena: Arena = try .init(.{});
-        var lexer: json.Lexer = .zero;
-        const slices = gap_buf.slices();
-        try json.lex(&lexer, &lex_arena, slices.prefix);
-        try json.lex(&lexer, &lex_arena, slices.suffix);
-
-        var tree_arena: Arena = try .init(.{});
-        const tree = try json.resilient.parse(&tree_arena, &lexer);
-
         doc.* = .{
             .next = store.documents_open,
             .uri = try buf_arena.dupe(u8, uri),
             .buf = gap_buf,
-            .version = version,
             .language_id = language_id_owned,
             .buf_arena = buf_arena,
-            .tree = tree,
-            .lex_arena = lex_arena,
-            .tree_arena = tree_arena,
+            .snapshot = .zero,
         };
+        try rebuild_snapshot(doc, version);
 
         store.documents_open = store.documents_free;
         store.documents_free = next_free;
@@ -135,8 +132,7 @@ pub const DocumentStore = struct {
 
         const doc = &store.documents[idx];
         doc.buf_arena.release();
-        doc.lex_arena.release();
-        doc.tree_arena.release();
+        doc.snapshot.arena.release();
 
         if (store.documents_open == idx) {
             store.documents_open = doc.next;
@@ -188,21 +184,10 @@ pub const DocumentStore = struct {
                 else => return err,
             }
         };
-        doc.version = version;
-
-        doc.lex_arena.clear();
-        var lexer: json.Lexer = .zero;
-        const text_slices = doc.buf.slices();
-        json.lex(&lexer, &doc.lex_arena, text_slices.prefix) catch {
-            doc.tree = null;
-            return;
+        rebuild_snapshot(doc, version) catch {
+            // todo! error
+            unreachable;
         };
-        json.lex(&lexer, &doc.lex_arena, text_slices.suffix) catch {
-            doc.tree = null;
-            return;
-        };
-        doc.tree_arena.clear();
-        doc.tree = json.resilient.parse(&doc.tree_arena, &lexer) catch null;
     }
 
     pub const DiagnosticSet = struct {
@@ -218,8 +203,8 @@ pub const DocumentStore = struct {
         const doc_idx = store.find(uri) orelse return 0;
         const doc = store.documents[doc_idx];
 
-        if (doc.tree == null) return 0;
-        const tree = &doc.tree.?.tree;
+        if (doc.snapshot.tree_root.tokens.len == 0) return 0;
+        const tree = &doc.snapshot.tree_root.tree;
 
         var diagnostic_index: u32 = 0;
 
@@ -253,7 +238,7 @@ pub const DocumentStore = struct {
 /// Convert LSP line/character position to byte offset using binary search on tokens.
 /// LSP uses UTF-16 code units for character offsets.
 pub fn position_to_offset(doc: *const Document, line: u32, character: u32) usize {
-    const tokens = if (doc.tree) |tree| tree.tokens else &[_]json.Token{};
+    const tokens = doc.snapshot.tree_root.tokens;
     if (tokens.len == 0) {
         return scan_to_char(doc, scan_to_line(doc, 0, 0, line), character);
     }
@@ -329,4 +314,19 @@ fn scan_to_char(doc: *const Document, line_start: u32, target_char: u32) usize {
         }
     }
     return it.pos;
+}
+
+fn rebuild_snapshot(doc: *Document, version: i32) !void {
+    var snapshot: DocumentSnapshot = .zero;
+    snapshot.arena = try .init(.{});
+    snapshot.version = version;
+    var lexer: json.Lexer = .zero;
+    const slices = doc.buf.slices();
+    try json.lex(&lexer, &snapshot.arena, slices.prefix);
+    try json.lex(&lexer, &snapshot.arena, slices.suffix);
+    const tree = try json.resilient.parse(&snapshot.arena, &lexer);
+    snapshot.tree_root = tree;
+
+    doc.snapshot.arena.release();
+    doc.snapshot = snapshot;
 }
