@@ -82,7 +82,7 @@ pub const Schema = struct {
         if_constraint: ?*const Constraint = null,
         then_constraint: ?*const Constraint = null,
         else_constraint: ?*const Constraint = null,
-        required: []u64 = &.{},
+        required: []*const HashableJsonValue = &.{},
         dependent_required: []DependentRequiredEntry = &.{},
         dependent_schemas: []Property = &.{},
         types: TypeMap = .{},
@@ -753,7 +753,7 @@ fn parse_validation__required_properties(
         const properties_value = (obj.get_const("properties") orelse return).*;
         const properties_object = properties_value.as_object() orelse return;
 
-        var required_properties: base.ArenaList(u64) = .empty;
+        var required_properties: base.ArenaList(*const HashableJsonValue) = .empty;
         var property_iter = properties_object.properties.iter();
         while (property_iter.next()) |key_node| {
             const property_schema = key_node.kind.string.child.?;
@@ -761,7 +761,7 @@ fn parse_validation__required_properties(
             const required_field = (property_schema.kind.object.get_const("required") orelse continue).*;
             if (required_field.kind != .bool) continue;
             if (required_field.kind.bool) {
-                try required_properties.append(ctx.usage_arena, key_node.hash);
+                try required_properties.append(ctx.usage_arena, key_node);
             }
         }
 
@@ -773,11 +773,11 @@ fn parse_validation__required_properties(
     const required_properties_value = (obj.get_const("required") orelse return).*;
     if (required_properties_value.kind != .array) return;
 
-    var required_properties = try base.ArenaList(u64).init_capacity(ctx.usage_arena, required_properties_value.kind.array.count());
+    var required_properties: base.ArenaList(*const HashableJsonValue) = try .init_capacity(ctx.usage_arena, required_properties_value.kind.array.count());
     var iter = required_properties_value.kind.array.iter();
     while (iter.next()) |required_property| {
         if (required_property.kind != .string) continue;
-        required_properties.append_assume_capacity(required_property.hash);
+        required_properties.append_assume_capacity(required_property);
     }
     constraint.required = required_properties.items;
 }

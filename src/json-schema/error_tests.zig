@@ -142,7 +142,8 @@ test "string shorter than minLength" {
     try check_errors(
         \\{ "minLength": 3 }
     ,
-        "<|\"hi\"|>",
+        \\<|"hi"|>
+    ,
         &.{"Expected string length to be at least 3, found 2"},
     );
 }
@@ -151,7 +152,8 @@ test "string longer than maxLength" {
     try check_errors(
         \\{ "maxLength": 2 }
     ,
-        "<|\"hey\"|>",
+        \\<|"hey"|>
+    ,
         &.{"Expected string length to be at most 2, found 3"},
     );
 }
@@ -160,7 +162,8 @@ test "string does not match pattern" {
     try check_errors(
         \\{ "pattern": "^[a-z]+$" }
     ,
-        "<|\"abc123\"|>",
+        \\<|"abc123"|>
+    ,
         &.{"Expected string to match pattern /^[a-z]+$/"},
     );
 }
@@ -179,7 +182,9 @@ test "value does not match enum" {
         \\{ "enum": [1, "two", null] }
     ,
         "<|false|>",
-        &.{"Expected value to be one of 1, \"two\", or null"},
+        &.{
+            \\Expected value to be one of 1, "two", or null
+        },
     );
 }
 
@@ -272,5 +277,61 @@ test "object has too many properties" {
         \\<|{"a": 1, "b": 2}|>
     ,
         &.{"Expected object to contain at most 1 property, found 2"},
+    );
+}
+
+test "object missing required property" {
+    try check_errors(
+        \\{ "required": ["b"] }
+    ,
+        \\<|{"a": 1}|>
+    ,
+        &.{
+            \\missing required property "b"
+        },
+    );
+}
+
+test "object missing required properties" {
+    try check_errors(
+        \\{ "required": ["a", "b", "c"] }
+    ,
+        \\<|{}|>
+    ,
+        &.{
+            \\missing required properties "a", "b", and "c"
+        },
+    );
+}
+
+test "array contains too few matching items" {
+    try check_errors(
+        \\{ "contains": { "const": 1 }, "minContains": 2 }
+    ,
+        \\<|[1, 2]|>
+    ,
+        &.{"Expected array to contain at least 2 matching items, found 1"},
+    );
+}
+
+test "array contains too many matching items" {
+    try check_errors(
+        \\{ "contains": { "const": 1 }, "maxContains": 1 }
+    ,
+        \\<|[1, 1]|>
+    ,
+        &.{"Expected array to contain at most 1 matching item, found 2"},
+    );
+}
+
+test "object contains additional property" {
+    try check_errors(
+        \\{ "properties": { "a": true }, "additionalProperties": false }
+    ,
+        \\{ "a": 1, <|"b"|>: 2 }
+    ,
+        &.{
+            \\unexpected property "b"
+        },
     );
 }

@@ -153,6 +153,13 @@ pub const CheckContext = struct {
             }
         }
     }
+
+    fn errors_rollback(ctx: *CheckContext, tail: ?*Error) void {
+        while (ctx.errors.last()) |err| {
+            if (tail == err) break;
+            _ = ctx.errors.pop_last();
+        }
+    }
 };
 
 fn check_property(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *const HashableJsonValue) !bool {
@@ -395,15 +402,18 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
             var index: u32 = 0;
             while (iter.next()) |item| : (index += 1) {
                 const save_point = try ctx.checked_savepoint();
+                const error_tail = ctx.errors.last();
                 const ok = try check_item(ctx, contains, item, index);
                 if (!ok) {
                     ctx.checked_rollback(save_point);
+                    ctx.errors_rollback(error_tail);
                 }
                 contains_result.count += 1;
                 contains_result.count_ok += @intFromBool(ok);
             }
             if (!constraint.contains_bounds.contains(.{ .int = contains_result.count_ok })) {
                 ctx.checked_rollback(contains_save_point);
+                try record_contains_bounds_error(ctx, value, contains_result.count_ok, constraint.contains_bounds);
                 return false;
             }
         }
@@ -419,7 +429,7 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
             return false;
         }
 
-        const scratch = Arena.get_scratch(&.{});
+        const scratch = Arena.get_scratch(&.{ctx.arena});
         defer scratch.release();
 
         var checked_properties: XarMap(u64, void, 0) = .empty;
@@ -452,17 +462,28 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
             }
 
             if (!checked_properties.contains(key_node.hash) and !matched_pattern and constraint.additional_properties != null) {
+                if (constraint.additional_properties.?.flags.false_schema) {
+                    try record_additional_property_error(ctx, key_node);
+                    return false;
+                }
                 if (!try check_property(ctx, constraint.additional_properties.?, key_node)) {
                     return false;
                 }
             }
         }
 
-        for (constraint.required) |required_property_hash| {
+        var missing_required = try base.ArenaList(*const HashableJsonValue).init_capacity(ctx.arena, constraint.required.len);
+        for (constraint.required) |required_property| {
             var key_iter = value.kind.object.properties.iter();
             while (key_iter.next()) |key_ptr| {
-                if (key_ptr.hash == required_property_hash) break;
-            } else return false;
+                if (key_ptr.hash == required_property.hash) break;
+            } else {
+                missing_required.append_assume_capacity(required_property);
+            }
+        }
+        if (missing_required.items.len > 0) {
+            try record_required_properties_error(ctx, value, missing_required.items);
+            return false;
         }
 
         for (constraint.dependent_required) |entry| {
@@ -633,6 +654,10 @@ pub const Error = struct {
         unique_items,
         min_properties,
         max_properties,
+        required_property,
+        min_contains,
+        max_contains,
+        additional_property,
     };
 };
 
@@ -706,6 +731,41 @@ fn record_pattern_mismatch_error(ctx: *CheckContext, value: *const HashableJsonV
 fn record_unique_items_error(ctx: *CheckContext, value: *const HashableJsonValue) !void {
     const err = try record_error(ctx, value);
     err.code = .unique_items;
+}
+
+fn record_required_properties_error(ctx: *CheckContext, value: *const HashableJsonValue, required_properties: []*const HashableJsonValue) !void {
+    const err = try record_error(ctx, value);
+    err.code = .required_property;
+    err.expected_values = required_properties;
+}
+
+fn record_contains_bounds_error(ctx: *CheckContext, value: *const HashableJsonValue, actual: u32, bounds: json_schema.Bounds) !void {
+    if (bounds.present[0]) {
+        const expected = json_number_to_count(bounds.values[0]);
+        if (actual < expected or (actual == expected and bounds.exclusive[0])) {
+            return record_count_error(ctx, value, .min_contains, actual, expected);
+        }
+    }
+    if (bounds.present[1]) {
+        const expected = json_number_to_count(bounds.values[1]);
+        if (actual > expected or (actual == expected and bounds.exclusive[1])) {
+            return record_count_error(ctx, value, .max_contains, actual, expected);
+        }
+    }
+    unreachable;
+}
+
+fn record_additional_property_error(ctx: *CheckContext, property: *const HashableJsonValue) !void {
+    const err = try record_error(ctx, property);
+    err.code = .additional_property;
+    err.expected_value = property;
+}
+
+fn json_number_to_count(number: JsonNumber) u32 {
+    return switch (number) {
+        .int => |int| @intCast(int),
+        .float => |float| @intFromFloat(float),
+    };
 }
 
 const ExpectedTypesFormatter = struct {
@@ -818,6 +878,7 @@ fn fmt_json_value(value: *const HashableJsonValue) JsonValueFormatter {
 
 const JsonValuesFormatter = struct {
     values: []const *const HashableJsonValue,
+    conjunction: []const u8,
 
     pub fn format(formatter: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
         for (formatter.values, 0..) |value, index| {
@@ -828,15 +889,15 @@ const JsonValuesFormatter = struct {
                 if (formatter.values.len == 2) {
                     try writer.writeByte(' ');
                 }
-                try writer.writeAll("or ");
+                try writer.print("{s} ", .{formatter.conjunction});
             }
             try writer.print("{f}", .{fmt_json_value(value)});
         }
     }
 };
 
-fn fmt_json_values(values: []const *const HashableJsonValue) JsonValuesFormatter {
-    return .{ .values = values };
+fn fmt_json_values(values: []const *const HashableJsonValue, conjunction: []const u8) JsonValuesFormatter {
+    return .{ .values = values, .conjunction = conjunction };
 }
 
 test fmt_expected_types {
@@ -876,7 +937,7 @@ pub fn render_errors(arena: *Arena, errors: base.IntrusiveDoublyLinkedList(Error
         const message = switch (err.code) {
             .type_mismatch => try arena.print("Expected a value of type {f}, found {t}", .{ fmt_expected_types(err.expected_types), err.actual_type.? }),
             .const_mismatch => try arena.print("Expected value to equal {f}", .{fmt_json_value(err.expected_value.?)}),
-            .enum_mismatch => try arena.print("Expected value to be one of {f}", .{fmt_json_values(err.expected_values)}),
+            .enum_mismatch => try arena.print("Expected value to be one of {f}", .{fmt_json_values(err.expected_values, "or")}),
             .minimum => try arena.print("Expected number to be at least {f}, found {f}", .{ fmt_json_number(err.expected_number), fmt_json_number(err.actual_number) }),
             .exclusive_minimum => try arena.print("Expected number to be greater than {f}, found {f}", .{ fmt_json_number(err.expected_number), fmt_json_number(err.actual_number) }),
             .maximum => try arena.print("Expected number to be at most {f}, found {f}", .{ fmt_json_number(err.expected_number), fmt_json_number(err.actual_number) }),
@@ -890,6 +951,10 @@ pub fn render_errors(arena: *Arena, errors: base.IntrusiveDoublyLinkedList(Error
             .unique_items => try arena.print("Expected array items to be unique", .{}),
             .min_properties => try arena.print("Expected object to contain at least {} propert{s}, found {}", .{ err.expected_count, if (err.expected_count == 1) "y" else "ies", err.actual_count }),
             .max_properties => try arena.print("Expected object to contain at most {} propert{s}, found {}", .{ err.expected_count, if (err.expected_count == 1) "y" else "ies", err.actual_count }),
+            .required_property => try arena.print("missing required propert{s} {f}", .{ if (err.expected_values.len == 1) "y" else "ies", fmt_json_values(err.expected_values, "and") }),
+            .min_contains => try arena.print("Expected array to contain at least {} matching item{s}, found {}", .{ err.expected_count, if (err.expected_count == 1) "" else "s", err.actual_count }),
+            .max_contains => try arena.print("Expected array to contain at most {} matching item{s}, found {}", .{ err.expected_count, if (err.expected_count == 1) "" else "s", err.actual_count }),
+            .additional_property => try arena.print("unexpected property {f}", .{fmt_json_value(err.expected_value.?)}),
             .any_error => continue,
         };
         rendered_errors.append_assume_capacity(.{

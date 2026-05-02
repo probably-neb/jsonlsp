@@ -479,7 +479,7 @@ fn parse_object(parser: *Parser) ParseError!*Value {
                 try parser.arena.create(Value),
                 .{ .string = .{ .value = entry.key_ptr.*, .child = value } },
                 compute_string_hash(entry.key_ptr.*),
-                prev_token_range(parser),
+                key_token.range,
             );
             obj.properties.append(key_node);
             entry.value_ptr.* = key_node;
