@@ -245,7 +245,12 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
 
     if (value.kind == .string) {
         const len = std.unicode.utf8CountCodepoints(value.kind.string.value) catch 0;
-        if (len < constraint.min_len or len > constraint.max_len) {
+        if (len < constraint.min_len) {
+            try record_string_length_error(ctx, value, .min_length, len, constraint.min_len);
+            return false;
+        }
+        if (len > constraint.max_len) {
+            try record_string_length_error(ctx, value, .max_length, len, constraint.max_len);
             return false;
         }
         if (constraint.pattern) |regex| {
@@ -254,6 +259,7 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
                 error.OutOfMemory => return error.OutOfMemory,
             };
             if (matches == null) {
+                try record_pattern_mismatch_error(ctx, value, constraint.pattern_source);
                 return false;
             }
         }
@@ -588,6 +594,9 @@ pub const Error = struct {
     prev: *Error,
     actual_type: ?HashableJsonValue.Kind_Tag = null,
     expected_types: *const TypeMap = &.zero,
+    actual_string_length: u64 = 0,
+    expected_string_length: u64 = 0,
+    expected_pattern: []const u8 = &.{},
     // todo:
     // instance_path: []const u8,
     // actual: *const HashableJsonValue,
@@ -597,6 +606,9 @@ pub const Error = struct {
     pub const Code = enum {
         any_error,
         type_mismatch,
+        min_length,
+        max_length,
+        pattern_mismatch,
     };
 };
 
@@ -617,6 +629,19 @@ fn record_type_mismatch_error(ctx: *CheckContext, value: *const HashableJsonValu
     err.code = .type_mismatch;
     err.expected_types = type_map;
     err.actual_type = value.kind;
+}
+
+fn record_string_length_error(ctx: *CheckContext, value: *const HashableJsonValue, code: Error.Code, actual: u64, expected: u64) !void {
+    const err = try record_error(ctx, value);
+    err.code = code;
+    err.actual_string_length = actual;
+    err.expected_string_length = expected;
+}
+
+fn record_pattern_mismatch_error(ctx: *CheckContext, value: *const HashableJsonValue, pattern: []const u8) !void {
+    const err = try record_error(ctx, value);
+    err.code = .pattern_mismatch;
+    err.expected_pattern = pattern;
 }
 
 const ExpectedTypesFormatter = struct {
@@ -705,19 +730,18 @@ pub fn render_errors(arena: *Arena, errors: base.IntrusiveDoublyLinkedList(Error
     try rendered_errors.ensure_total_capacity(arena, errors.count());
     var current_error = errors.first;
     while (current_error) |err| : (current_error = errors.next_after(err)) {
-        switch (err.code) {
-            .type_mismatch => {
-                const message = try arena.print("Expected a value of type {f}, found {t}", .{ fmt_expected_types(err.expected_types), err.actual_type.? });
-                rendered_errors.append_assume_capacity(RenderedError{
-                    .code = .type_mismatch,
-                    .message = message,
-                    .source_range = err.instance_range,
-                });
-            },
-            .any_error => {
-                // TODO: render other error types
-            },
-        }
+        const message = switch (err.code) {
+            .type_mismatch => try arena.print("Expected a value of type {f}, found {t}", .{ fmt_expected_types(err.expected_types), err.actual_type.? }),
+            .min_length => try arena.print("Expected string length to be at least {}, found {}", .{ err.expected_string_length, err.actual_string_length }),
+            .max_length => try arena.print("Expected string length to be at most {}, found {}", .{ err.expected_string_length, err.actual_string_length }),
+            .pattern_mismatch => try arena.print("Expected string to match pattern /{s}/", .{err.expected_pattern}),
+            .any_error => continue,
+        };
+        rendered_errors.append_assume_capacity(.{
+            .code = err.code,
+            .message = message,
+            .source_range = err.instance_range,
+        });
     }
     return rendered_errors.items;
 }

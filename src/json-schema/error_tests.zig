@@ -137,3 +137,30 @@ test "value not a number" {
         &.{"Expected a value of type number, found null"},
     );
 }
+
+test "string shorter than minLength" {
+    try check_errors(
+        \\{ "minLength": 3 }
+    ,
+        "<|\"hi\"|>",
+        &.{"Expected string length to be at least 3, found 2"},
+    );
+}
+
+test "string longer than maxLength" {
+    try check_errors(
+        \\{ "maxLength": 2 }
+    ,
+        "<|\"hey\"|>",
+        &.{"Expected string length to be at most 2, found 3"},
+    );
+}
+
+test "string does not match pattern" {
+    try check_errors(
+        \\{ "pattern": "^[a-z]+$" }
+    ,
+        "<|\"abc123\"|>",
+        &.{"Expected string to match pattern /^[a-z]+$/"},
+    );
+}

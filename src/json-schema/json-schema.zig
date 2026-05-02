@@ -97,6 +97,7 @@ pub const Schema = struct {
         multiple_of_i64: ?i64 = null,
         multiple_of_f64: ?f64 = null,
         pattern: ?pcre.Regex = null,
+        pattern_source: []const u8 = &.{},
         @"const": u64 = 0,
         @"enum": []u64 = &.{},
         unevaluated_properties: ?*const Constraint = null,
@@ -903,6 +904,7 @@ fn parse_validation__pattern(
         .JavascriptCompat = true,
         .Utf8 = true,
     });
+    constraint.pattern_source = pattern_c;
 }
 
 fn parse_applicator__if_then_else(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) !void {
