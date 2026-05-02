@@ -213,6 +213,74 @@ fn commit_up_to(arena: *Arena, target_pos: usize) AllocError!void {
     arena.committed = commit_target;
 }
 
+pub fn print(arena: *Arena, comptime fmt: []const u8, args: anytype) ![]const u8 {
+    var w: Writer = .{ .arena = arena };
+    const pos = arena.pos;
+    try w.writer.print(fmt, args);
+    return arena.memory[pos..arena.pos];
+}
+
+pub const Writer = struct {
+    arena: *Arena,
+    writer: Io.Writer = .{ .vtable = &vtable, .buffer = &.{} },
+
+    const Io = std.Io;
+
+    pub const vtable: std.Io.Writer.VTable = .{
+        .drain = Writer.drain,
+        .rebase = Writer.rebase,
+        .flush = Writer.flush,
+    };
+
+    fn drain(w: *Io.Writer, data: []const []const u8, splat: usize) Io.Writer.Error!usize {
+        const a: *Arena.Writer = @fieldParentPtr("writer", w);
+        const arena = a.arena;
+        std.debug.assert(data.len != 0);
+        const pattern = data[data.len - 1];
+        const start_pos = arena.pos;
+        for (data) |bytes| {
+            _ = arena.dupe(u8, bytes) catch return error.WriteFailed;
+        }
+        if (splat == 0) {
+            arena.pos -= pattern.len;
+        } else switch (pattern.len) {
+            0 => {},
+            1 => {
+                const buf = arena.alloc(u8, splat - 1) catch return error.WriteFailed;
+                @memset(buf, pattern[0]);
+            },
+            else => for (0..splat - 1) |_| {
+                _ = arena.dupe(u8, pattern) catch return error.WriteFailed;
+            },
+        }
+        return arena.pos - start_pos;
+    }
+
+    fn rebase(
+        w: *Io.Writer,
+        preserve: usize,
+        capacity: usize,
+    ) Io.Writer.Error!void {
+        _ = w;
+        _ = preserve;
+        _ = capacity;
+        return error.WriteFailed;
+    }
+
+    fn flush(w: *Io.Writer) Io.Writer.Error!void {
+        _ = w;
+        return;
+    }
+};
+
+test print {
+    var arena = try Arena.init(.{});
+    defer arena.release();
+
+    const bytes = try arena.print("foo: {d}-{d}-{d}", .{ 1, 20, 300 });
+    try std.testing.expectEqualStrings("foo: 1-20-300", bytes);
+}
+
 pub const Scoped = struct {
     arena: *Arena,
     pos: usize,

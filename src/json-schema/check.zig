@@ -232,7 +232,10 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
         .null => constraint.types.null,
         .integer => constraint.types.integer or constraint.types.number,
     };
-    if (!types_ok) return false;
+    if (!types_ok) {
+        try record_type_mismatch_error(ctx, value, &constraint.types);
+        return false;
+    }
 
     for (constraint.@"enum") |hash| {
         if (hash == value.hash) break;
@@ -580,10 +583,11 @@ fn float_as_int(float: f64) ?i64 {
 
 pub const Error = struct {
     code: Code,
-    message: []const u8,
     instance_range: json.Token.Range,
     next: *Error,
     prev: *Error,
+    actual_type: ?HashableJsonValue.Kind_Tag = null,
+    expected_types: *const TypeMap = &.zero,
     // todo:
     // instance_path: []const u8,
     // actual: *const HashableJsonValue,
@@ -592,19 +596,102 @@ pub const Error = struct {
 
     pub const Code = enum {
         any_error,
+        type_mismatch,
     };
 };
 
-fn report_error(ctx: *CheckContext, value: *const HashableJsonValue) !void {
+fn record_error(ctx: *CheckContext, value: *const HashableJsonValue) !*Error {
     const err = try ctx.arena.create(Error);
     err.* = Error{
         .code = .any_error,
-        .message = "error",
         .instance_range = value.range,
         .next = undefined,
         .prev = undefined,
     };
     ctx.errors.append(err);
+    return err;
+}
+
+fn record_type_mismatch_error(ctx: *CheckContext, value: *const HashableJsonValue, type_map: *const TypeMap) !void {
+    const err = try record_error(ctx, value);
+    err.code = .type_mismatch;
+    err.expected_types = type_map;
+    err.actual_type = value.kind;
+}
+
+const ExpectedTypesFormatter = struct {
+    types: *const TypeMap,
+
+    pub fn format(
+        self: @This(),
+        writer: *std.Io.Writer,
+    ) std.Io.Writer.Error!void {
+        const strings: [7][]const u8 = comptime .{
+            "null",
+            "boolean",
+            "integer",
+            "number",
+            "object",
+            "string",
+            "array",
+        };
+        var present: [strings.len]bool = .{false} ** strings.len;
+        var count: u32 = 0;
+        inline for (strings, &present) |str, *is_present| {
+            is_present.* = @field(self.types, str);
+            count += @intFromBool(is_present.*);
+        }
+
+        if (count == 0) {
+            try writer.writeAll("none");
+            return;
+        }
+
+        var found: u32 = 0;
+        for (strings, present) |str, is_present| {
+            if (!is_present) {
+                continue;
+            }
+            if (found > 0 and found < count and count > 2) {
+                try writer.writeAll(", ");
+            }
+            if (found > 0 and found == count - 1) {
+                if (count == 2) {
+                    try writer.writeByte(' ');
+                }
+                try writer.writeAll("or ");
+            }
+            try writer.writeAll(str);
+            found += 1;
+        }
+    }
+};
+
+fn fmt_expected_types(types: *const TypeMap) ExpectedTypesFormatter {
+    return .{ .types = types };
+}
+
+test fmt_expected_types {
+    var arena: Arena = try .init(.{});
+    defer arena.release();
+
+    const none = try arena.print("{f}", .{fmt_expected_types(&.{})});
+    try std.testing.expectEqualStrings("none", none);
+
+    const single = try arena.print("{f}", .{fmt_expected_types(&.{ .boolean = true })});
+    try std.testing.expectEqualStrings("boolean", single);
+
+    const two = try arena.print("{f}", .{fmt_expected_types(&.{ .boolean = true, .string = true })});
+    try std.testing.expectEqualStrings("boolean or string", two);
+
+    const all = try arena.print("{f}", .{fmt_expected_types(&.{
+        .boolean = true,
+        .string = true,
+        .number = true,
+        .array = true,
+        .object = true,
+    })});
+    try std.testing.expectEqualStrings("boolean, number, object, string, or array", all);
 }
 
 pub const RenderedError = struct {
@@ -614,9 +701,25 @@ pub const RenderedError = struct {
 };
 
 pub fn render_errors(arena: *Arena, errors: base.IntrusiveDoublyLinkedList(Error)) ![]const RenderedError {
-    _ = arena;
-    _ = errors;
-    return &.{};
+    var rendered_errors: base.ArenaList(RenderedError) = .empty;
+    try rendered_errors.ensure_total_capacity(arena, errors.count());
+    var current_error = errors.first;
+    while (current_error) |err| : (current_error = errors.next_after(err)) {
+        switch (err.code) {
+            .type_mismatch => {
+                const message = try arena.print("Expected a value of type {f}, found {t}", .{ fmt_expected_types(err.expected_types), err.actual_type.? });
+                rendered_errors.append_assume_capacity(RenderedError{
+                    .code = .type_mismatch,
+                    .message = message,
+                    .source_range = err.instance_range,
+                });
+            },
+            .any_error => {
+                // TODO: render other error types
+            },
+        }
+    }
+    return rendered_errors.items;
 }
 
 test {

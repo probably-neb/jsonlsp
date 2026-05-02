@@ -71,12 +71,9 @@ fn check_errors(schema_contents: []const u8, marked_json: []const u8, messages: 
     }
 
     for (messages, error_ranges, actual_error_messages) |msg, range, actual| {
-        if (!std.mem.eql(u8, msg, actual.message)) {
-            std.debug.print("Expected error {s}, got {s}\n", .{ msg, actual });
-            return error.Mismatch;
-        }
-        if (range.start != actual.range.start or range.close != actual.range.close) {
-            std.debug.print("Expected range {:?}, got {:?}\n", .{ range, actual.range });
+        std.testing.expectEqualStrings(msg, actual.message) catch return error.Mismatch;
+        if (range.start != actual.source_range.start.byte or range.close != actual.source_range.close.byte) {
+            std.debug.print("Expected range {any}, got {any}\n", .{ range, actual.source_range });
             return error.Mismatch;
         }
     }
@@ -137,6 +134,6 @@ test "value not a number" {
         \\{ "type": "number" }
     ,
         "<|null|>",
-        &.{"Expected a number, got null"},
+        &.{"Expected a value of type number, found null"},
     );
 }
