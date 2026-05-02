@@ -220,8 +220,11 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
     if (constraint.flags.false_schema) {
         return false;
     }
-    if (constraint.flags.@"const" and value.hash != constraint.@"const") {
-        return false;
+    if (constraint.constant) |constant| {
+        if (value.hash != constant.hash) {
+            try record_const_mismatch_error(ctx, value, constant);
+            return false;
+        }
     }
     const types_ok = constraint.types == TypeMap.zero or switch (value.kind) {
         .string => constraint.types.string,
@@ -237,20 +240,21 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
         return false;
     }
 
-    for (constraint.@"enum") |hash| {
-        if (hash == value.hash) break;
+    for (constraint.@"enum") |expected| {
+        if (expected.hash == value.hash) break;
     } else if (constraint.@"enum".len > 0) {
+        try record_enum_mismatch_error(ctx, value, constraint.@"enum");
         return false;
     }
 
     if (value.kind == .string) {
         const len = std.unicode.utf8CountCodepoints(value.kind.string.value) catch 0;
         if (len < constraint.min_len) {
-            try record_string_length_error(ctx, value, .min_length, len, constraint.min_len);
+            try record_count_error(ctx, value, .min_length, len, constraint.min_len);
             return false;
         }
         if (len > constraint.max_len) {
-            try record_string_length_error(ctx, value, .max_length, len, constraint.max_len);
+            try record_count_error(ctx, value, .max_length, len, constraint.max_len);
             return false;
         }
         if (constraint.pattern) |regex| {
@@ -266,6 +270,7 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
     }
     if (JsonNumber.from_json_value(value)) |number| {
         if (!constraint.bounds.contains(number)) {
+            try record_bounds_error(ctx, value, number, constraint.bounds);
             return false;
         }
     }
@@ -283,6 +288,7 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
             const quotient = fv / multiple_of;
             const diff = @abs(quotient - @round(quotient));
             if (!(diff < 1e-9)) {
+                try record_number_error(ctx, value, .multiple_of, JsonNumber.from_json_value(value).?, .{ .float = multiple_of });
                 return false;
             }
         }
@@ -297,6 +303,7 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
             else => null,
         };
         if (int_val != null and @rem(int_val.?, multiple_of) != 0) {
+            try record_number_error(ctx, value, .multiple_of, JsonNumber.from_json_value(value).?, .{ .int = multiple_of });
             return false;
         }
     }
@@ -340,26 +347,24 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
     if (value.kind == .array) {
         const length = value.kind.array.count();
         if (length < constraint.min_items) {
+            try record_count_error(ctx, value, .min_items, @intCast(length), constraint.min_items);
             return false;
         }
         if (length > constraint.max_items) {
+            try record_count_error(ctx, value, .max_items, @intCast(length), constraint.max_items);
             return false;
         }
         if (constraint.flags.unique_items) {
-            const scratch = Arena.get_scratch(&.{});
-            defer scratch.release();
-
-            var hashes: base.ArenaList(u64) = .empty;
-            try hashes.ensure_total_capacity(scratch.arena, length);
-
             var arr_iter = value.kind.array.iter();
             while (arr_iter.next()) |item| {
-                for (hashes.items) |hash| {
-                    if (hash == item.hash) {
+                var seen_iter = value.kind.array.iter();
+                while (seen_iter.next()) |seen| {
+                    if (seen == item) break;
+                    if (seen.hash == item.hash) {
+                        try record_unique_items_error(ctx, item);
                         return false;
                     }
                 }
-                hashes.append_assume_capacity(item.hash);
             }
         }
         var arr_iter = value.kind.array.iter();
@@ -404,10 +409,13 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
         }
     }
     if (value.kind == .object) {
-        if (value.kind.object.count() < constraint.min_properties) {
+        const property_count = value.kind.object.count();
+        if (property_count < constraint.min_properties) {
+            try record_count_error(ctx, value, .min_properties, @intCast(property_count), constraint.min_properties);
             return false;
         }
-        if (value.kind.object.count() > constraint.max_properties) {
+        if (property_count > constraint.max_properties) {
+            try record_count_error(ctx, value, .max_properties, @intCast(property_count), constraint.max_properties);
             return false;
         }
 
@@ -594,8 +602,12 @@ pub const Error = struct {
     prev: *Error,
     actual_type: ?HashableJsonValue.Kind_Tag = null,
     expected_types: *const TypeMap = &.zero,
-    actual_string_length: u64 = 0,
-    expected_string_length: u64 = 0,
+    expected_value: ?*const HashableJsonValue = null,
+    expected_values: []*const HashableJsonValue = &.{},
+    actual_number: JsonNumber = .{ .int = 0 },
+    expected_number: JsonNumber = .{ .int = 0 },
+    actual_count: u64 = 0,
+    expected_count: u64 = 0,
     expected_pattern: []const u8 = &.{},
     // todo:
     // instance_path: []const u8,
@@ -606,9 +618,21 @@ pub const Error = struct {
     pub const Code = enum {
         any_error,
         type_mismatch,
+        const_mismatch,
+        enum_mismatch,
+        minimum,
+        exclusive_minimum,
+        maximum,
+        exclusive_maximum,
+        multiple_of,
         min_length,
         max_length,
         pattern_mismatch,
+        min_items,
+        max_items,
+        unique_items,
+        min_properties,
+        max_properties,
     };
 };
 
@@ -631,17 +655,57 @@ fn record_type_mismatch_error(ctx: *CheckContext, value: *const HashableJsonValu
     err.actual_type = value.kind;
 }
 
-fn record_string_length_error(ctx: *CheckContext, value: *const HashableJsonValue, code: Error.Code, actual: u64, expected: u64) !void {
+fn record_const_mismatch_error(ctx: *CheckContext, value: *const HashableJsonValue, expected: *const HashableJsonValue) !void {
+    const err = try record_error(ctx, value);
+    err.code = .const_mismatch;
+    err.expected_value = expected;
+}
+
+fn record_enum_mismatch_error(ctx: *CheckContext, value: *const HashableJsonValue, expected: []*const HashableJsonValue) !void {
+    const err = try record_error(ctx, value);
+    err.code = .enum_mismatch;
+    err.expected_values = expected;
+}
+
+fn record_number_error(ctx: *CheckContext, value: *const HashableJsonValue, code: Error.Code, actual: JsonNumber, expected: JsonNumber) !void {
     const err = try record_error(ctx, value);
     err.code = code;
-    err.actual_string_length = actual;
-    err.expected_string_length = expected;
+    err.actual_number = actual;
+    err.expected_number = expected;
+}
+
+fn record_bounds_error(ctx: *CheckContext, value: *const HashableJsonValue, actual: JsonNumber, bounds: json_schema.Bounds) !void {
+    if (bounds.present[0]) {
+        const order = JsonNumber.cmp(actual, bounds.values[0]);
+        if (order == .lt or (order == .eq and bounds.exclusive[0])) {
+            return record_number_error(ctx, value, if (bounds.exclusive[0]) .exclusive_minimum else .minimum, actual, bounds.values[0]);
+        }
+    }
+    if (bounds.present[1]) {
+        const order = JsonNumber.cmp(actual, bounds.values[1]);
+        if (order == .gt or (order == .eq and bounds.exclusive[1])) {
+            return record_number_error(ctx, value, if (bounds.exclusive[1]) .exclusive_maximum else .maximum, actual, bounds.values[1]);
+        }
+    }
+    unreachable;
+}
+
+fn record_count_error(ctx: *CheckContext, value: *const HashableJsonValue, code: Error.Code, actual: u64, expected: u64) !void {
+    const err = try record_error(ctx, value);
+    err.code = code;
+    err.actual_count = actual;
+    err.expected_count = expected;
 }
 
 fn record_pattern_mismatch_error(ctx: *CheckContext, value: *const HashableJsonValue, pattern: []const u8) !void {
     const err = try record_error(ctx, value);
     err.code = .pattern_mismatch;
     err.expected_pattern = pattern;
+}
+
+fn record_unique_items_error(ctx: *CheckContext, value: *const HashableJsonValue) !void {
+    const err = try record_error(ctx, value);
+    err.code = .unique_items;
 }
 
 const ExpectedTypesFormatter = struct {
@@ -696,6 +760,85 @@ fn fmt_expected_types(types: *const TypeMap) ExpectedTypesFormatter {
     return .{ .types = types };
 }
 
+const JsonNumberFormatter = struct {
+    number: JsonNumber,
+
+    pub fn format(formatter: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        switch (formatter.number) {
+            .int => |int| try writer.print("{d}", .{int}),
+            .float => |float| try writer.print("{d}", .{float}),
+        }
+    }
+};
+
+fn fmt_json_number(number: JsonNumber) JsonNumberFormatter {
+    return .{ .number = number };
+}
+
+const JsonValueFormatter = struct {
+    value: *const HashableJsonValue,
+
+    pub fn format(formatter: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        var json_writer: std.json.Stringify = .{ .writer = writer };
+        try write_json_value(formatter.value, &json_writer);
+    }
+};
+
+fn write_json_value(value: *const HashableJsonValue, writer: *std.json.Stringify) std.Io.Writer.Error!void {
+    switch (value.kind) {
+        .null => try writer.write(null),
+        .bool => |bool_value| try writer.write(bool_value),
+        .integer => |int| try writer.write(int),
+        .float => |float| try writer.write(float),
+        .string => |string| try writer.write(string.value),
+        .array => |array| {
+            try writer.beginArray();
+            var it = array.first;
+            while (it) |item| : (it = array.next_after(item)) {
+                try write_json_value(item, writer);
+            }
+            try writer.endArray();
+        },
+        .object => |object| {
+            try writer.beginObject();
+            var it = object.properties.first;
+            while (it) |property| : (it = object.properties.next_after(property)) {
+                const key = property.kind.string;
+                try writer.objectField(key.value);
+                try write_json_value(key.child.?, writer);
+            }
+            try writer.endObject();
+        },
+    }
+}
+
+fn fmt_json_value(value: *const HashableJsonValue) JsonValueFormatter {
+    return .{ .value = value };
+}
+
+const JsonValuesFormatter = struct {
+    values: []const *const HashableJsonValue,
+
+    pub fn format(formatter: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        for (formatter.values, 0..) |value, index| {
+            if (index > 0 and index < formatter.values.len and formatter.values.len > 2) {
+                try writer.writeAll(", ");
+            }
+            if (index > 0 and index == formatter.values.len - 1) {
+                if (formatter.values.len == 2) {
+                    try writer.writeByte(' ');
+                }
+                try writer.writeAll("or ");
+            }
+            try writer.print("{f}", .{fmt_json_value(value)});
+        }
+    }
+};
+
+fn fmt_json_values(values: []const *const HashableJsonValue) JsonValuesFormatter {
+    return .{ .values = values };
+}
+
 test fmt_expected_types {
     var arena: Arena = try .init(.{});
     defer arena.release();
@@ -732,9 +875,21 @@ pub fn render_errors(arena: *Arena, errors: base.IntrusiveDoublyLinkedList(Error
     while (current_error) |err| : (current_error = errors.next_after(err)) {
         const message = switch (err.code) {
             .type_mismatch => try arena.print("Expected a value of type {f}, found {t}", .{ fmt_expected_types(err.expected_types), err.actual_type.? }),
-            .min_length => try arena.print("Expected string length to be at least {}, found {}", .{ err.expected_string_length, err.actual_string_length }),
-            .max_length => try arena.print("Expected string length to be at most {}, found {}", .{ err.expected_string_length, err.actual_string_length }),
+            .const_mismatch => try arena.print("Expected value to equal {f}", .{fmt_json_value(err.expected_value.?)}),
+            .enum_mismatch => try arena.print("Expected value to be one of {f}", .{fmt_json_values(err.expected_values)}),
+            .minimum => try arena.print("Expected number to be at least {f}, found {f}", .{ fmt_json_number(err.expected_number), fmt_json_number(err.actual_number) }),
+            .exclusive_minimum => try arena.print("Expected number to be greater than {f}, found {f}", .{ fmt_json_number(err.expected_number), fmt_json_number(err.actual_number) }),
+            .maximum => try arena.print("Expected number to be at most {f}, found {f}", .{ fmt_json_number(err.expected_number), fmt_json_number(err.actual_number) }),
+            .exclusive_maximum => try arena.print("Expected number to be less than {f}, found {f}", .{ fmt_json_number(err.expected_number), fmt_json_number(err.actual_number) }),
+            .multiple_of => try arena.print("Expected number to be a multiple of {f}, found {f}", .{ fmt_json_number(err.expected_number), fmt_json_number(err.actual_number) }),
+            .min_length => try arena.print("Expected string length to be at least {}, found {}", .{ err.expected_count, err.actual_count }),
+            .max_length => try arena.print("Expected string length to be at most {}, found {}", .{ err.expected_count, err.actual_count }),
             .pattern_mismatch => try arena.print("Expected string to match pattern /{s}/", .{err.expected_pattern}),
+            .min_items => try arena.print("Expected array to contain at least {} item{s}, found {}", .{ err.expected_count, if (err.expected_count == 1) "" else "s", err.actual_count }),
+            .max_items => try arena.print("Expected array to contain at most {} item{s}, found {}", .{ err.expected_count, if (err.expected_count == 1) "" else "s", err.actual_count }),
+            .unique_items => try arena.print("Expected array items to be unique", .{}),
+            .min_properties => try arena.print("Expected object to contain at least {} propert{s}, found {}", .{ err.expected_count, if (err.expected_count == 1) "y" else "ies", err.actual_count }),
+            .max_properties => try arena.print("Expected object to contain at most {} propert{s}, found {}", .{ err.expected_count, if (err.expected_count == 1) "y" else "ies", err.actual_count }),
             .any_error => continue,
         };
         rendered_errors.append_assume_capacity(.{

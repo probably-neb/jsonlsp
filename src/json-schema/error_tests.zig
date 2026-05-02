@@ -164,3 +164,113 @@ test "string does not match pattern" {
         &.{"Expected string to match pattern /^[a-z]+$/"},
     );
 }
+
+test "value does not match const" {
+    try check_errors(
+        \\{ "const": 1 }
+    ,
+        "<|2|>",
+        &.{"Expected value to equal 1"},
+    );
+}
+
+test "value does not match enum" {
+    try check_errors(
+        \\{ "enum": [1, "two", null] }
+    ,
+        "<|false|>",
+        &.{"Expected value to be one of 1, \"two\", or null"},
+    );
+}
+
+test "number less than minimum" {
+    try check_errors(
+        \\{ "minimum": 3 }
+    ,
+        "<|2|>",
+        &.{"Expected number to be at least 3, found 2"},
+    );
+}
+
+test "number equal to exclusiveMinimum" {
+    try check_errors(
+        \\{ "exclusiveMinimum": 3 }
+    ,
+        "<|3|>",
+        &.{"Expected number to be greater than 3, found 3"},
+    );
+}
+
+test "number greater than maximum" {
+    try check_errors(
+        \\{ "maximum": 3 }
+    ,
+        "<|4|>",
+        &.{"Expected number to be at most 3, found 4"},
+    );
+}
+
+test "number equal to exclusiveMaximum" {
+    try check_errors(
+        \\{ "exclusiveMaximum": 3 }
+    ,
+        "<|3|>",
+        &.{"Expected number to be less than 3, found 3"},
+    );
+}
+
+test "number is not multipleOf" {
+    try check_errors(
+        \\{ "multipleOf": 2 }
+    ,
+        "<|3|>",
+        &.{"Expected number to be a multiple of 2, found 3"},
+    );
+}
+
+test "array has too few items" {
+    try check_errors(
+        \\{ "minItems": 2 }
+    ,
+        "<|[1]|>",
+        &.{"Expected array to contain at least 2 items, found 1"},
+    );
+}
+
+test "array has too many items" {
+    try check_errors(
+        \\{ "maxItems": 2 }
+    ,
+        "<|[1, 2, 3]|>",
+        &.{"Expected array to contain at most 2 items, found 3"},
+    );
+}
+
+test "array contains duplicate item" {
+    try check_errors(
+        \\{ "uniqueItems": true }
+    ,
+        "[1, <|1|>]",
+        &.{"Expected array items to be unique"},
+    );
+}
+
+test "object has too few properties" {
+    try check_errors(
+        \\{ "minProperties": 2 }
+    ,
+        \\<|{"a": 1}|>
+    ,
+        &.{"Expected object to contain at least 2 properties, found 1"},
+    );
+}
+
+test "object has too many properties" {
+    try check_errors(
+        \\{ "maxProperties": 1 }
+    ,
+        \\<|{"a": 1, "b": 2}|>
+    ,
+        &.{"Expected object to contain at most 1 property, found 2"},
+    );
+}

@@ -67,7 +67,6 @@ pub const Schema = struct {
         flags: packed struct {
             additional_items: bool = false,
             unique_items: bool = false,
-            @"const": bool = false,
             false_schema: bool = false,
         } = .{},
         prefix_items: ?*const Constraint.Node = null,
@@ -98,8 +97,9 @@ pub const Schema = struct {
         multiple_of_f64: ?f64 = null,
         pattern: ?pcre.Regex = null,
         pattern_source: []const u8 = &.{},
-        @"const": u64 = 0,
-        @"enum": []u64 = &.{},
+        constant: ?*const HashableJsonValue = null,
+        // TODO: combine with constant, constant is just enum of length one
+        @"enum": []*const HashableJsonValue = &.{},
         unevaluated_properties: ?*const Constraint = null,
         unevaluated_items: ?*const Constraint = null,
         contains: ?*const Constraint = null,
@@ -169,7 +169,7 @@ pub fn parse_with_revision(schema_contents: str8, revision: ?Revision) !Schema {
     var parse_arena = try Arena.init(.{});
     defer parse_arena.deinit();
 
-    const root_json = try json.hashed.parse(&parse_arena, schema_contents);
+    const root_json = try json.hashed.parse(&usage_arena, schema_contents);
 
     var ctx: ParseContext = .{
         .revision = revision orelse Revision.detect(root_json),
@@ -642,9 +642,8 @@ fn parse_validation__max_properties(obj: *const HashableJsonValue.Kind.Object, c
 }
 
 fn parse_validation__const(obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) void {
-    const value = (obj.get_const("const") orelse return).*;
-    constraint.flags.@"const" = true;
-    constraint.@"const" = value.hash;
+    const value = obj.get_const("const") orelse return;
+    constraint.constant = value;
 }
 
 fn parse_validation__enum(ctx: *ParseContext, obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) !void {
@@ -658,12 +657,12 @@ fn parse_validation__enum(ctx: *ParseContext, obj: *const HashableJsonValue.Kind
         constraint.flags.false_schema = true;
         return;
     }
-    var hashes: base.ArenaList(u64) = try .init_capacity(ctx.usage_arena, value.kind.array.count());
+    var enum_values: base.ArenaList(*const HashableJsonValue) = try .init_capacity(ctx.usage_arena, value.kind.array.count());
     var iter = value.kind.array.iter();
     while (iter.next()) |item| {
-        hashes.append_assume_capacity(item.hash);
+        enum_values.append_assume_capacity(item);
     }
-    constraint.@"enum" = hashes.items;
+    constraint.@"enum" = enum_values.items;
 }
 
 fn parse_validation__unique_items(obj: *const HashableJsonValue.Kind.Object, constraint: *Schema.Constraint) void {
