@@ -282,9 +282,9 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
         }
     }
     // TODO: combine with integer multiple_of
-    if (constraint.multiple_of_f64) |multiple_of| {
+    if (constraint.multiple_of_f64) |multiple_of| mult_flt: {
         if (multiple_of == 0.0) {
-            return false;
+            break :mult_flt;
         }
         const float_val = switch (value.kind) {
             .integer => |int_val| @as(f64, @floatFromInt(int_val)),
@@ -300,9 +300,9 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
             }
         }
     }
-    if (constraint.multiple_of_i64) |multiple_of| {
+    if (constraint.multiple_of_i64) |multiple_of| mult_int: {
         if (multiple_of == 0) {
-            return false;
+            break :mult_int;
         }
         const int_val = switch (value.kind) {
             .integer => |iv| iv,
@@ -490,7 +490,7 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
             var trigger_present = false;
             var trigger_iter = value.kind.object.properties.iter();
             while (trigger_iter.next()) |key_ptr| {
-                if (key_ptr.hash == entry.trigger_property_hash) {
+                if (key_ptr.hash == entry.trigger_property.hash) {
                     trigger_present = true;
                     break;
                 }
@@ -498,16 +498,16 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
 
             if (!trigger_present) continue;
 
-            for (entry.required_property_hashes) |required_property_hash| {
-                var dependent_present = false;
+            for (entry.required_properties) |required_property| {
                 var dependent_iter = value.kind.object.properties.iter();
                 while (dependent_iter.next()) |key_ptr| {
-                    if (key_ptr.hash == required_property_hash) {
-                        dependent_present = true;
+                    if (key_ptr.hash == required_property.hash) {
                         break;
                     }
+                } else {
+                    try record_missing_dependent_error(ctx, value, entry.trigger_property, entry.required_properties);
+                    return false;
                 }
-                if (!dependent_present) return false;
             }
         }
 
@@ -536,8 +536,10 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
     }
     if (constraint.not_constraint) |constraint_to_invert| {
         const save_point = try ctx.checked_savepoint();
+        const error_tail = ctx.errors.last();
         const result = try check(ctx, constraint_to_invert, value);
         ctx.checked_rollback(save_point);
+        ctx.errors_rollback(error_tail);
         if (result) {
             return false;
         }
@@ -551,21 +553,37 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
     }
 
     const any_of_save_point = try ctx.checked_savepoint();
+    const any_of_error_tail = ctx.errors.last();
     const any_of_result = try check_all(ctx, constraint.any_of, value);
     if (constraint.any_of != null and any_of_result.count_ok == 0) {
         ctx.checked_rollback(any_of_save_point);
         return false;
     }
+    if (constraint.any_of != null) {
+        ctx.errors_rollback(any_of_error_tail);
+    }
 
     const one_of_save_point = try ctx.checked_savepoint();
+    const one_of_error_tail = ctx.errors.last();
     const one_of_result = try check_all(ctx, constraint.one_of, value);
     if (constraint.one_of != null and one_of_result.count_ok != 1) {
         ctx.checked_rollback(one_of_save_point);
+        if (one_of_result.count_ok > 1) {
+            ctx.errors_rollback(one_of_error_tail);
+        }
         return false;
+    }
+    if (constraint.one_of != null) {
+        ctx.errors_rollback(one_of_error_tail);
     }
 
     if (constraint.if_constraint) |if_constraint| {
-        if (try check(ctx, if_constraint, value)) {
+        const if_save_point = try ctx.checked_savepoint();
+        const if_error_tail = ctx.errors.last();
+        const if_result = try check(ctx, if_constraint, value);
+        ctx.checked_rollback(if_save_point);
+        ctx.errors_rollback(if_error_tail);
+        if (if_result) {
             if (constraint.then_constraint) |then_constraint| {
                 if (!try check(ctx, then_constraint, value)) {
                     return false;
@@ -637,27 +655,28 @@ pub const Error = struct {
     // help: ?[]const u8,
 
     pub const Code = enum {
+        additional_property,
         any_error,
-        type_mismatch,
         const_mismatch,
         enum_mismatch,
-        minimum,
-        exclusive_minimum,
-        maximum,
         exclusive_maximum,
-        multiple_of,
-        min_length,
-        max_length,
-        pattern_mismatch,
-        min_items,
-        max_items,
-        unique_items,
-        min_properties,
-        max_properties,
-        required_property,
-        min_contains,
+        exclusive_minimum,
         max_contains,
-        additional_property,
+        max_items,
+        max_length,
+        max_properties,
+        maximum,
+        min_contains,
+        min_items,
+        min_length,
+        min_properties,
+        minimum,
+        missing_dependent,
+        multiple_of,
+        pattern_mismatch,
+        required_property,
+        type_mismatch,
+        unique_items,
     };
 };
 
@@ -759,6 +778,13 @@ fn record_additional_property_error(ctx: *CheckContext, property: *const Hashabl
     const err = try record_error(ctx, property);
     err.code = .additional_property;
     err.expected_value = property;
+}
+
+fn record_missing_dependent_error(ctx: *CheckContext, value: *const HashableJsonValue, trigger_property: *const HashableJsonValue, required_properties: []*const HashableJsonValue) !void {
+    const err = try record_error(ctx, value);
+    err.code = .missing_dependent;
+    err.expected_value = trigger_property;
+    err.expected_values = required_properties;
 }
 
 fn json_number_to_count(number: JsonNumber) u32 {
@@ -923,6 +949,13 @@ test fmt_expected_types {
     try std.testing.expectEqualStrings("boolean, number, object, string, or array", all);
 }
 
+fn fmt_plural(comptime word: []const u8, comptime singular: []const u8, comptime plural: []const u8, count: u64) []const u8 {
+    if (word.len == 0) return if (count == 1) singular else plural;
+    if (count == 1) return word;
+    const non_singular_word = word[0..word.len -| singular.len];
+    return non_singular_word ++ plural;
+}
+
 pub const RenderedError = struct {
     code: Error.Code,
     message: []const u8,
@@ -946,15 +979,21 @@ pub fn render_errors(arena: *Arena, errors: base.IntrusiveDoublyLinkedList(Error
             .min_length => try arena.print("Expected string length to be at least {}, found {}", .{ err.expected_count, err.actual_count }),
             .max_length => try arena.print("Expected string length to be at most {}, found {}", .{ err.expected_count, err.actual_count }),
             .pattern_mismatch => try arena.print("Expected string to match pattern /{s}/", .{err.expected_pattern}),
-            .min_items => try arena.print("Expected array to contain at least {} item{s}, found {}", .{ err.expected_count, if (err.expected_count == 1) "" else "s", err.actual_count }),
-            .max_items => try arena.print("Expected array to contain at most {} item{s}, found {}", .{ err.expected_count, if (err.expected_count == 1) "" else "s", err.actual_count }),
+            .min_items => try arena.print("Expected array to contain at least {} {s}, found {}", .{ err.expected_count, fmt_plural("item", "", "s", err.expected_count), err.actual_count }),
+            .max_items => try arena.print("Expected array to contain at most {} {s}, found {}", .{ err.expected_count, fmt_plural("item", "", "s", err.expected_count), err.actual_count }),
             .unique_items => try arena.print("Expected array items to be unique", .{}),
-            .min_properties => try arena.print("Expected object to contain at least {} propert{s}, found {}", .{ err.expected_count, if (err.expected_count == 1) "y" else "ies", err.actual_count }),
-            .max_properties => try arena.print("Expected object to contain at most {} propert{s}, found {}", .{ err.expected_count, if (err.expected_count == 1) "y" else "ies", err.actual_count }),
-            .required_property => try arena.print("missing required propert{s} {f}", .{ if (err.expected_values.len == 1) "y" else "ies", fmt_json_values(err.expected_values, "and") }),
-            .min_contains => try arena.print("Expected array to contain at least {} matching item{s}, found {}", .{ err.expected_count, if (err.expected_count == 1) "" else "s", err.actual_count }),
-            .max_contains => try arena.print("Expected array to contain at most {} matching item{s}, found {}", .{ err.expected_count, if (err.expected_count == 1) "" else "s", err.actual_count }),
-            .additional_property => try arena.print("unexpected property {f}", .{fmt_json_value(err.expected_value.?)}),
+            .min_properties => try arena.print("Expected object to contain at least {} {s}, found {}", .{ err.expected_count, fmt_plural("property", "y", "ies", err.expected_count), err.actual_count }),
+            .max_properties => try arena.print("Expected object to contain at most {} {s}, found {}", .{ err.expected_count, fmt_plural("property", "y", "ies", err.expected_count), err.actual_count }),
+            .required_property => try arena.print("Missing required {s} {f}", .{ fmt_plural("property", "y", "ies", err.expected_values.len), fmt_json_values(err.expected_values, "and") }),
+            .min_contains => try arena.print("Expected array to contain at least {} matching {s}, found {}", .{ err.expected_count, fmt_plural("item", "", "s", err.expected_count), err.actual_count }),
+            .max_contains => try arena.print("Expected array to contain at most {} matching {s}, found {}", .{ err.expected_count, fmt_plural("item", "", "s", err.expected_count), err.actual_count }),
+            .additional_property => try arena.print("Unexpected property {f}", .{fmt_json_value(err.expected_value.?)}),
+            .missing_dependent => try arena.print("The property {f} is present. Therefore the {s} {f} {s} also required", .{
+                fmt_json_value(err.expected_value.?),
+                fmt_plural("property", "y", "ies", err.expected_values.len),
+                fmt_json_values(err.expected_values, "and"),
+                fmt_plural("", "is", "and", err.expected_values.len),
+            }),
             .any_error => continue,
         };
         rendered_errors.append_assume_capacity(.{

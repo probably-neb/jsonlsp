@@ -62,6 +62,7 @@ fn check_errors(schema_contents: []const u8, marked_json: []const u8, messages: 
         for (messages) |msg| {
             std.debug.print("  - {s}\n", .{msg});
         }
+        return error.Mismatch;
     }
 
     const actual_error_messages = try json_schema.render_errors(scratch.arena, result.errors);
@@ -77,6 +78,18 @@ fn check_errors(schema_contents: []const u8, marked_json: []const u8, messages: 
             return error.Mismatch;
         }
     }
+}
+
+fn check_valid_no_errors(schema_contents: []const u8, json_contents: []const u8) !void {
+    const schema = try json_schema.parse(schema_contents);
+    var scratch = Arena.get_scratch(&.{});
+    defer scratch.release();
+
+    const result = try schema.validate(scratch.arena, json_contents);
+    try std.testing.expect(result.valid);
+
+    const actual_error_messages = try json_schema.render_errors(scratch.arena, result.errors);
+    try std.testing.expectEqual(@as(usize, 0), actual_error_messages.len);
 }
 
 test parse_marked_json {
@@ -287,7 +300,7 @@ test "object missing required property" {
         \\<|{"a": 1}|>
     ,
         &.{
-            \\missing required property "b"
+            \\Missing required property "b"
         },
     );
 }
@@ -299,7 +312,7 @@ test "object missing required properties" {
         \\<|{}|>
     ,
         &.{
-            \\missing required properties "a", "b", and "c"
+            \\Missing required properties "a", "b", and "c"
         },
     );
 }
@@ -326,12 +339,200 @@ test "array contains too many matching items" {
 
 test "object contains additional property" {
     try check_errors(
-        \\{ "properties": { "a": true }, "additionalProperties": false }
+        \\{ "properties": { "property": true }, "additionalProperties": false }
     ,
-        \\{ "a": 1, <|"b"|>: 2 }
+        \\{ "property": 1, <|"additional_property"|>: 2 }
     ,
         &.{
-            \\unexpected property "b"
+            \\Unexpected property "additional_property"
         },
+    );
+}
+
+test "object missing dependent property" {
+    try check_errors(
+        \\{ "dependentRequired": { "trigger": ["dependent"] } }
+    ,
+        \\<|{"trigger": 1}|>
+    ,
+        &.{
+            \\The property "trigger" is present. Therefore the property "dependent" is also required
+        },
+    );
+}
+
+test "array item does not match items schema" {
+    try check_errors(
+        \\{ "items": { "type": "string" } }
+    ,
+        \\["ok", <|1|>]
+    ,
+        &.{"Expected a value of type string, found integer"},
+    );
+}
+
+test "array item does not match prefixItems schema" {
+    try check_errors(
+        \\{ "prefixItems": [{ "type": "string" }] }
+    ,
+        \\[<|1|>]
+    ,
+        &.{"Expected a value of type string, found integer"},
+    );
+}
+
+test "object property does not match property schema" {
+    try check_errors(
+        \\{ "properties": { "a": { "type": "string" } } }
+    ,
+        \\{"a": <|1|>}
+    ,
+        &.{"Expected a value of type string, found integer"},
+    );
+}
+
+test "object property does not match patternProperties schema" {
+    try check_errors(
+        \\{ "patternProperties": { "^s_": { "type": "string" } } }
+    ,
+        \\{"s_a": <|1|>}
+    ,
+        &.{"Expected a value of type string, found integer"},
+    );
+}
+
+test "object additional property does not match schema" {
+    try check_errors(
+        \\{ "properties": { "a": true }, "additionalProperties": { "type": "string" } }
+    ,
+        \\{"a": 1, "b": <|2|>}
+    ,
+        &.{"Expected a value of type string, found integer"},
+    );
+}
+
+test "object dependent schema does not match" {
+    try check_errors(
+        \\{ "dependentSchemas": { "a": { "required": ["b"] } } }
+    ,
+        \\<|{"a": 1}|>
+    ,
+        &.{"Missing required property \"b\""},
+    );
+}
+
+test "referenced schema does not match" {
+    try check_errors(
+        \\{ "$defs": { "str": { "type": "string" } }, "$ref": "#/$defs/str" }
+    ,
+        \\<|1|>
+    ,
+        &.{"Expected a value of type string, found integer"},
+    );
+}
+
+test "allOf subschema does not match" {
+    try check_errors(
+        \\{ "allOf": [{ "type": "string" }, { "minLength": 2 }] }
+    ,
+        \\<|1|>
+    ,
+        &.{"Expected a value of type string, found integer"},
+    );
+}
+
+test "anyOf subschemas do not match" {
+    try check_errors(
+        \\{ "anyOf": [
+        \\  { "properties": { "a": { "type": "string" } } },
+        \\  { "properties": { "b": { "type": "boolean" } } }
+        \\] }
+    ,
+        \\{"a": <|1|>, "b": <|1|>}
+    ,
+        &.{
+            "Expected a value of type string, found integer",
+            "Expected a value of type boolean, found integer",
+        },
+    );
+}
+
+test "oneOf subschemas do not match" {
+    try check_errors(
+        \\{ "oneOf": [
+        \\  { "properties": { "a": { "type": "string" } } },
+        \\  { "properties": { "b": { "type": "boolean" } } }
+        \\] }
+    ,
+        \\{"a": <|1|>, "b": <|1|>}
+    ,
+        &.{
+            "Expected a value of type string, found integer",
+            "Expected a value of type boolean, found integer",
+        },
+    );
+}
+
+test "if then schema does not match" {
+    try check_errors(
+        \\{ "if": { "type": "string" }, "then": { "minLength": 2 } }
+    ,
+        \\<|"a"|>
+    ,
+        &.{"Expected string length to be at least 2, found 1"},
+    );
+}
+
+test "if else schema does not match" {
+    try check_errors(
+        \\{ "if": { "type": "string" }, "else": { "minimum": 2 } }
+    ,
+        \\<|1|>
+    ,
+        &.{"Expected number to be at least 2, found 1"},
+    );
+}
+
+test "unevaluated item does not match schema" {
+    try check_errors(
+        \\{ "prefixItems": [{ "type": "string" }], "unevaluatedItems": { "type": "boolean" } }
+    ,
+        \\["ok", <|1|>]
+    ,
+        &.{"Expected a value of type boolean, found integer"},
+    );
+}
+
+test "unevaluated property does not match schema" {
+    try check_errors(
+        \\{ "properties": { "a": true }, "unevaluatedProperties": { "type": "boolean" } }
+    ,
+        \\{"a": 1, "b": <|1|>}
+    ,
+        &.{"Expected a value of type boolean, found integer"},
+    );
+}
+
+test "valid anyOf does not report failed branch errors" {
+    try check_valid_no_errors(
+        \\{ "anyOf": [{ "type": "string" }, { "type": "integer" }] }
+    ,
+        "1",
+    );
+}
+
+test "valid oneOf does not report failed branch errors" {
+    try check_valid_no_errors(
+        \\{ "oneOf": [{ "type": "string" }, { "type": "integer" }] }
+    ,
+        "1",
+    );
+}
+
+test "valid if else does not report condition errors" {
+    try check_valid_no_errors(
+        \\{ "if": { "type": "string" }, "else": { "minimum": 1 } }
+    ,
+        "1",
     );
 }

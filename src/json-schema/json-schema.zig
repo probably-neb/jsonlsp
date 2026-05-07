@@ -106,8 +106,8 @@ pub const Schema = struct {
         contains_bounds: Bounds = .default(.{ 1, null }),
 
         pub const DependentRequiredEntry = struct {
-            trigger_property_hash: u64,
-            required_property_hashes: []u64,
+            trigger_property: *const HashableJsonValue,
+            required_properties: []*const HashableJsonValue,
         };
 
         pub const zero: Constraint = .{};
@@ -816,18 +816,18 @@ fn make_dependent_required_list(ctx: *ParseContext, obj: *const HashableJsonValu
         const dependent_value = key_string.child.?;
         if (dependent_value.kind != .array) continue;
 
-        var required_hashes: base.ArenaList(u64) = try .init_capacity(ctx.usage_arena, dependent_value.kind.array.count());
+        var required_hashes: base.ArenaList(*const HashableJsonValue) = try .init_capacity(ctx.usage_arena, dependent_value.kind.array.count());
         var req_iter = dependent_value.kind.array.iter();
         while (req_iter.next()) |required_property| {
             if (required_property.kind != .string) continue;
-            required_hashes.append_assume_capacity(required_property.hash);
+            required_hashes.append_assume_capacity(required_property);
         }
 
         if (required_hashes.items.len == 0) continue;
 
         entries.append_assume_capacity(.{
-            .trigger_property_hash = key_node.hash,
-            .required_property_hashes = required_hashes.items,
+            .trigger_property = key_node,
+            .required_properties = required_hashes.items,
         });
     }
 

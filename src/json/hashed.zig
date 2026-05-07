@@ -43,6 +43,16 @@ pub const Value = struct {
         return val;
     }
 
+    pub fn integer(int: i64, range: lexer.Token.Range) *Value {
+        return .{
+            .kind = .integer,
+            .hash = compute_integer_hash(int),
+            .next = &Value.zero,
+            .prev = &Value.zero,
+            .range = range,
+        };
+    }
+
     pub fn as_object(self: *const Value) ?*const Value.Kind.Object {
         switch (self.kind) {
             .object => |*obj| return obj,
@@ -365,7 +375,7 @@ fn parse_number(parser: *Parser) ParseError!*Value {
             try parser.arena.create(Value),
             .{ .integer = int_val },
             // hashed as float so 42.0 == 42
-            compute_number_hash(@floatFromInt(int_val)),
+            compute_float_hash(@floatFromInt(int_val)),
             prev_token_range(parser),
         );
     } else |_| {
@@ -373,7 +383,7 @@ fn parse_number(parser: *Parser) ParseError!*Value {
         return .value(
             try parser.arena.create(Value),
             .{ .float = float_val },
-            compute_number_hash(float_val),
+            compute_float_hash(float_val),
             prev_token_range(parser),
         );
     }
@@ -689,12 +699,6 @@ fn unescape_string(arena: *Arena, input: str8) ParseError!str8 {
 // Hash computation functions
 // ============================================================================
 
-// For JSON Schema, integer and float values that are numerically equal must hash equal
-// (e.g., 42 and 42.0 are the same value). We achieve this by:
-// 1. Using the same type tag for both integer and float
-// 2. Converting integers to float before hashing the bytes
-const hash_tag_number: u8 = @intFromEnum(Value.Kind_Tag.integer);
-
 fn hash_null_into(hasher: *std.hash.Wyhash) void {
     hasher.update(&[_]u8{@intFromEnum(Value.Kind_Tag.null)});
 }
@@ -708,9 +712,15 @@ fn hash_string_into(hasher: *std.hash.Wyhash, value: str8) void {
     hasher.update(value);
 }
 
-fn hash_number_into(hasher: *std.hash.Wyhash, value: f64) void {
-    hasher.update(&[_]u8{hash_tag_number});
+fn hash_float_into(hasher: *std.hash.Wyhash, value: f64) void {
+    hasher.update(&[_]u8{@intFromEnum(Value.Kind_Tag.float)});
     hasher.update(mem.asBytes(&value));
+}
+
+fn hash_integer_into(hasher: *std.hash.Wyhash, value: i64) void {
+    // For JSON Schema, integer and float values that are numerically equal must hash equal
+    // (e.g., 42 and 42.0 are the same value)
+    hash_float_into(hasher, @intFromFloat(value));
 }
 
 fn hash_hash_into(hasher: *std.hash.Wyhash, hash: u64) void {
@@ -772,8 +782,8 @@ fn hash_value_into(hasher: *std.hash.Wyhash, value: *const Value) void {
     switch (value.kind) {
         .null => hash_null_into(hasher),
         .bool => |b| hash_bool_into(hasher, b),
-        .integer => |i| hash_number_into(hasher, @floatFromInt(i)),
-        .float => |f| hash_number_into(hasher, f),
+        .integer => |i| hash_integer_into(hasher, i),
+        .float => |f| hash_float_into(hasher, f),
         .string => |s| hash_string_into(hasher, s.value),
         .array => |*arr| hash_array_into(hasher, arr),
         .object => |*obj| hash_object_into(hasher, obj),
@@ -798,9 +808,15 @@ pub fn compute_string_hash(value: str8) u64 {
     return hasher.final();
 }
 
-fn compute_number_hash(value: f64) u64 {
+fn compute_float_hash(value: f64) u64 {
     var hasher = std.hash.Wyhash.init(hash_seed);
-    hash_number_into(&hasher, value);
+    hash_float_into(&hasher, value);
+    return hasher.final();
+}
+
+fn compute_integer_hash(value: i64) u64 {
+    var hasher = std.hash.Wyhash.init(hash_seed);
+    hash_integer_into(&hasher, value);
     return hasher.final();
 }
 
