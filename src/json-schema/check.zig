@@ -204,7 +204,7 @@ fn check_item(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *
 }
 
 const Check_All_Result = struct {
-    count: u32 = 0,
+    checked_count: u32 = 0,
     count_ok: u32 = 0,
 };
 
@@ -217,7 +217,7 @@ fn check_all(ctx: *CheckContext, node: ?*const Schema.Constraint.Node, value: *c
         if (!ok) {
             ctx.checked_rollback(save_point);
         }
-        result.count += 1;
+        result.checked_count += 1;
         result.count_ok += @intFromBool(ok);
     }
     return result;
@@ -408,7 +408,7 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
                     ctx.checked_rollback(save_point);
                     ctx.errors_rollback(error_tail);
                 }
-                contains_result.count += 1;
+                contains_result.checked_count += 1;
                 contains_result.count_ok += @intFromBool(ok);
             }
             if (!constraint.contains_bounds.contains(.{ .int = contains_result.count_ok })) {
@@ -547,7 +547,7 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
 
     const all_of_save_point = try ctx.checked_savepoint();
     const all_of_result = try check_all(ctx, constraint.all_of, value);
-    if (constraint.all_of != null and all_of_result.count_ok != all_of_result.count) {
+    if (all_of_result.checked_count > 0 and all_of_result.count_ok != all_of_result.checked_count) {
         ctx.checked_rollback(all_of_save_point);
         return false;
     }
@@ -555,7 +555,7 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
     const any_of_save_point = try ctx.checked_savepoint();
     const any_of_error_tail = ctx.errors.last();
     const any_of_result = try check_all(ctx, constraint.any_of, value);
-    if (constraint.any_of != null and any_of_result.count_ok == 0) {
+    if (any_of_result.checked_count > 0 and any_of_result.count_ok == 0) {
         ctx.checked_rollback(any_of_save_point);
         return false;
     }
@@ -566,7 +566,7 @@ pub fn check(ctx: *CheckContext, constraint: *const Schema.Constraint, value: *c
     const one_of_save_point = try ctx.checked_savepoint();
     const one_of_error_tail = ctx.errors.last();
     const one_of_result = try check_all(ctx, constraint.one_of, value);
-    if (constraint.one_of != null and one_of_result.count_ok != 1) {
+    if (one_of_result.checked_count > 0 and one_of_result.count_ok != 1) {
         ctx.checked_rollback(one_of_save_point);
         if (one_of_result.count_ok > 1) {
             ctx.errors_rollback(one_of_error_tail);
