@@ -44,10 +44,9 @@ pub fn run(arena: *Arena, transport: *lsp.Transport) !void {
         var document_iter = doc_store.iter();
         while (document_iter.next()) |doc_idx| {
             const document = doc_store.documents[doc_idx];
+            if (!document.diagnostics_dirty) continue;
             @memset(diagnostics_buf, std.mem.zeroInit(lsp.types.Diagnostic, .{}));
-            // TODO: Implement marking errors as handled, and make this if into a while
             const diagnostic_count = doc_store.diagnostics_for_uri(frame_arena.arena, document.uri, diagnostics_buf);
-            if (diagnostic_count == 0) continue;
             try transport.writeNotification(
                 frame_alloc,
                 "textDocument/publishDiagnostics",
@@ -59,6 +58,7 @@ pub fn run(arena: *Arena, transport: *lsp.Transport) !void {
                 },
                 .{ .emit_null_optional_fields = true },
             );
+            doc_store.mark_diagnostics_clean(doc_idx);
         }
 
         const json_message = try transport.readJsonMessage(frame_alloc);

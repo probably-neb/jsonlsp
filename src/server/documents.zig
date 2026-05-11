@@ -17,6 +17,7 @@ pub const Document = struct {
     buf_arena: Arena,
     language_id: []const u8,
     snapshot: DocumentSnapshot,
+    diagnostics_dirty: bool,
 
     const zero = Document{
         .next = 0,
@@ -25,6 +26,7 @@ pub const Document = struct {
         .buf = .empty,
         .language_id = "",
         .snapshot = .zero,
+        .diagnostics_dirty = false,
     };
 };
 
@@ -119,18 +121,21 @@ pub const DocumentStore = struct {
             .language_id = language_id_owned,
             .buf_arena = buf_arena,
             .snapshot = .zero,
+            .diagnostics_dirty = false,
         };
         try rebuild_snapshot(doc, version);
 
         store.documents_open = store.documents_free;
         store.documents_free = next_free;
         store.documents_used += 1;
+        store.mark_diagnostics_dirty(store.documents_open);
     }
 
     pub fn close(store: *DocumentStore, uri: []const u8) bool {
         const idx = store.find(uri) orelse return false;
 
         const doc = &store.documents[idx];
+        doc.diagnostics_dirty = false;
         doc.buf_arena.release();
         doc.snapshot.arena.release();
 
@@ -188,6 +193,15 @@ pub const DocumentStore = struct {
             // todo! error
             unreachable;
         };
+        store.mark_diagnostics_dirty(doc_idx);
+    }
+
+    pub fn mark_diagnostics_clean(store: *DocumentStore, doc_idx: usize) void {
+        store.documents[doc_idx].diagnostics_dirty = false;
+    }
+
+    fn mark_diagnostics_dirty(store: *DocumentStore, doc_idx: usize) void {
+        store.documents[doc_idx].diagnostics_dirty = true;
     }
 
     pub const DiagnosticSet = struct {
