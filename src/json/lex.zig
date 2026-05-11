@@ -75,6 +75,10 @@ pub const Lexer = struct {
 
     const State = union(enum) {
         none,
+        slash,
+        line_comment,
+        block_comment,
+        block_comment_star,
         string,
         number,
         keyword: KeywordState,
@@ -171,6 +175,9 @@ pub fn lex(lexer: *Lexer, arena: *Arena, contents: []const u8) ParseError!void {
                     ':' => {
                         token.kind = .colon;
                     },
+                    '/' => {
+                        lexer.state = .slash;
+                    },
                     '-', '+', '0'...'9' => {
                         lexer.state = .number;
                         token.kind = .number;
@@ -189,6 +196,52 @@ pub fn lex(lexer: *Lexer, arena: *Arena, contents: []const u8) ParseError!void {
                         lexer.state = .{ .keyword = .{ .expected = .false, .matched = 1 } };
                     },
                     else => {},
+                }
+            },
+            .slash => {
+                switch (char) {
+                    '/' => {
+                        _ = lexer.tokens.pop();
+                        lexer.state = .line_comment;
+                    },
+                    '*' => {
+                        _ = lexer.tokens.pop();
+                        lexer.state = .block_comment;
+                    },
+                    else => {
+                        lexer.state = .none;
+                        advance = false;
+                    },
+                }
+            },
+            .line_comment => {
+                if (char == '\n') {
+                    lexer.line_idx = lexer.offset;
+                    lexer.line_num += 1;
+                    lexer.state = .none;
+                }
+            },
+            .block_comment => {
+                if (char == '\n') {
+                    lexer.line_idx = lexer.offset;
+                    lexer.line_num += 1;
+                } else if (char == '*') {
+                    lexer.state = .block_comment_star;
+                }
+            },
+            .block_comment_star => {
+                switch (char) {
+                    '/' => {
+                        lexer.state = .none;
+                    },
+                    '*' => {},
+                    else => {
+                        if (char == '\n') {
+                            lexer.line_idx = lexer.offset;
+                            lexer.line_num += 1;
+                        }
+                        lexer.state = .block_comment;
+                    },
                 }
             },
             .number => {

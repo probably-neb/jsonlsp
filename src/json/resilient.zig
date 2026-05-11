@@ -700,12 +700,12 @@ test parse {
         var scoped = arena.scoped();
         defer scoped.release();
 
-        var lexer = Lexer{};
+        var lexed = Lexer{};
         for (input_parts) |part| {
-            try lexer(&lexer, scoped.arena, part);
+            try lxr.lex(&lexed, scoped.arena, part);
         }
 
-        var parser: Parser = .init(scoped.arena, lexer.tokens.items);
+        var parser: Parser = .init(scoped.arena, lexed.tokens.items);
         try parse_any(&parser);
         const result = try build_tree(parser);
 

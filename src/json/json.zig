@@ -36,3 +36,19 @@ fn unicode_length(slice: []const u8) lexer.Offset {
 
     return .{ .utf8 = utf8_count, .utf16 = utf16_count, .byte = @intCast(slice.len) };
 }
+
+test "resilient parse skips comments" {
+    var arena = try Arena.init(.{});
+    defer arena.deinit();
+
+    const input =
+        \\// line comment
+        \\/* block comment */
+        \\{}
+    ;
+
+    var l: Lexer = .zero;
+    try lex(&l, &arena, input);
+
+    _ = try resilient.parse(&arena, &l);
+}
