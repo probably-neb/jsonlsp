@@ -2,3 +2,4 @@
 zig-out/
 *.o
 src/json-schema/test-suite.zig
+tmp/**
