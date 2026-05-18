@@ -87,8 +87,8 @@ const json_schema_drafts = &.{
     "draft2020-12",
     "draft-next",
 };
-const json_schema_test_suite_dir_path = "src/json-schema/test-suite";
 const learnjsonschema_dir_path = "src/json-schema/learnjsonschema";
+const json_schema_test_suite_dir_path = "tests/json-schema-test-suite";
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
