@@ -7,35 +7,37 @@ const Arena = base.Arena;
 
 const str8 = []const u8;
 
-pub fn main() !void {
+pub fn main(init: std.process.Init) !void {
     var arena_state = try Arena.init(.{});
     defer arena_state.deinit();
     const arena = arena_state.allocator();
-    const args = try std.process.argsAlloc(arena);
+    const io = init.io;
+    const args = try init.minimal.args.toSlice(arena);
     if (args.len != 3) {
         std.debug.panic("Not enough args", .{});
     }
-    const tests_dir = try fs.openDirAbsolute(args[1], .{
+    const tests_dir = try std.Io.Dir.openDirAbsolute(io, args[1], .{
         .iterate = true,
     });
-    const test_suite_dir = try fs.openDirAbsolute(args[2], .{});
+    const test_suite_dir = try std.Io.Dir.openDirAbsolute(io, args[2], .{});
 
     var tests_dir_iter = tests_dir.iterate();
 
-    while (try tests_dir_iter.next()) |draft| {
+    while (try tests_dir_iter.next(io)) |draft| {
         if (draft.kind != .directory) continue;
         const draft_name = draft.name;
-        const draft_dir = try tests_dir.openDir(draft_name, .{
+        const draft_dir = try tests_dir.openDir(io, draft_name, .{
             .iterate = true,
         });
         var draft_dir_iter = draft_dir.iterate();
         const draft_test_file = try test_suite_dir.createFile(
+            io,
             try std.mem.join(arena, "", &.{ draft_name, ".zig" }),
             .{},
         );
 
         var output_buf: [4096]u8 = undefined;
-        var output_writer = draft_test_file.writer(&output_buf);
+        var output_writer = draft_test_file.writer(io, &output_buf);
         const output = &output_writer.interface;
         defer output.flush() catch unreachable;
 
@@ -61,15 +63,15 @@ pub fn main() !void {
             .{revision},
         );
 
-        while (try draft_dir_iter.next()) |test_case| {
+        while (try draft_dir_iter.next(io)) |test_case| {
             if (test_case.kind != .file) continue;
             if (!mem.eql(u8, fs.path.extension(test_case.name), ".json")) continue;
 
             const test_case_name = fs.path.stem(test_case.name);
 
-            const test_case_file = try draft_dir.openFile(test_case.name, .{});
+            const test_case_file = try draft_dir.openFile(io, test_case.name, .{});
             var test_case_file_reader_buf: [512]u8 = undefined;
-            var test_case_file_reader_impl = test_case_file.reader(&test_case_file_reader_buf);
+            var test_case_file_reader_impl = test_case_file.reader(io, &test_case_file_reader_buf);
             const test_case_file_reader = &test_case_file_reader_impl.interface;
 
             var json_reader: std.json.Reader = .init(arena, test_case_file_reader);

@@ -25,18 +25,19 @@ const GithubEntry = struct {
     download_url: ?str8 = null,
 };
 
-pub fn main() !void {
+pub fn main(init: std.process.Init) !void {
     var arena_state = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena_state.deinit();
     const arena = arena_state.allocator();
+    const io = init.io;
 
-    const args = try std.process.argsAlloc(arena);
+    const args = try init.minimal.args.toSlice(arena);
     if (args.len != 2) {
         std.debug.print("Usage: generate-learnjsonschema <output_directory>\n", .{});
         std.process.exit(1);
     }
 
-    var client: std.http.Client = .{ .allocator = arena };
+    var client: std.http.Client = .{ .allocator = arena, .io = io };
     defer client.deinit();
 
     var source_lookup = std.StringHashMap(str8).init(arena);
@@ -44,21 +45,21 @@ pub fn main() !void {
 
     const pages = try parse_sitemap(arena, try fetch_text(arena, &client, sitemap_url), source_lookup);
 
-    if (std.fs.cwd().access(args[1], .{})) {
-        try std.fs.cwd().deleteTree(args[1]);
+    if (std.Io.Dir.cwd().access(io, args[1], .{})) {
+        try std.Io.Dir.cwd().deleteTree(io, args[1]);
     } else |err| switch (err) {
         error.FileNotFound => {},
         else => return err,
     }
-    try std.fs.cwd().makePath(args[1]);
+    try std.Io.Dir.cwd().createDirPath(io, args[1]);
 
     for (pages) |page| {
         const route = try join_route(arena, &.{ page.dialect, page.rel_path });
         const path = try std.fs.path.join(arena, &.{ args[1], try route_to_output(arena, route) });
-        try write_file(path, try render_page(arena, args[1], page, try fetch_text(arena, &client, page.source_url), path));
+        try write_file(io, path, try render_page(arena, args[1], page, try fetch_text(arena, &client, page.source_url), path));
         std.debug.print("{s}\n", .{path});
     }
-    try build_index_pages(arena, args[1], pages);
+    try build_index_pages(io, arena, args[1], pages);
 }
 
 fn fetch_text(allocator: Allocator, client: *std.http.Client, url: str8) !str8 {
@@ -167,22 +168,21 @@ fn render_page(allocator: Allocator, output_root: str8, page: Page, source_text:
     const title = parse_scalar(front_matter, "title") orelse parse_scalar(front_matter, "keyword") orelse try slug_to_title(allocator, title_slug);
 
     var out: std.ArrayList(u8) = .empty;
-    const writer = out.writer(allocator);
-    try writer.print(
+    try out.print(allocator,
         \\# {s}
         \\
         \\- Original: [{s}]({s})
         \\- Upstream source: [{s}]({s})
     , .{ title, page.url, page.url, page.source_url, page.source_url });
-    try writer.writeByte('\n');
-    if (parse_scalar(front_matter, "specification")) |v| try writer.print("- Specification: [{s}]({s})\n", .{ v, v });
-    if (parse_scalar(front_matter, "metaschema")) |v| try writer.print("- Metaschema: `{s}`\n", .{v});
-    if (parse_scalar(front_matter, "introduced_in")) |v| try writer.print("- Introduced in: `{s}`\n", .{v});
-    if (parse_scalar(front_matter, "summary")) |v| try writer.print("\n{s}\n", .{v});
+    try out.append(allocator, '\n');
+    if (parse_scalar(front_matter, "specification")) |v| try out.print(allocator, "- Specification: [{s}]({s})\n", .{ v, v });
+    if (parse_scalar(front_matter, "metaschema")) |v| try out.print(allocator, "- Metaschema: `{s}`\n", .{v});
+    if (parse_scalar(front_matter, "introduced_in")) |v| try out.print(allocator, "- Introduced in: `{s}`\n", .{v});
+    if (parse_scalar(front_matter, "summary")) |v| try out.print(allocator, "\n{s}\n", .{v});
 
     const cleaned = try clean_body(allocator, output_root, body, route, path);
-    if (std.mem.trim(u8, cleaned, " \t\r\n").len == 0) return try std.fmt.allocPrint(allocator, "{s}\n", .{std.mem.trimRight(u8, out.items, "\n")});
-    return try std.fmt.allocPrint(allocator, "{s}\n{s}", .{ std.mem.trimRight(u8, out.items, "\n"), cleaned });
+    if (std.mem.trim(u8, cleaned, " \t\r\n").len == 0) return try std.fmt.allocPrint(allocator, "{s}\n", .{std.mem.trimEnd(u8, out.items, "\n")});
+    return try std.fmt.allocPrint(allocator, "{s}\n{s}", .{ std.mem.trimEnd(u8, out.items, "\n"), cleaned });
 }
 
 fn clean_body(allocator: Allocator, output_root: str8, body: str8, route: str8, path: str8) !str8 {
@@ -253,7 +253,7 @@ fn replace_link_shortcodes(allocator: Allocator, output_root: str8, body: str8, 
             shortcode_arg(open.args, "vocabulary") orelse current_vocabulary,
             try keyword_slug.toOwnedSlice(allocator),
         });
-        try out.writer(allocator).print("[`{s}`]({s})", .{ keyword, try relative_link(allocator, output_root, path, keyword_route) });
+        try out.print(allocator, "[`{s}`]({s})", .{ keyword, try relative_link(allocator, output_root, path, keyword_route) });
         pos = open.end;
     }
     try out.appendSlice(allocator, body[pos..]);
@@ -268,7 +268,8 @@ fn replace_constraint_warnings(allocator: Allocator, output_root: str8, body: st
     var pos: usize = 0;
     while (find_open_shortcode(body, pos, "constraint-warning")) |open| {
         try out.appendSlice(allocator, body[pos..open.start]);
-        try out.writer(allocator).print(
+        try out.print(
+            allocator,
             "> **Type constraint:** Non-`{s}` instances also validate against this keyword. Use [`type`]({s}) if you need to restrict the accepted type.",
             .{ trim_quotes(std.mem.trim(u8, open.args, " `\"\t\r\n")), type_link },
         );
@@ -290,14 +291,14 @@ fn replace_blocks(allocator: Allocator, body: str8, shortcode: str8, kind: Block
         const caption = if (std.mem.trim(u8, open.args, " \t\r\n").len == 0) null else trim_quotes(std.mem.trim(u8, open.args, " `\"\t\r\n"));
         switch (kind) {
             .example => if (caption) |c|
-                try out.writer(allocator).print("### {s}: {s}\n\n```json\n{s}\n```", .{ label, c, inner })
+                try out.print(allocator, "### {s}: {s}\n\n```json\n{s}\n```", .{ label, c, inner })
             else
-                try out.writer(allocator).print("### {s}\n\n```json\n{s}\n```", .{ label, inner }),
+                try out.print(allocator, "### {s}\n\n```json\n{s}\n```", .{ label, inner }),
             .admonition => {
-                try out.writer(allocator).print("> **{s}:**", .{label});
+                try out.print(allocator, "> **{s}:**", .{label});
                 var lines = std.mem.splitScalar(u8, inner, '\n');
                 while (lines.next()) |line| {
-                    if (std.mem.trim(u8, line, " \t\r").len == 0) try out.appendSlice(allocator, "\n>") else try out.writer(allocator).print("\n> {s}", .{line});
+                    if (std.mem.trim(u8, line, " \t\r").len == 0) try out.appendSlice(allocator, "\n>") else try out.print(allocator, "\n> {s}", .{line});
                 }
             },
         }
@@ -344,9 +345,9 @@ fn find_close_shortcode(body: str8, start_pos: usize, name: str8) ?struct { star
     return null;
 }
 
-fn build_index_pages(allocator: Allocator, output_root: str8, pages: []const Page) !void {
+fn build_index_pages(io: std.Io, allocator: Allocator, output_root: str8, pages: []const Page) !void {
     var root_lines: std.ArrayList(u8) = .empty;
-    try root_lines.writer(allocator).writeAll(
+    try root_lines.appendSlice(allocator,
         \\# Learn JSON Schema index
         \\
         \\Generated from [learnjsonschema.com](https://www.learnjsonschema.com/) with backlinks to the original pages.
@@ -354,9 +355,9 @@ fn build_index_pages(allocator: Allocator, output_root: str8, pages: []const Pag
         \\## Dialects
         \\
     );
-    for (dialects) |dialect| try root_lines.writer(allocator).print("- [{s}]({s}/index.md)\n", .{ try slug_to_title(allocator, dialect), dialect });
+    for (dialects) |dialect| try root_lines.print(allocator, "- [{s}]({s}/index.md)\n", .{ try slug_to_title(allocator, dialect), dialect });
     try root_lines.append(allocator, '\n');
-    try write_file(try std.fs.path.join(allocator, &.{ output_root, "index.md" }), root_lines.items);
+    try write_file(io, try std.fs.path.join(allocator, &.{ output_root, "index.md" }), root_lines.items);
 
     for (dialects) |dialect| {
         var vocabularies: std.ArrayList(str8) = .empty;
@@ -375,7 +376,7 @@ fn build_index_pages(allocator: Allocator, output_root: str8, pages: []const Pag
         }.less_than);
 
         var dialect_lines: std.ArrayList(u8) = .empty;
-        try dialect_lines.writer(allocator).print(
+        try dialect_lines.print(allocator,
             \\# {s}
             \\
             \\- Original: [{s}/{s}/]({s}/{s}/)
@@ -384,13 +385,13 @@ fn build_index_pages(allocator: Allocator, output_root: str8, pages: []const Pag
             \\## Vocabularies
             \\
         , .{ try slug_to_title(allocator, dialect), site_base, dialect, site_base, dialect, upstream_raw_base, dialect, upstream_raw_base, dialect });
-        for (vocabularies.items) |vocabulary| try dialect_lines.writer(allocator).print("- [{s}]({s}/index.md)\n", .{ try slug_to_title(allocator, vocabulary), vocabulary });
+        for (vocabularies.items) |vocabulary| try dialect_lines.print(allocator, "- [{s}]({s}/index.md)\n", .{ try slug_to_title(allocator, vocabulary), vocabulary });
         try dialect_lines.append(allocator, '\n');
-        try write_file(try std.fs.path.join(allocator, &.{ output_root, dialect, "index.md" }), dialect_lines.items);
+        try write_file(io, try std.fs.path.join(allocator, &.{ output_root, dialect, "index.md" }), dialect_lines.items);
 
         for (vocabularies.items) |vocabulary| {
             var vocab_lines: std.ArrayList(u8) = .empty;
-            try vocab_lines.writer(allocator).print(
+            try vocab_lines.print(allocator,
                 \\# {s}
                 \\
                 \\- Dialect: [{s}](../index.md)
@@ -413,18 +414,18 @@ fn build_index_pages(allocator: Allocator, output_root: str8, pages: []const Pag
             for (keyword_pages.items) |page| {
                 const page_route = try join_route(allocator, &.{ page.dialect, page.rel_path });
                 const page_path = try std.fs.path.join(allocator, &.{ output_root, try route_to_output(allocator, page_route) });
-                const file = std.fs.cwd().openFile(page_path, .{}) catch null;
+                const file = std.Io.Dir.cwd().openFile(io, page_path, .{}) catch null;
                 const title = if (file) |f| title: {
-                    defer f.close();
+                    defer f.close(io);
                     var buf: [512]u8 = undefined;
-                    var reader = f.reader(&buf);
+                    var reader = f.reader(io, &buf);
                     const first_line = reader.interface.takeDelimiterExclusive('\n') catch "";
                     break :title if (std.mem.startsWith(u8, first_line, "# ")) try allocator.dupe(u8, first_line[2..]) else try slug_to_title(allocator, std.fs.path.basename(std.fs.path.dirname(page_path) orelse ""));
                 } else try slug_to_title(allocator, std.fs.path.basename(std.fs.path.dirname(page_path) orelse ""));
-                try vocab_lines.writer(allocator).print("- [{s}]({s}.md)\n", .{ title, std.fs.path.basename(page.rel_path) });
+                try vocab_lines.print(allocator, "- [{s}]({s}.md)\n", .{ title, std.fs.path.basename(page.rel_path) });
             }
             try vocab_lines.append(allocator, '\n');
-            try write_file(try std.fs.path.join(allocator, &.{ output_root, dialect, vocabulary, "index.md" }), vocab_lines.items);
+            try write_file(io, try std.fs.path.join(allocator, &.{ output_root, dialect, vocabulary, "index.md" }), vocab_lines.items);
         }
     }
 }
@@ -434,7 +435,7 @@ fn parse_scalar(front_matter: str8, key: str8) ?str8 {
     while (lines.next()) |line| {
         const trimmed = std.mem.trim(u8, line, " \t\r");
         if (!std.mem.startsWith(u8, trimmed, key)) continue;
-        var rest = std.mem.trimLeft(u8, trimmed[key.len..], " \t");
+        var rest = std.mem.trimStart(u8, trimmed[key.len..], " \t");
         if (rest.len == 0 or rest[0] != ':') continue;
         rest = std.mem.trim(u8, rest[1..], " \t\r");
         if (rest.len >= 2 and rest[0] == '"' and rest[rest.len - 1] == '"') return rest[1 .. rest.len - 1];
@@ -458,7 +459,7 @@ fn route_to_output(allocator: Allocator, route_value: str8) !str8 {
 fn relative_link(allocator: Allocator, output_root: str8, from_path: str8, target_route: str8) !str8 {
     const target_parts = try split_non_empty(allocator, try route_to_output(allocator, target_route), '/');
     var from_rel = from_path;
-    if (std.mem.startsWith(u8, from_rel, output_root)) from_rel = std.mem.trimLeft(u8, from_rel[output_root.len..], "/");
+    if (std.mem.startsWith(u8, from_rel, output_root)) from_rel = std.mem.trimStart(u8, from_rel[output_root.len..], "/");
     const from_parts = try split_non_empty(allocator, std.fs.path.dirname(from_rel) orelse "", '/');
     var common: usize = 0;
     while (common < from_parts.len and common < target_parts.len and std.mem.eql(u8, from_parts[common], target_parts[common])) common += 1;
@@ -538,9 +539,9 @@ fn starts_with_token(value: str8, token: str8) bool {
     return std.mem.startsWith(u8, value, token) and (value.len == token.len or std.ascii.isWhitespace(value[token.len]) or value[token.len] == '>');
 }
 
-fn write_file(path: str8, data: str8) !void {
-    if (std.fs.path.dirname(path)) |dir| try std.fs.cwd().makePath(dir);
-    try std.fs.cwd().writeFile(.{ .sub_path = path, .data = data });
+fn write_file(io: std.Io, path: str8, data: str8) !void {
+    if (std.fs.path.dirname(path)) |dir| try std.Io.Dir.cwd().createDirPath(io, dir);
+    try std.Io.Dir.cwd().writeFile(io, .{ .sub_path = path, .data = data });
 }
 
 test {

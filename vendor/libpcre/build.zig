@@ -54,17 +54,18 @@ fn buildPcreLibrary(b: *std.Build, target: std.Build.ResolvedTarget, optimize: s
 
     var files: std.ArrayList([]const u8) = .empty;
 
-    var dir = std.fs.cwd().openDir(b.pathFromRoot(pcre_vendor_dir), .{ .iterate = true }) catch |err| {
+    const io = b.graph.io;
+    var dir = std.Io.Dir.cwd().openDir(io, b.pathFromRoot(pcre_vendor_dir), .{ .iterate = true }) catch |err| {
         std.debug.panic("failed to open vendored pcre directory '{s}': {s}", .{ pcre_vendor_dir, @errorName(err) });
     };
-    defer dir.close();
+    defer dir.close(io);
 
     var walker = dir.walk(arena.allocator()) catch |err| {
         std.debug.panic("failed to walk vendored pcre directory '{s}': {s}", .{ pcre_vendor_dir, @errorName(err) });
     };
     defer walker.deinit();
 
-    while (try walker.next()) |entry| {
+    while (try walker.next(io)) |entry| {
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.path, ".c")) continue;
         if (!std.mem.startsWith(u8, entry.path, "pcre")) continue;
@@ -73,6 +74,9 @@ fn buildPcreLibrary(b: *std.Build, target: std.Build.ResolvedTarget, optimize: s
         if (std.mem.containsAtLeast(u8, entry.path, 1, "pcretest")) continue;
         if (std.mem.containsAtLeast(u8, entry.path, 1, "pcregrep")) continue;
         if (std.mem.containsAtLeast(u8, entry.path, 1, "pcreposix")) continue;
+        if (std.mem.containsAtLeast(u8, entry.path, 1, "pcredemo")) continue;
+        if (std.mem.containsAtLeast(u8, entry.path, 1, "pcre_jit_test")) continue;
+        if (std.mem.containsAtLeast(u8, entry.path, 1, "dftables")) continue;
 
         const full_path = try std.mem.concat(arena.allocator(), u8, &.{ pcre_vendor_dir, "/", entry.path });
         try files.append(arena.allocator(), full_path);
@@ -91,15 +95,15 @@ fn buildPcreLibrary(b: *std.Build, target: std.Build.ResolvedTarget, optimize: s
         .linkage = .static,
         .root_module = lib_mod,
     });
-    lib.linkLibC();
+    lib.root_module.link_libc = true;
 
-    lib.addIncludePath(b.path(pcre_vendor_dir));
-    lib.addIncludePath(b.path(pcre_vendor_dir ++ "/sljit"));
+    lib.root_module.addIncludePath(b.path(pcre_vendor_dir));
+    lib.root_module.addIncludePath(b.path(pcre_vendor_dir ++ "/sljit"));
 
     lib.root_module.addCMacro("HAVE_CONFIG_H", "1");
     lib.root_module.addCMacro("PCRE_STATIC", "1");
 
-    lib.addCSourceFiles(.{
+    lib.root_module.addCSourceFiles(.{
         .files = files.items,
         .flags = &.{},
     });

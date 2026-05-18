@@ -60,7 +60,7 @@ pub fn parse(allocator: Allocator, content: []const u8) ParseError!Snapshot {
 
     while (lines.next()) |raw_line| {
         line_number += 1;
-        const line = std.mem.trimRight(u8, raw_line, "\r");
+        const line = std.mem.trimEnd(u8, raw_line, "\r");
         const trimmed = std.mem.trim(u8, line, " \t");
 
         switch (state) {

@@ -4,12 +4,13 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-pub fn main() !void {
+pub fn main(init: std.process.Init) !void {
     var arena_state = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena_state.deinit();
     const arena = arena_state.allocator();
+    const io = init.io;
 
-    const args = try std.process.argsAlloc(arena);
+    const args = try init.minimal.args.toSlice(arena);
 
     if (args.len < 2) {
         std.debug.print("Usage: generate_zed_config <output_directory>\n", .{});
@@ -18,27 +19,27 @@ pub fn main() !void {
 
     const output_dir_path = args[1];
 
-    const snapshot_names = try discover_snapshot_names(arena, "tests/snapshots");
+    const snapshot_names = try discover_snapshot_names(io, arena, "tests/snapshots");
 
-    try generate_debug_json(arena, output_dir_path, snapshot_names);
-    try generate_tasks_json(arena, output_dir_path, snapshot_names);
+    try generate_debug_json(io, arena, output_dir_path, snapshot_names);
+    try generate_tasks_json(io, arena, output_dir_path, snapshot_names);
 
     std.debug.print("Generated debug.json and tasks.json with {d} snapshot entries\n", .{snapshot_names.len});
 }
 
-fn discover_snapshot_names(allocator: Allocator, dir_path: []const u8) ![][]const u8 {
+fn discover_snapshot_names(io: std.Io, allocator: Allocator, dir_path: []const u8) ![][]const u8 {
     var names: std.ArrayList([]const u8) = .empty;
 
-    var dir = std.fs.cwd().openDir(dir_path, .{ .iterate = true }) catch |err| {
+    var dir = std.Io.Dir.cwd().openDir(io, dir_path, .{ .iterate = true }) catch |err| {
         if (err == error.FileNotFound) {
             return try names.toOwnedSlice(allocator);
         }
         return err;
     };
-    defer dir.close();
+    defer dir.close(io);
 
     var iter = dir.iterate();
-    while (try iter.next()) |entry| {
+    while (try iter.next(io)) |entry| {
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.name, ".txt")) continue;
 
@@ -71,7 +72,7 @@ const DebugEntry = struct {
     };
 };
 
-fn generate_debug_json(allocator: Allocator, output_dir: []const u8, snapshot_names: []const []const u8) !void {
+fn generate_debug_json(io: std.Io, allocator: Allocator, output_dir: []const u8, snapshot_names: []const []const u8) !void {
     var entries: std.ArrayList(DebugEntry) = .empty;
 
     const init_commands: []const []const u8 = &.{
@@ -124,10 +125,10 @@ fn generate_debug_json(allocator: Allocator, output_dir: []const u8, snapshot_na
 
     const json_str = try std.fmt.allocPrint(allocator, "{f}\n", .{std.json.fmt(entries.items, .{ .whitespace = .indent_2 })});
 
-    var dir = try std.fs.cwd().makeOpenPath(output_dir, .{});
-    defer dir.close();
+    var dir = try std.Io.Dir.cwd().createDirPathOpen(io, output_dir, .{});
+    defer dir.close(io);
 
-    try dir.writeFile(.{ .sub_path = "debug.json", .data = json_str });
+    try dir.writeFile(io, .{ .sub_path = "debug.json", .data = json_str });
 }
 
 const TaskEntry = struct {
@@ -137,7 +138,7 @@ const TaskEntry = struct {
     cwd: []const u8 = "$ZED_WORKTREE_ROOT",
 };
 
-fn generate_tasks_json(allocator: Allocator, output_dir: []const u8, snapshot_names: []const []const u8) !void {
+fn generate_tasks_json(io: std.Io, allocator: Allocator, output_dir: []const u8, snapshot_names: []const []const u8) !void {
     var entries: std.ArrayList(TaskEntry) = .empty;
 
     const static_tasks = [_]struct { label: []const u8, args: []const []const u8 }{
@@ -161,8 +162,8 @@ fn generate_tasks_json(allocator: Allocator, output_dir: []const u8, snapshot_na
 
     const json_str = try std.fmt.allocPrint(allocator, "{f}\n", .{std.json.fmt(entries.items, .{ .whitespace = .indent_2 })});
 
-    var dir = try std.fs.cwd().makeOpenPath(output_dir, .{});
-    defer dir.close();
+    var dir = try std.Io.Dir.cwd().createDirPathOpen(io, output_dir, .{});
+    defer dir.close(io);
 
-    try dir.writeFile(.{ .sub_path = "tasks.json", .data = json_str });
+    try dir.writeFile(io, .{ .sub_path = "tasks.json", .data = json_str });
 }

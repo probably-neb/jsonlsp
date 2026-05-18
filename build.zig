@@ -93,6 +93,8 @@ const learnjsonschema_dir_path = "docs/learnjsonschema";
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const use_lld = b.option(bool, "use-lld", "Use LLD for linking") orelse false;
+    const use_new_linker = b.option(bool, "use-new-linker", "Use Zig's new ELF linker") orelse true;
 
     const test_step = b.step("test", "Run unit tests");
     const check_step = b.step("check", "Check if jsonls compiles");
@@ -138,7 +140,9 @@ pub fn build(b: *std.Build) void {
             .name = spec.name,
             .root_module = spec.module,
             .filters = test_filters,
+            .use_lld = use_lld,
         });
+        module_tests.use_new_linker = use_new_linker;
         check_step.dependOn(&module_tests.step);
         const run_module_tests = b.addRunArtifact(module_tests);
         test_step.dependOn(&run_module_tests.step);
@@ -147,7 +151,9 @@ pub fn build(b: *std.Build) void {
     const exe_unit_tests = b.addTest(.{
         .root_module = exe_mod,
         .filters = test_filters,
+        .use_lld = use_lld,
     });
+    exe_unit_tests.use_new_linker = use_new_linker;
     check_step.dependOn(&exe_unit_tests.step);
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
     test_step.dependOn(&run_exe_unit_tests.step);
@@ -155,7 +161,9 @@ pub fn build(b: *std.Build) void {
     const exe = b.addExecutable(.{
         .name = "jsonls",
         .root_module = exe_mod,
+        .use_lld = use_lld,
     });
+    exe.use_new_linker = use_new_linker;
 
     b.installArtifact(exe);
 
@@ -165,7 +173,9 @@ pub fn build(b: *std.Build) void {
         const exe_check = b.addExecutable(.{
             .name = "jsonls",
             .root_module = exe_mod,
+            .use_lld = use_lld,
         });
+        exe_check.use_new_linker = use_new_linker;
         check_step.dependOn(&exe_check.step);
     }
 
@@ -180,13 +190,17 @@ pub fn build(b: *std.Build) void {
         const tool_exe = b.addExecutable(.{
             .name = tool_spec.name,
             .root_module = tool_mod,
+            .use_lld = use_lld,
         });
+        tool_exe.use_new_linker = use_new_linker;
         b.installArtifact(tool_exe);
 
         const check_tool_exe = b.addExecutable(.{
             .name = tool_spec.name,
             .root_module = tool_mod,
+            .use_lld = use_lld,
         });
+        check_tool_exe.use_new_linker = use_new_linker;
         check_step.dependOn(&check_tool_exe.step);
 
         const run_step = b.addRunArtifact(tool_exe);
@@ -227,7 +241,9 @@ pub fn build(b: *std.Build) void {
                 .name = "test_suite_" ++ draft,
                 .root_module = test_suite_module,
                 .filters = test_filters,
+                .use_lld = use_lld,
             });
+            test_suite_test.use_new_linker = use_new_linker;
             const install_test_suite = b.addInstallArtifact(test_suite_test, .{});
             test_suite_step.dependOn(&install_test_suite.step);
             if (run_suite) {
@@ -276,7 +292,7 @@ fn generate_learnjsonschema(b: *std.Build, run: *std.Build.Step.Run) ?*std.Build
     run.setCwd(b.path("."));
     const generated_dir = run.addOutputDirectoryArg("learnjsonschema-output");
 
-    const remove_previous = b.addRemoveDirTree(b.path(learnjsonschema_dir_path));
+    const remove_previous = b.addSystemCommand(&.{ "rm", "-rf", b.pathFromRoot(learnjsonschema_dir_path) });
     const install_generated = b.addInstallDirectory(.{
         .source_dir = generated_dir,
         .install_dir = .{ .custom = "../src/json-schema" },

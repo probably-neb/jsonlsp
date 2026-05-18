@@ -123,7 +123,7 @@ pub fn run(arena: *Arena, transport: *lsp.Transport) !void {
                                     std.log.err("Failed to apply edit to `{s}`: {}", .{ uri, err });
                                 };
                             },
-                            .literal_1 => |_| {
+                            .literal_1 => {
                                 std.log.warn("Received full document change for `{s}` (full sync not supported)", .{uri});
                             },
                         }
@@ -223,7 +223,7 @@ fn wait_for_init(arena: *Arena, transport: *lsp.Transport) !void {
                     return ServerError.ExitWithoutShutdown;
                 }
             },
-            .response => |_| {
+            .response => {
                 continue;
             },
         }
@@ -290,7 +290,7 @@ fn shutdown_received(
                     std.log.err("Failed to write error response: {}", .{err});
                 };
             },
-            .response => |_| {},
+            .response => {},
         }
     }
     std.log.err("Exit notification never received", .{});

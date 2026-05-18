@@ -13,23 +13,23 @@ const Direction = testing.snapshot.Direction;
 
 const update_snapshots = build_options.update_snapshots;
 
-fn discover_snapshots(allocator: Allocator, dir_path: []const u8) ![][]const u8 {
+fn discover_snapshots(io: std.Io, allocator: Allocator, dir_path: []const u8) ![][]const u8 {
     var paths: std.ArrayList([]const u8) = .empty;
     errdefer {
         for (paths.items) |p| allocator.free(p);
         paths.deinit(allocator);
     }
 
-    var dir = std.fs.cwd().openDir(dir_path, .{ .iterate = true }) catch |err| {
+    var dir = std.Io.Dir.cwd().openDir(io, dir_path, .{ .iterate = true }) catch |err| {
         if (err == error.FileNotFound) {
             return try paths.toOwnedSlice(allocator);
         }
         return err;
     };
-    defer dir.close();
+    defer dir.close(io);
 
     var iter = dir.iterate();
-    while (try iter.next()) |entry| {
+    while (try iter.next(io)) |entry| {
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.name, ".txt")) continue;
 
@@ -124,8 +124,8 @@ fn build_updated_snapshot(allocator: Allocator, original: Snapshot, actual_outpu
     };
 }
 
-fn run_snapshot_test(allocator: Allocator, path: []const u8) !void {
-    const content = std.fs.cwd().readFileAlloc(allocator, path, 1024 * 1024) catch |err| {
+fn run_snapshot_test(io: std.Io, allocator: Allocator, path: []const u8) !void {
+    const content = std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(1024 * 1024)) catch |err| {
         std.debug.print("Failed to read snapshot file '{s}': {}\n", .{ path, err });
         return err;
     };
@@ -137,7 +137,7 @@ fn run_snapshot_test(allocator: Allocator, path: []const u8) !void {
     };
     defer snap.deinit();
 
-    var result = testing.runner.run_test(allocator, snap, 10000) catch |err| {
+    var result = testing.runner.run_test(io, allocator, snap, 10000) catch |err| {
         std.debug.print("Test execution failed for '{s}': {}\n", .{ path, err });
         return err;
     };
@@ -155,7 +155,7 @@ fn run_snapshot_test(allocator: Allocator, path: []const u8) !void {
         const serialized = try testing.snapshot.serialize(updated_snap, allocator);
         defer allocator.free(serialized);
 
-        std.fs.cwd().writeFile(.{
+        std.Io.Dir.cwd().writeFile(io, .{
             .sub_path = path,
             .data = serialized,
         }) catch |err| {
@@ -192,12 +192,11 @@ fn run_snapshot_test(allocator: Allocator, path: []const u8) !void {
     return error.TestFailed;
 }
 
-pub fn main() !void {
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
+    const io = init.io;
 
-    var args_iter = try process.argsWithAllocator(allocator);
+    var args_iter = try std.process.Args.Iterator.initAllocator(init.minimal.args, allocator);
     defer args_iter.deinit();
 
     _ = args_iter.next(); // program name
@@ -219,7 +218,7 @@ pub fn main() !void {
 
     const snapshot_dir = "tests/snapshots";
 
-    const snapshot_paths = try discover_snapshots(allocator, snapshot_dir);
+    const snapshot_paths = try discover_snapshots(io, allocator, snapshot_dir);
     defer {
         for (snapshot_paths) |p| allocator.free(p);
         allocator.free(snapshot_paths);
@@ -278,7 +277,7 @@ pub fn main() !void {
     var updated: usize = 0;
 
     for (selected_paths) |path| {
-        run_snapshot_test(allocator, path) catch |err| {
+        run_snapshot_test(io, allocator, path) catch |err| {
             if (err == error.TestFailed) {
                 failed += 1;
                 continue;
@@ -308,7 +307,7 @@ pub fn main() !void {
 
 test "discover_snapshots returns empty for missing directory" {
     const allocator = std.testing.allocator;
-    const paths = try discover_snapshots(allocator, "nonexistent/directory");
+    const paths = try discover_snapshots(std.testing.io, allocator, "nonexistent/directory");
     defer {
         for (paths) |p| allocator.free(p);
         allocator.free(paths);

@@ -312,7 +312,7 @@ fn virtualalloc(reserve_size: usize) InitError![]align(page_size) u8 {
             return try posix.mmap(
                 null,
                 size,
-                posix.PROT.NONE,
+                .{},
                 .{ .TYPE = .PRIVATE, .ANONYMOUS = true },
                 -1,
                 0,
@@ -338,7 +338,10 @@ fn virtualcommit(base: [*]align(page_size) u8, start: usize, len: usize) InitErr
         },
         else => {
             const slice: []align(page_size) u8 = @alignCast(base[start .. start + len]);
-            try posix.mprotect(slice, posix.PROT.READ | posix.PROT.WRITE);
+            std.process.protectMemory(slice, .{ .read = true, .write = true }) catch |err| switch (err) {
+                error.UnsupportedOperation => unreachable,
+                else => |e| return e,
+            };
         },
     }
 }

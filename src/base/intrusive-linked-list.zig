@@ -91,13 +91,6 @@ pub fn IntrusiveLinkedList(comptime T: type) type {
 /// `next` of the last element points back to `first`.
 /// Element type must have `next: *T` and `prev: *T` fields.
 pub fn IntrusiveDoublyLinkedList(comptime T: type) type {
-    if (!@hasField(T, "prev")) {
-        @compileError("T type must have field `prev: *" ++ @typeName(T) ++ "`");
-    }
-    if (!@hasField(T, "next")) {
-        @compileError("T type must have field `next: *" ++ @typeName(T) ++ "`");
-    }
-
     return struct {
         const Self = @This();
 

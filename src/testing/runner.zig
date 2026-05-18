@@ -57,7 +57,7 @@ fn server_thread_fn(ctx: ServerThreadContext) void {
     };
 }
 
-pub fn run_test(allocator: Allocator, snap: Snapshot, timeout_ms: u64) RunError!TestResult {
+pub fn run_test(io: std.Io, allocator: Allocator, snap: Snapshot, timeout_ms: u64) RunError!TestResult {
     var send_list: std.ArrayListUnmanaged([]const u8) = .empty;
     defer send_list.deinit(allocator);
 
@@ -90,15 +90,15 @@ pub fn run_test(allocator: Allocator, snap: Snapshot, timeout_ms: u64) RunError!
     const thread = std.Thread.spawn(.{}, server_thread_fn, .{ctx}) catch return error.ServerError;
 
     const timeout_ns = timeout_ms * std.time.ns_per_ms;
-    const start_time = std.time.nanoTimestamp();
+    const start_time = std.Io.Timestamp.now(io, .awake);
 
     const poll_interval_ns: u64 = 1 * std.time.ns_per_ms;
     while (!completed.load(.acquire)) {
-        const elapsed: u64 = @intCast(std.time.nanoTimestamp() - start_time);
-        if (elapsed >= timeout_ns) {
+        const elapsed = start_time.durationTo(std.Io.Timestamp.now(io, .awake)).nanoseconds;
+        if (elapsed >= @as(i96, @intCast(timeout_ns))) {
             return error.Timeout;
         }
-        std.Thread.sleep(poll_interval_ns);
+        std.Io.sleep(io, .fromNanoseconds(@intCast(poll_interval_ns)), .awake) catch {};
     }
 
     thread.join();
@@ -182,7 +182,7 @@ test "run simple init/shutdown/exit" {
     var snap = try snapshot_mod.parse(allocator, content);
     defer snap.deinit();
 
-    var result = try run_test(allocator, snap, 5000);
+    var result = try run_test(std.testing.io, allocator, snap, 5000);
     defer result.deinit();
 
     try std.testing.expect(result.passed);
@@ -215,7 +215,7 @@ test "mismatch detected" {
     var snap = try snapshot_mod.parse(allocator, content);
     defer snap.deinit();
 
-    var result = try run_test(allocator, snap, 5000);
+    var result = try run_test(std.testing.io, allocator, snap, 5000);
     defer result.deinit();
 
     try std.testing.expect(!result.passed);
@@ -233,6 +233,6 @@ test "timeout triggers" {
     var snap = try snapshot_mod.parse(allocator, content);
     defer snap.deinit();
 
-    const result = run_test(allocator, snap, 100);
+    const result = run_test(std.testing.io, allocator, snap, 100);
     try std.testing.expectError(error.ServerError, result);
 }

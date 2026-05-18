@@ -300,7 +300,7 @@ fn parse_array(p: *Parser) OOM!void {
     try p.close(m, .array);
 }
 
-pub fn dbg_print_tree(w: *std.io.Writer, tree: *const Tree, depth: usize, contents: []const u8) !void {
+pub fn dbg_print_tree(w: *std.Io.Writer, tree: *const Tree, depth: usize, contents: []const u8) !void {
     const INDENTATION = 1;
     try w.splatByteAll(' ', depth * INDENTATION);
     try w.print("{t}:{s}\n", .{

@@ -12,7 +12,7 @@ pub const std_options: std.Options = .{
     .log_level = std.log.default_level,
 };
 
-pub fn main() void {
+pub fn main(init: std.process.Init) void {
     var arena: Arena = Arena.init(.{}) catch {
         std.process.exit(1);
     };
@@ -21,7 +21,7 @@ pub fn main() void {
     //
     // The `lsp.Transport.Stdio` implements the necessary logic to read and write messages over stdio.
     var read_buffer: [256]u8 = undefined;
-    var stdio_transport: lsp.Transport.Stdio = .init(&read_buffer, .stdin(), .stdout());
+    var stdio_transport: lsp.Transport.Stdio = .init(init.io, &read_buffer, .stdin(), .stdout());
     const transport: *lsp.Transport = &stdio_transport.transport;
 
     server.run(&arena, transport) catch |err| {
