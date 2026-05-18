@@ -7,7 +7,6 @@
 - Introduced in: `draft4`
 
 An instance validates successfully against this keyword if it validates successfully against all schemas defined by this keyword's value.
-
 The [`allOf`](allof.md) keyword restricts
 instances to validate against _every_ given subschema. This keyword can be
 thought of as a [logical

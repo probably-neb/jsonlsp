@@ -7,7 +7,6 @@
 - Introduced in: `draft6`
 
 This keyword declares an identifier for the schema resource.
-
 The [`$id`](id.md) keyword explicitly turns a schema
 into a _schema resource_ (a schema that is associated with a URI). Relative
 URIs are resolved against the _current_ base URI, which is either the closest
@@ -36,6 +35,20 @@ such URL as the base).
 > surprises, JSON Schema implementations must be careful with automatically
 > sending remote network requests when encountering supposely resolvable schema
 > identifiers.
+
+> **Common Pitfall:**
+> The specification restricts the kinds of fragments that may appear in
+> [`$id`](id.md). Only _plain-name_ fragments (matching
+> the regular expression `^[A-Za-z][-A-Za-z0-9.:_]*$`) are allowed, and they
+> declare a location-independent identifier (an anchor) for the schema. JSON
+> Pointer fragments such as `#/definitions/foo` are _not_ valid in
+> [`$id`](id.md), even though they are valid in
+> [`$ref`](ref.md). The behaviour of any other fragment
+> form is undefined.
+>
+> This anchor-style usage of [`$id`](id.md) was later
+> replaced by the dedicated [`$anchor`](../../2019-09/core/anchor.md)
+> keyword starting in JSON Schema 2019-09.
 
 > **Best Practice:**
 > It is strongly recommended for every schema file to explicitly declare an

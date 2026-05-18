@@ -7,7 +7,6 @@
 - Introduced in: `draft7`
 
 This keyword indicates that the value of the instance is managed exclusively by the owning authority, and attempts by an application to modify the value of this property are expected to be ignored or rejected by that owning authority.
-
 The [`readOnly`](readOnly.md) keyword, when set to `true`, signifies that an instance value
 (such as a specific object property) cannot be modified or removed, whatever
 that means in the context of the system. For example, form generators may rely

@@ -7,7 +7,6 @@
 - Introduced in: `2019-09`
 
 Validation succeeds if, for each name that appears in both the instance and as a name within this keyword's value, every item in the corresponding array is also the name of a property in the instance.
-
 The [`dependentRequired`](dependentrequired.md) keyword restricts object instances to define certain
 properties if other properties are also defined.
 

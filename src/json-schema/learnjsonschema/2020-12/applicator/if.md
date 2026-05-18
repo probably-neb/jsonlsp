@@ -7,11 +7,9 @@
 - Introduced in: `draft7`
 
 This keyword declares a condition based on the validation result of the given schema.
-
 The [`if`](if.md) keyword introduces a
 subschema whose evaluation result restricts instances to validate against the
-[`then`](then.md) or {{<link keyword="else"
-vocabulary="applicator">}} sibling subschemas (if present). Note that the
+[`then`](then.md) or [`else`](else.md) sibling subschemas (if present). Note that the
 evaluation outcome of this subschema controls which other subschema to apply
 (if any) but has no direct effect on the overall validation result.
 
@@ -28,9 +26,7 @@ evaluation outcome of this subschema controls which other subschema to apply
 > implementation will still need to evaluate the [`if`](../../if/index.md) keyword
 > in case its subschema emits annotations.
 
-The [`if`](if.md), {{<link keyword="then"
-vocabulary="applicator">}}, and {{<link keyword="else"
-vocabulary="applicator">}} keywords are equivalent to the `?` and `:` ternary
+The [`if`](if.md), [`then`](then.md), and [`else`](else.md) keywords are equivalent to the `?` and `:` ternary
 conditional operators found in most programming languages. For example:
 
 ```c
@@ -39,9 +35,7 @@ bool valid = if_schema ? then_schema : else_schema;
 
 JSON Schema is a [constraint-driven
 language](https://modern-json-schema.com/json-schema-is-a-constraint-system).
-Therefore, omitting either the {{<link keyword="then"
-vocabulary="applicator">}} or the {{<link keyword="else"
-vocabulary="applicator">}} keywords is equivalent to setting the corresponding
+Therefore, omitting either the [`then`](then.md) or the [`else`](else.md) keywords is equivalent to setting the corresponding
 part of the ternary conditional operation to the boolean true. In other words,
 undefined consequent or alternative paths lead to success.  For example:
 

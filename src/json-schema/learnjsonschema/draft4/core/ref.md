@@ -7,7 +7,6 @@
 - Introduced in: `draft3`
 
 This keyword is used to reference a statically identified schema.
-
 The [`$ref`](ref.md) keyword enables a schema to
 reference another schema by its URI, effectively importing its keywords into the
 current evaluation process. This keyword is the cornerstone of schema

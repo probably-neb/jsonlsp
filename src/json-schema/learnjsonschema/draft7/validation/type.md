@@ -7,7 +7,6 @@
 - Introduced in: `draft1`
 
 Validation succeeds if the type of the instance matches the type represented by the given type, or matches at least one of the given types.
-
 The supported types are the following. Note that while the [ECMA
 404](https://ecma-international.org/publications-and-standards/standards/ecma-404/)
 JSON standard defines the JSON grammar without mention of encodings, the [IETF

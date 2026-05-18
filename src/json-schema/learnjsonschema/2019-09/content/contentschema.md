@@ -7,7 +7,6 @@
 - Introduced in: `2019-09`
 
 This keyword declares a schema which describes the structure of the string.
-
 When the [`contentMediaType`](contentmediatype.md)
 keyword is set to a media type that adheres to the JSON data model (like JSON
 itself, [YAML](https://yaml.org) or [UBJSON](https://ubjson.org)), the

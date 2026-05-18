@@ -7,7 +7,6 @@
 - Introduced in: `draft6`
 
 Validation succeeds if the schema validates against every property name in the instance.
-
 The [`propertyNames`](propertynames.md) keyword
 restricts object instances to only define properties whose names match the given
 schema. This keyword is evaluated against _every_ property of the object

@@ -7,7 +7,6 @@
 - Introduced in: `2019-09`
 
 This keyword is used in dialect meta-schemas to identify the required and optional vocabularies available for use in schemas described by that dialect.
-
 The [`$vocabulary`](vocabulary.md) keyword is a
 _mandatory_ component of a dialect meta-schema to list the required and optional
 vocabularies available for use by the schema instances of such dialect. The

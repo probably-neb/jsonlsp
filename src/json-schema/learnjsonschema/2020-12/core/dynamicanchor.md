@@ -7,7 +7,6 @@
 - Introduced in: `2020-12`
 
 This keyword is used to create plain name fragments that are not tied to any particular structural location for referencing purposes, which are taken into consideration for dynamic referencing.
-
 The [`$dynamicAnchor`](dynamicanchor.md) keyword is an
 extension of the [`$anchor`](anchor.md) keyword that
 not only associates a subschema with the given URI fragment identifier, but

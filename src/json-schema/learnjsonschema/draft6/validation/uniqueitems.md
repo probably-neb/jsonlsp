@@ -7,7 +7,6 @@
 - Introduced in: `draft2`
 
 If this keyword is set to the boolean value `true`, the instance validates successfully if all of its elements are unique.
-
 When set to `true`, the [`uniqueItems`](uniqueitems.md) keyword restricts array instances to
 items that only occur once in the array. Note that empty arrays and arrays that
 consist of a single item satisfy uniqueness by definition.

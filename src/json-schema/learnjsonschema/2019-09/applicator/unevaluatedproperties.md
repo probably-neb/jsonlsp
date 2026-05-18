@@ -7,7 +7,6 @@
 - Introduced in: `2019-09`
 
 Validates object properties that did not successfully validate against other standard object applicators.
-
 The [`unevaluatedProperties`](unevaluatedproperties.md) keyword is a generalisation
 of the [`additionalProperties`](additionalproperties.md) keyword that considers related
 keywords even when they are not direct siblings of this keyword. More
@@ -59,9 +58,11 @@ other keyword from every other vocabulary.
 }
 ```
 
-{{<instance-pass `An object value that defines a "foo" property and other string properties is valid`>}}
+### Valid instance: An object value that defines a "foo" property and other string properties is valid
+
+```json
 { "foo": 1, "bar": "baz" }
-{{</instance-pass>}}
+```
 
 ### Annotation
 
@@ -70,9 +71,11 @@ other keyword from every other vocabulary.
 { "keyword": "/unevaluatedProperties", "instance": "", "value": [ "bar" ] }
 ```
 
-{{<instance-pass `An object value that defines multiple properties that start with "@" and other string properties is valid`>}}
+### Valid instance: An object value that defines multiple properties that start with "@" and other string properties is valid
+
+```json
 { "@foo": 1, "@bar": 2, "baz": "qux" }
-{{</instance-pass>}}
+```
 
 ### Annotation
 
@@ -81,13 +84,17 @@ other keyword from every other vocabulary.
 { "keyword": "/unevaluatedProperties", "instance": "", "value": [ "baz" ] }
 ```
 
-{{<instance-fail `An object value that defines a "foo" property and other non-string properties is invalid`>}}
-{ "foo": 1, "bar": 2 }
-{{</instance-fail>}}
+### Invalid instance: An object value that defines a "foo" property and other non-string properties is invalid
 
-{{<instance-fail `An object value that defines multiple properties that start with "@" and other non-string properties is invalid`>}}
+```json
+{ "foo": 1, "bar": 2 }
+```
+
+### Invalid instance: An object value that defines multiple properties that start with "@" and other non-string properties is invalid
+
+```json
 { "@foo": 1, "@bar": 2, "baz": 3 }
-{{</instance-fail>}}
+```
 
 ### Valid instance: An empty object value is valid
 
@@ -101,7 +108,9 @@ other keyword from every other vocabulary.
 "Hello World"
 ```
 
-{{<schema `A schema that constraints object instances to only allow extension keywords that start with "@" using a helper`>}}
+### Schema: A schema that constraints object instances to only allow extension keywords that start with "@" using a helper
+
+```json
 {
   "$schema": "https://json-schema.org/draft/2019-09/schema",
   "properties": { "foo": true },
@@ -113,11 +122,13 @@ other keyword from every other vocabulary.
     }
   }
 }
-{{</schema>}}
+```
 
-{{<instance-pass `An object value that only defines a "foo" property is valid`>}}
+### Valid instance: An object value that only defines a "foo" property is valid
+
+```json
 { "foo": 1 }
-{{</instance-pass>}}
+```
 
 ### Annotation
 
@@ -125,9 +136,11 @@ other keyword from every other vocabulary.
 { "keyword": "/properties", "instance": "", "value": [ "foo" ] }
 ```
 
-{{<instance-pass `An object value that only defines a "foo" property and other properties that start with "@" is valid`>}}
+### Valid instance: An object value that only defines a "foo" property and other properties that start with "@" is valid
+
+```json
 { "foo": 1, "@bar": 2, "@baz": 3 }
-{{</instance-pass>}}
+```
 
 ### Annotation
 
@@ -136,9 +149,11 @@ other keyword from every other vocabulary.
 { "keyword": "/$defs/allow-extensions/patternProperties", "instance": "", "value": [ "@bar", "@baz" ] }
 ```
 
-{{<instance-pass `An object value that only defines properties that start with "@" is valid`>}}
+### Valid instance: An object value that only defines properties that start with "@" is valid
+
+```json
 { "@foo": 1, "@bar": 2, "@baz": 3 }
-{{</instance-pass>}}
+```
 
 ### Annotation
 
@@ -146,9 +161,11 @@ other keyword from every other vocabulary.
 { "keyword": "/$defs/allow-extensions/patternProperties", "instance": "", "value": [ "@foo", "@bar", "@baz" ] }
 ```
 
-{{<instance-fail `An object value that only defines a "foo" property and other properties that do not start with "@" is invalid`>}}
+### Invalid instance: An object value that only defines a "foo" property and other properties that do not start with "@" is invalid
+
+```json
 { "foo": 1, "bar": 2 }
-{{</instance-fail>}}
+```
 
 ### Valid instance: An empty object value is valid
 
@@ -174,9 +191,11 @@ other keyword from every other vocabulary.
 }
 ```
 
-{{<instance-fail `An object value that only defines a "foo" property is invalid as the schema prohibits unevaluated properties`>}}
+### Invalid instance: An object value that only defines a "foo" property is invalid as the schema prohibits unevaluated properties
+
+```json
 { "foo": 1 }
-{{</instance-fail>}}
+```
 
 ### Invalid instance: An object value that defines any other property is invalid as the schema prohibits unevaluated properties
 

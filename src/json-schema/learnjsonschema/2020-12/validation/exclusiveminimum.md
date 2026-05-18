@@ -7,7 +7,6 @@
 - Introduced in: `draft3`
 
 Validation succeeds if the numeric instance is greater than the given number.
-
 The [`exclusiveMinimum`](exclusiveMinimum.md) keyword restricts number instances to be strictly
 greater than the given number.
 

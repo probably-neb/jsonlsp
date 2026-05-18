@@ -7,7 +7,6 @@
 - Introduced in: `draft1`
 
 Validation succeeds if, for each name that appears in both the instance and as a name within this keyword's value, the child instance for that name successfully validates against the corresponding schema.
-
 The [`properties`](properties.md) keyword
 restricts properties of an object instance, when present, to match their
 corresponding subschemas definitions.

@@ -7,7 +7,6 @@
 - Introduced in: `draft3`
 
 This keyword is both used as a JSON Schema dialect identifier and as a reference to a JSON Schema which describes the set of valid schemas written for this particular dialect.
-
 The [`$schema`](schema.md) keyword serves to explicitly associate a
 _schema resource_ with the JSON Schema dialect that defines it, where the
 dialect is the identifier of a meta-schema that defines the vocabularies in use

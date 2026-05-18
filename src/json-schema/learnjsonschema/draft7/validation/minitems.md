@@ -7,7 +7,6 @@
 - Introduced in: `draft1`
 
 An array instance is valid if its size is greater than, or equal to, the value of this keyword.
-
 The [`minItems`](minitems.md) keyword restricts array instances to consists of an inclusive
 minimum numbers of items.
 

@@ -7,7 +7,6 @@
 - Introduced in: `draft1`
 
 If set to a schema, validation succeeds if each element of the instance validates against it, otherwise validation succeeds if each element of the instance validates against the schema at the same position, if any
-
 The [`items`](items.md) keyword is used to
 validate array items and has two different modes of operation depending on the
 type of its value:

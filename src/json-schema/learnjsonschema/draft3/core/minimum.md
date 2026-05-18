@@ -7,7 +7,6 @@
 - Introduced in: `draft1`
 
 Validation succeeds if the numeric instance is greater than, or equal to, the given number, depending on the value of [`exclusiveMinimum`](/draft3/core/exclusiveMinimum), if any.
-
 We are looking for contributors to help us fully expand the documentation to
 cover this dialect. If that sounds like you, [send a pull
 request on GitHub](https://github.com/sourcemeta/learnjsonschema.com/pulls)!

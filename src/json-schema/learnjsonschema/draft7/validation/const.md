@@ -7,7 +7,6 @@
 - Introduced in: `draft6`
 
 Validation succeeds if the instance is equal to this keyword's value.
-
 The [`const`](const.md) keyword (short for
 "constant") restricts instances to a single specific JSON value of any type.
 

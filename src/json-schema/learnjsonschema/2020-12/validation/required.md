@@ -7,7 +7,6 @@
 - Introduced in: `draft3`
 
 An object instance is valid against this keyword if every item in the array is the name of a property in the instance.
-
 The [`required`](required.md) keyword restricts object instances to define the given set of properties.
 
 > **Common Pitfall:**

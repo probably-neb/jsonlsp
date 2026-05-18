@@ -7,7 +7,6 @@
 - Introduced in: `draft3`
 
 When [`minimum`](/draft3/core/minimum) is present and this keyword is set to true, the numeric instance must be greater than the value in [`minimum`](/draft3/core/minimum).
-
 ## Examples
 
 ### Schema: Schema with 'exclusiveMinimum' keyword

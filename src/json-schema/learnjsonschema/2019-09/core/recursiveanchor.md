@@ -7,7 +7,6 @@
 - Introduced in: `2019-09`
 
 This keyword is used to dynamically identify a base URI at runtime by marking where such a calculation can start, and where it stops.
-
 The [`$recursiveAnchor`](recursiveanchor.md) keyword is
 an extension of the [`$anchor`](anchor.md) keyword
 that, when set to `true`, associates a subschema with a special _empty_ URI

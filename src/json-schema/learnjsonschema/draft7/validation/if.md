@@ -7,7 +7,6 @@
 - Introduced in: `draft7`
 
 This keyword declares a condition based on the validation result of the given schema.
-
 The [`if`](if.md) keyword introduces a subschema
 whose evaluation result restricts instances to validate against the
 [`then`](then.md) or [`else`](else.md) sibling subschemas (if present). Note that the

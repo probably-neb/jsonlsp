@@ -7,7 +7,6 @@
 - Introduced in: `draft1`
 
 Validation succeeds if each element of the instance not covered by [`prefixItems`](/2020-12/applicator/prefixitems) validates against this schema.
-
 The [`items`](items.md) keyword restricts array instance
 items not described by the _sibling_ [`prefixItems`](prefixitems.md) keyword (if any), to validate against the
 given subschema. Whether this keyword was evaluated against any item of the

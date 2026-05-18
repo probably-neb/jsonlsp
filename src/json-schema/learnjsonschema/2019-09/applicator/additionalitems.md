@@ -7,7 +7,6 @@
 - Introduced in: `draft3`
 
 If [`items`](/2019-09/applicator/items) is set to an array of schemas, validation succeeds if each element of the instance not covered by it validates against this schema.
-
 The [`additionalItems`](additionalitems.md)
 keyword restricts array instance items not described by the _sibling_
 [`items`](items.md) keyword (when [`items`](items.md) is in array form), to validate against the

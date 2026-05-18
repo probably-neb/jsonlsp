@@ -5,7 +5,6 @@
 - Upstream source: [https://raw.githubusercontent.com/sourcemeta/learnjsonschema.com/main/content/2020-12/validation/_index.markdown](https://raw.githubusercontent.com/sourcemeta/learnjsonschema.com/main/content/2020-12/validation/_index.markdown)
 
 ## Pages
-
 - [const](const.md)
 - [dependentRequired](dependentrequired.md)
 - [enum](enum.md)
@@ -26,3 +25,4 @@
 - [required](required.md)
 - [type](type.md)
 - [uniqueItems](uniqueitems.md)
+

@@ -7,7 +7,6 @@
 - Introduced in: `draft1`
 
 A string instance is considered valid if the regular expression matches the instance successfully.
-
 We are looking for contributors to help us fully expand the documentation to
 cover this dialect. If that sounds like you, [send a pull
 request on GitHub](https://github.com/sourcemeta/learnjsonschema.com/pulls)!

@@ -7,7 +7,6 @@
 - Introduced in: `draft2`
 
 If this keyword is set to the boolean value `true`, the instance validates successfully if all of its elements are unique.
-
 We are looking for contributors to help us fully expand the documentation to
 cover this dialect. If that sounds like you, [send a pull
 request on GitHub](https://github.com/sourcemeta/learnjsonschema.com/pulls)!

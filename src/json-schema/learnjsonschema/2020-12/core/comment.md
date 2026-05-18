@@ -7,7 +7,6 @@
 - Introduced in: `draft7`
 
 This keyword reserves a location for comments from schema authors to readers or maintainers of the schema.
-
 The [`$comment`](comment.md) keyword is a standardised placeholder
 for explanatory string schema comments. This keyword is completely ignored by
 the evaluation process and it is possible to strip instances of this keyword

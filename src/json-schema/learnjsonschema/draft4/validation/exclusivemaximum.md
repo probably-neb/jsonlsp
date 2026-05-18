@@ -7,7 +7,6 @@
 - Introduced in: `draft3`
 
 When [`maximum`](/draft4/validation/maximum) is present and this keyword is set to true, the numeric instance must be less than the value in [`maximum`](/draft4/validation/maximum).
-
 The [`exclusiveMaximum`](exclusivemaximum.md)
 keyword is a boolean modifier for the [`maximum`](maximum.md) keyword. When set to `true`, it changes the
 validation behavior of the [`maximum`](maximum.md)

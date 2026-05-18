@@ -7,7 +7,6 @@
 - Introduced in: `draft6`
 
 Validation succeeds if the instance contains an element that validates against this schema.
-
 The [`contains`](contains.md) keyword restricts array
 instances to include one or more items (at any location of the array) that
 validate against the given subschema. The lower and upper bounds that are

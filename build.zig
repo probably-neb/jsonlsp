@@ -71,6 +71,11 @@ const tool_specs = [_]ToolSpec{
         .description = "Build the JSON schema test suite",
         .build_tool = build_json_schema_test_suite,
     },
+    .{
+        .name = "generate-learnjsonschema",
+        .description = "Generate Learn JSON Schema markdown pages",
+        .build_tool = generate_learnjsonschema,
+    },
 };
 
 const json_schema_drafts = &.{
@@ -83,6 +88,7 @@ const json_schema_drafts = &.{
     "draft-next",
 };
 const json_schema_test_suite_dir_path = "src/json-schema/test-suite";
+const learnjsonschema_dir_path = "src/json-schema/learnjsonschema";
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -264,6 +270,20 @@ fn run_snapshot_tests(b: *std.Build, run: *std.Build.Step.Run) ?*std.Build.Step 
         run.addArgs(args);
     }
     return null;
+}
+
+fn generate_learnjsonschema(b: *std.Build, run: *std.Build.Step.Run) ?*std.Build.Step {
+    run.setCwd(b.path("."));
+    const generated_dir = run.addOutputDirectoryArg("learnjsonschema-output");
+
+    const remove_previous = b.addRemoveDirTree(b.path(learnjsonschema_dir_path));
+    const install_generated = b.addInstallDirectory(.{
+        .source_dir = generated_dir,
+        .install_dir = .{ .custom = "../src/json-schema" },
+        .install_subdir = "learnjsonschema",
+    });
+    install_generated.step.dependOn(&remove_previous.step);
+    return &install_generated.step;
 }
 
 fn build_json_schema_test_suite(b: *std.Build, run: *std.Build.Step.Run) ?*std.Build.Step {

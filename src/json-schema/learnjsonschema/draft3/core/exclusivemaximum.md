@@ -7,7 +7,6 @@
 - Introduced in: `draft3`
 
 When [`maximum`](/draft3/core/maximum) is present and this keyword is set to true, the numeric instance must be less than the value in [`maximum`](/draft3/core/maximum).
-
 ## Examples
 
 ### Schema: Schema with 'exclusiveMaximum' keyword

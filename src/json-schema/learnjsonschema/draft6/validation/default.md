@@ -7,7 +7,6 @@
 - Introduced in: `draft1`
 
 This keyword can be used to supply a default JSON value associated with a particular schema.
-
 The [`default`](default.md) keyword declares a
 default instance value for a schema or any of its subschemas, typically to
 support specialised tooling like documentation and form generators. This

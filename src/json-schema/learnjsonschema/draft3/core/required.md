@@ -7,7 +7,6 @@
 - Introduced in: `draft3`
 
 An object instance is valid if the name of the required property exists in the instance.
-
 ## Examples
 
 ### Schema: Schema with 'required' keyword

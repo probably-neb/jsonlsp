@@ -7,7 +7,6 @@
 - Introduced in: `draft7`
 
 This keyword declares the media type of the string instance.
-
 When the [`contentEncoding`](contentencoding.md)
 keyword is set, the [`contentMediaType`](contentmediatype.md) keyword signifies that a string instance
 value (such as a specific object property) should be considered binary data

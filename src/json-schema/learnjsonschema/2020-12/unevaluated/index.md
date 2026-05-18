@@ -5,6 +5,6 @@
 - Upstream source: [https://raw.githubusercontent.com/sourcemeta/learnjsonschema.com/main/content/2020-12/unevaluated/_index.markdown](https://raw.githubusercontent.com/sourcemeta/learnjsonschema.com/main/content/2020-12/unevaluated/_index.markdown)
 
 ## Pages
-
 - [unevaluatedItems](unevaluateditems.md)
 - [unevaluatedProperties](unevaluatedproperties.md)
+

@@ -7,7 +7,6 @@
 - Introduced in: `draft1`
 
 If set to a schema, validation succeeds if each element of the instance validates against it. If set to an array, validation succeeds if each element of the instance validates against the schema at the same position, if any.
-
 We are looking for contributors to help us fully expand the documentation to
 cover this dialect. If that sounds like you, [send a pull
 request on GitHub](https://github.com/sourcemeta/learnjsonschema.com/pulls)!

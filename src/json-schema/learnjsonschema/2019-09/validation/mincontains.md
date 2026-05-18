@@ -7,7 +7,6 @@
 - Introduced in: `2019-09`
 
 The number of times that the [`contains`](/2019-09/applicator/contains) keyword (if set) successfully validates against the instance must be greater than or equal to the given integer.
-
 The [`minContains`](mincontains.md) keyword
 modifies the [`contains`](../applicator/contains.md) keyword to
 constrain array instances to the given minimum number of containment matches.

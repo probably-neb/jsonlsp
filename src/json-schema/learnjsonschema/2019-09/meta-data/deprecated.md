@@ -7,7 +7,6 @@
 - Introduced in: `2019-09`
 
 This keyword indicates that applications should refrain from using the declared property.
-
 The [`deprecated`](deprecated.md) keyword, when set to `true`, signifies that an instance value
 (such as a specific object property) should not be used and may be removed or
 rejected in the future. This keyword does not affect validation, but the

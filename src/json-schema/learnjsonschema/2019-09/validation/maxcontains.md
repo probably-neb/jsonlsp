@@ -7,7 +7,6 @@
 - Introduced in: `2019-09`
 
 The number of times that the [`contains`](/2019-09/applicator/contains) keyword (if set) successfully validates against the instance must be less than or equal to the given integer.
-
 The [`maxContains`](maxcontains.md) keyword
 modifies the [`contains`](../applicator/contains.md) keyword to
 constrain array instances to the given maximum number of containment matches.

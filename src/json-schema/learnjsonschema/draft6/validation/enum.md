@@ -7,7 +7,6 @@
 - Introduced in: `draft1`
 
 Validation succeeds if the instance is equal to one of the elements in this keyword's array value.
-
 The [`enum`](enum.md) keyword restricts instances
 to a finite set of possible values, which may be of different types.
 

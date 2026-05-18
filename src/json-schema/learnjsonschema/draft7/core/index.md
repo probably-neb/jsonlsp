@@ -5,8 +5,8 @@
 - Upstream source: [https://raw.githubusercontent.com/sourcemeta/learnjsonschema.com/main/content/draft7/core/_index.markdown](https://raw.githubusercontent.com/sourcemeta/learnjsonschema.com/main/content/draft7/core/_index.markdown)
 
 ## Pages
-
 - [$comment](comment.md)
 - [$id](id.md)
 - [$ref](ref.md)
 - [$schema](schema.md)
+

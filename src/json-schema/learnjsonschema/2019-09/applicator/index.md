@@ -5,7 +5,6 @@
 - Upstream source: [https://raw.githubusercontent.com/sourcemeta/learnjsonschema.com/main/content/2019-09/applicator/_index.markdown](https://raw.githubusercontent.com/sourcemeta/learnjsonschema.com/main/content/2019-09/applicator/_index.markdown)
 
 ## Pages
-
 - [additionalItems](additionalitems.md)
 - [additionalProperties](additionalproperties.md)
 - [allOf](allof.md)
@@ -23,3 +22,4 @@
 - [then](then.md)
 - [unevaluatedItems](unevaluateditems.md)
 - [unevaluatedProperties](unevaluatedproperties.md)
+

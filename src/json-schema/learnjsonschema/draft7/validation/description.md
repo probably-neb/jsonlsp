@@ -7,7 +7,6 @@
 - Introduced in: `draft1`
 
 An explanation about the purpose of the instance described by the schema.
-
 The [`description`](description.md) keyword is a
 placeholder for a longer human-readable string summary of what a schema or any
 of its subschemas are about. This keyword is merely descriptive and does not

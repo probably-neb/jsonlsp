@@ -5,7 +5,6 @@
 - Upstream source: [https://raw.githubusercontent.com/sourcemeta/learnjsonschema.com/main/content/draft7/validation/_index.markdown](https://raw.githubusercontent.com/sourcemeta/learnjsonschema.com/main/content/draft7/validation/_index.markdown)
 
 ## Pages
-
 - [additionalItems](additionalitems.md)
 - [additionalProperties](additionalproperties.md)
 - [allOf](allof.md)
@@ -48,3 +47,4 @@
 - [type](type.md)
 - [uniqueItems](uniqueitems.md)
 - [writeOnly](writeonly.md)
+

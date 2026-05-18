@@ -7,7 +7,6 @@
 - Introduced in: `draft4`
 
 An instance validates successfully against this keyword if it validates successfully against exactly one schema defined by this keyword's value.
-
 The [`oneOf`](oneof.md) keyword restricts
 instances to validate against _exactly one_ (and only one) of the given
 subschemas and fail on the rest. This keyword represents a [logical exclusive

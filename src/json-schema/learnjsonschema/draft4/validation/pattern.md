@@ -7,7 +7,6 @@
 - Introduced in: `draft1`
 
 A string instance is considered valid if the regular expression matches the instance successfully.
-
 The [`pattern`](pattern.md) keyword restricts
 string instances to match the given regular expression.
 

@@ -7,7 +7,6 @@
 - Introduced in: `draft1`
 
 Validation succeeds if the numeric instance is greater than or greater than or equal to the given number, depending on the value of [`exclusiveMinimum`](/draft4/validation/exclusiveMinimum), if any
-
 The [`minimum`](minimum.md) keyword restricts number instances to be greater than or equal to
 the given number.
 

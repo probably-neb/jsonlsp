@@ -7,7 +7,6 @@
 - Introduced in: `draft1`
 
 An array instance is valid if its size is less than, or equal to, the value of this keyword.
-
 ## Examples
 
 ### Schema: Schema with 'maxItems' keyword

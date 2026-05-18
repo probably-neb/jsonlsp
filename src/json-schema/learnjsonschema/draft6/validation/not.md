@@ -7,7 +7,6 @@
 - Introduced in: `draft4`
 
 An instance is valid against this keyword if it fails to validate successfully against the schema defined by this keyword.
-
 The [`not`](not.md) keyword restricts
 instances to fail validation against the given subschema. This keyword
 represents a [logical negation](https://en.wikipedia.org/wiki/Negation) (NOT)

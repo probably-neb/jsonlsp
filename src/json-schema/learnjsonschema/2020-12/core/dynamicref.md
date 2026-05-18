@@ -7,7 +7,6 @@
 - Introduced in: `2020-12`
 
 This keyword is used to reference an identified schema, deferring the full resolution until runtime, at which point it is resolved each time it is encountered while evaluating an instance.
-
 The [`$dynamicRef`](dynamicref.md) keyword is an
 extension of the [`$ref`](ref.md) keyword that enables
 a schema to reference another schema by its dynamic anchor, as declared by the

@@ -7,7 +7,6 @@
 - Introduced in: `draft3`
 
 Validation succeeds if, for each name that appears in both the instance and as a name within this keyword's value, either every item in the corresponding array is also the name of a property in the instance or the corresponding subschema successfully evaluates against the instance.
-
 The [`dependencies`](dependencies.md) keyword is
 used to express property-based constraints on object instances. It has two
 different modes of operation depending on the type of each dependency value:

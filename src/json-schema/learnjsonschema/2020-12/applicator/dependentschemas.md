@@ -7,7 +7,6 @@
 - Introduced in: `2019-09`
 
 This keyword specifies subschemas that are evaluated if the instance is an object and contains a certain property.
-
 The [`dependentSchemas`](dependentSchemas.md) keyword
 restricts object instances to validate against one or more of the given
 subschemas if the corresponding properties are defined.  Note that the given

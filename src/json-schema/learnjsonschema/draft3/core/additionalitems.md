@@ -7,7 +7,6 @@
 - Introduced in: `draft3`
 
 If [`items`](/draft3/core/items) is set to an array of schemas, validation succeeds if each element of the instance not covered by it validates against this schema. If set to a boolean, no additional items are allowed in the array instance.
-
 We are looking for contributors to help us fully expand the documentation to
 cover this dialect. If that sounds like you, [send a pull
 request on GitHub](https://github.com/sourcemeta/learnjsonschema.com/pulls)!

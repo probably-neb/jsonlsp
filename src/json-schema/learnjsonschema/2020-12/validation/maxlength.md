@@ -7,7 +7,6 @@
 - Introduced in: `draft1`
 
 A string instance is valid against this keyword if its length is less than, or equal to, the value of this keyword.
-
 The [`maxLength`](maxLength.md) keyword restricts string instances to consists of an inclusive
 maximum number of [Unicode](https://unicode.org) code-points (logical
 characters), which is not necessarily the same as the number of bytes in the

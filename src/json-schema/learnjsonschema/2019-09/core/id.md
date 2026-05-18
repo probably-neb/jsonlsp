@@ -7,7 +7,6 @@
 - Introduced in: `draft6`
 
 This keyword declares an identifier for the schema resource.
-
 The [`$id`](id.md) keyword explicitly turns a
 schema into a _schema resource_ (a schema that is associated with a URI).
 Relative URIs are resolved against the _current_ base URI, which is either

@@ -7,7 +7,6 @@
 - Introduced in: `draft4`
 
 This keyword reserves a location for schema authors to inline reusable JSON Schemas into a more general schema.
-
 The [`definitions`](definitions.md) keyword is a
 container for storing reusable schemas within a schema resource, which can be
 referenced using the [`$ref`](../core/ref.md) keyword. From a

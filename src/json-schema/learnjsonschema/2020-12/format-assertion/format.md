@@ -7,7 +7,6 @@
 - Introduced in: `draft1`
 
 Define and assert semantic information about a string instance.
-
 The [`format`](../format-annotation/format.md) keyword restricts string instances to the given logical type and
 produces an annotation value.
 

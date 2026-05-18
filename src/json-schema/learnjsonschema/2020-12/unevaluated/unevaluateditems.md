@@ -7,7 +7,6 @@
 - Introduced in: `2019-09`
 
 Validates array elements that did not successfully validate against other standard array applicators.
-
 The [`unevaluatedItems`](unevaluateditems.md)
 keyword is a generalisation of the [`items`](../applicator/items.md) keyword that considers related keywords even when they are not direct
 siblings of this keyword. More specifically, this keyword is affected by

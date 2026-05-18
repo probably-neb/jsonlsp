@@ -7,7 +7,6 @@
 - Introduced in: `draft0`
 
 Validation succeeds if the schema validates against each value not matched by other object applicators in this vocabulary. If set to `false`, no additional properties are allowed in the instance.
-
 The `additionalProperties` keyword restricts object instance properties not
 described by the _sibling_ [`properties`](properties.md) and [`patternProperties`](patternproperties.md) keywords (if any), to validate against the given subschema.
 

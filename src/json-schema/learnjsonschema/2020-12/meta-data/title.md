@@ -7,7 +7,6 @@
 - Introduced in: `draft1`
 
 A preferably short description about the purpose of the instance described by the schema.
-
 The [`title`](title.md) keyword is a placeholder for a concise human-readable string
 summary of what a schema or any of its subschemas are about. This keyword does
 not affect validation, but the evaluator will collect its value as an

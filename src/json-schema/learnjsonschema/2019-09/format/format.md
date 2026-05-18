@@ -7,7 +7,6 @@
 - Introduced in: `draft1`
 
 Define semantic information about a string instance.
-
 The [`format`](format.md) keyword communicates that
 string instances are of the given logical type by producing an annotation
 value.

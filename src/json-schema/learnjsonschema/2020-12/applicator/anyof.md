@@ -7,7 +7,6 @@
 - Introduced in: `draft4`
 
 An instance validates successfully against this keyword if it validates successfully against at least one schema defined by this keyword's value.
-
 The [`anyOf`](anyof.md) keyword restricts
 instances to validate against _at least one_ (but potentially multiple) of the
 given subschemas. This keyword represents a [logical

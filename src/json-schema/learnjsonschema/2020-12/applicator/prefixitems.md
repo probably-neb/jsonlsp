@@ -7,7 +7,6 @@
 - Introduced in: `2020-12`
 
 Validation succeeds if each element of the instance validates against the schema at the same position, if any.
-
 The [`prefixItems`](prefixItems.md) keyword restricts a
 number of items from the start of an array instance to validate against the
 given sequence of subschemas, where the item at a given index in the array

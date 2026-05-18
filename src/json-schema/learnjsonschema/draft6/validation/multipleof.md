@@ -7,7 +7,6 @@
 - Introduced in: `draft4`
 
 A numeric instance is valid only if division by this keyword's value results in an integer.
-
 The [`multipleOf`](multipleof.md) keyword
 restricts number instances to be multiples of the given number. Note that the
 number `0` is a multiple of every number, as for every number `k`, the

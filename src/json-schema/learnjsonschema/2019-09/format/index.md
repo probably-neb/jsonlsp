@@ -5,5 +5,5 @@
 - Upstream source: [https://raw.githubusercontent.com/sourcemeta/learnjsonschema.com/main/content/2019-09/format/_index.markdown](https://raw.githubusercontent.com/sourcemeta/learnjsonschema.com/main/content/2019-09/format/_index.markdown)
 
 ## Pages
-
 - [format](format.md)
+

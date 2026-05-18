@@ -7,7 +7,6 @@
 - Introduced in: `draft3`
 
 When [`minimum`](/draft4/validation/minimum) is present and this keyword is set to true, the numeric instance must be greater than the value in [`minimum`](/draft4/validation/minimum).
-
 The [`exclusiveMinimum`](exclusiveminimum.md)
 keyword is a boolean modifier for the [`minimum`](minimum.md) keyword. When set to `true`, it changes the
 validation behavior of the [`minimum`](minimum.md)

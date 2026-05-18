@@ -7,7 +7,6 @@
 - Introduced in: `draft4`
 
 An object instance is valid if its number of properties is less than, or equal to, the value of this keyword.
-
 The [`maxProperties`](maxProperties.md) keyword restricts object instances to consists of an
 inclusive maximum numbers of properties.
 

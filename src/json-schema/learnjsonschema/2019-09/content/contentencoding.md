@@ -7,7 +7,6 @@
 - Introduced in: `draft7`
 
 The string instance should be interpreted as encoded binary data and decoded using the encoding named by this property.
-
 The [`contentEncoding`](contentencoding.md) keyword signifies that a string instance value (such as a
 specific object property) should be considered binary data serialised using the
 given encoding. This keyword does not affect validation, but the evaluator will

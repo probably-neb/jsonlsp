@@ -7,7 +7,6 @@
 - Introduced in: `2019-09`
 
 This keyword is used to create plain name fragments that are not tied to any particular structural location for referencing purposes, which are taken into consideration for static referencing.
-
 The [`$anchor`](anchor.md) keyword associates a
 subschema with the given URI fragment identifier, which can be referenced
 using the [`$ref`](ref.md) keyword. The fragment

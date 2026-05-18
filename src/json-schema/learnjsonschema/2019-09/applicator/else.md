@@ -7,10 +7,8 @@
 - Introduced in: `draft7`
 
 When [`if`](/2019-09/applicator/if) is present, and the instance fails to validate against its subschema, then validation succeeds if the instance successfully validates against this keyword's subschema.
-
 The [`else`](else.md) keyword restricts
-instances to validate against the given subschema if the {{<link keyword="if"
-vocabulary="applicator">}} sibling keyword failed to validate against the
+instances to validate against the given subschema if the [`if`](if.md) sibling keyword failed to validate against the
 instance.
 
 > **Common Pitfall:**

@@ -7,7 +7,6 @@
 - Introduced in: `2019-09`
 
 This keyword reserves a location for schema authors to inline reusable JSON Schemas into a more general schema.
-
 The [`$defs`](defs.md) keyword is a container for storing reusable
 schemas within a schema resource, which can be referenced using the
 [`$ref`](ref.md) or [`$dynamicRef`](dynamicref.md) keywords. From a software engineering point of

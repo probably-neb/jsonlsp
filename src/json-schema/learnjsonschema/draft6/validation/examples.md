@@ -7,7 +7,6 @@
 - Introduced in: `draft6`
 
 This keyword is used to provide sample JSON values associated with a particular schema, for the purpose of illustrating usage.
-
 The [`examples`](examples.md) keyword declares a
 set of example instances for a schema or any of its subschemas, typically for
 documentation purposes. This keyword is merely descriptive and does not affect

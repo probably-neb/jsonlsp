@@ -7,7 +7,6 @@
 - Introduced in: `draft7`
 
 When [`if`](/draft7/validation/if) is present, and the instance successfully validates against its subschema, then validation succeeds if the instance also successfully validates against this keyword's subschema.
-
 The [`then`](then.md) keyword restricts instances
 to validate against the given subschema if the [`if`](if.md) sibling keyword successfully validated against the
 instance.

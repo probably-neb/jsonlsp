@@ -5,7 +5,6 @@
 - Upstream source: [https://raw.githubusercontent.com/sourcemeta/learnjsonschema.com/main/content/2020-12/core/_index.markdown](https://raw.githubusercontent.com/sourcemeta/learnjsonschema.com/main/content/2020-12/core/_index.markdown)
 
 ## Pages
-
 - [$anchor](anchor.md)
 - [$comment](comment.md)
 - [$defs](defs.md)
@@ -15,3 +14,4 @@
 - [$ref](ref.md)
 - [$schema](schema.md)
 - [$vocabulary](vocabulary.md)
+

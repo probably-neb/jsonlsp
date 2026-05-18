@@ -7,7 +7,6 @@
 - Introduced in: `draft3`
 
 Validation succeeds if, for each instance name that matches any regular expressions that appear as a property name in this keyword's value, the child instance for that name successfully validates against each schema that corresponds to a matching regular expression.
-
 The [`patternProperties`](patternProperties.md) keyword
 restricts properties of an object instance that match certain regular
 expressions to match their corresponding subschemas definitions. Information

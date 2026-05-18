@@ -7,7 +7,6 @@
 - Introduced in: `draft4`
 
 An object instance is valid if its number of properties is greater than, or equal to, the value of this keyword.
-
 The [`minProperties`](minProperties.md) keyword restricts object instances to consists of an
 inclusive minimum numbers of properties.
 
