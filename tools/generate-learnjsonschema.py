@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Iterable, cast
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT_ROOT = ROOT / "learnjsonschema"
+OUTPUT_ROOT = ROOT / "src" / "json-schema" / "learnjsonschema"
 SITEMAP_URL = "https://www.learnjsonschema.com/sitemap.xml"
 UPSTREAM_RAW_BASE = "https://raw.githubusercontent.com/sourcemeta/learnjsonschema.com/main/content"
 UPSTREAM_API_BASE = "https://api.github.com/repos/sourcemeta/learnjsonschema.com/contents/content"

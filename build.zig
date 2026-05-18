@@ -2,31 +2,87 @@ const std = @import("std");
 
 const ModuleSpec = struct {
     name: []const u8,
-    // TODO: getter (derive from name)
-    path: []const u8,
-    add_to_exe: bool = false,
-    install_lib: bool = false,
-    unit_tests: bool = false,
+    dependency_module_name: ?[]const u8 = null,
+    // filled during build
+    module: *std.Build.Module = undefined,
+    dependency: *std.Build.Dependency = undefined,
+
+    fn vendored(self: *const ModuleSpec) bool {
+        return self.dependency_module_name != null;
+    }
+
+    fn root_file_path(self: *const ModuleSpec, b: *std.Build) []const u8 {
+        if (self.vendored()) {
+            return b.fmt("vendor/{s}/{s}.zig", .{ self.name, self.name });
+        }
+        return b.fmt("src/{s}/{s}.zig", .{ self.name, self.name });
+    }
 };
 
-const ExternalModules = struct {
-    lsp: *std.Build.Module,
-    pcre: *std.Build.Module,
+const ToolSpec = struct {
+    name: []const u8,
+    description: []const u8,
+    build_tool: fn (*std.Build, *std.Build.Step.Run) ?*std.Build.Step,
+
+    fn source_file(self: *const ToolSpec, b: *std.Build) []const u8 {
+        return b.fmt("tools/{s}.zig", .{self.name});
+    }
 };
 
-fn find_module_index(module_specs: []const ModuleSpec, name: []const u8) ?usize {
-    for (module_specs, 0..) |spec, i| {
-        if (std.mem.eql(u8, spec.name, name)) return i;
-    }
-    return null;
-}
+var module_specs = [_]ModuleSpec{
+    .{
+        .name = "base",
+    },
+    .{
+        .name = "json",
+    },
+    .{
+        .name = "json-schema",
+    },
+    .{
+        .name = "server",
+    },
+    .{
+        .name = "testing",
+    },
+    .{
+        .name = "pcre",
+        .dependency_module_name = "libpcre",
+    },
+    .{
+        .name = "lsp",
+        .dependency_module_name = "lsp",
+    },
+};
 
-fn module_by_name(module_specs: []const ModuleSpec, modules: []const *std.Build.Module, name: []const u8) *std.Build.Module {
-    if (find_module_index(module_specs, name)) |index| {
-        return modules[index];
-    }
-    std.debug.panic("Unknown module: {s}", .{name});
-}
+const tool_specs = [_]ToolSpec{
+    .{
+        .name = "generate-zed-config",
+        .description = "Generate .zed/debug.json and .zed/tasks.json",
+        .build_tool = generate_zed_config,
+    },
+    .{
+        .name = "run-snapshot-tests",
+        .description = "Run snapshot tests",
+        .build_tool = run_snapshot_tests,
+    },
+    .{
+        .name = "build-test-suite",
+        .description = "Build the JSON schema test suite",
+        .build_tool = build_json_schema_test_suite,
+    },
+};
+
+const json_schema_drafts = &.{
+    "draft3",
+    "draft4",
+    "draft6",
+    "draft7",
+    "draft2019-09",
+    "draft2020-12",
+    "draft-next",
+};
+const json_schema_test_suite_dir_path = "src/json-schema/test-suite";
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -42,110 +98,45 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const module_specs = [_]ModuleSpec{
-        .{
-            .name = "base",
-            .path = "src/base/base.zig",
-            .add_to_exe = true,
-            .install_lib = true,
-            .unit_tests = true,
-        },
-        .{
-            .name = "json",
-            .path = "src/json/json.zig",
-            .add_to_exe = true,
-            .install_lib = true,
-            .unit_tests = true,
-        },
-        .{
-            .name = "json-schema",
-            .path = "src/json-schema/json-schema.zig",
-            .add_to_exe = true,
-            .install_lib = true,
-            .unit_tests = true,
-        },
-        .{
-            .name = "server",
-            .path = "src/server/server.zig",
-            .add_to_exe = true,
-            .install_lib = true,
-            .unit_tests = true,
-        },
-        .{
-            .name = "testing",
-            .path = "src/testing/testing.zig",
-            .install_lib = true,
-            .unit_tests = true,
-        },
-    };
-
-    var modules: [module_specs.len]*std.Build.Module = undefined;
-
-    inline for (module_specs, 0..) |spec, i| {
-        modules[i] = b.createModule(.{
-            .root_source_file = b.path(spec.path),
-            .optimize = optimize,
-            .target = target,
-        });
-    }
-
-    const pcre_pkg = b.dependency("libpcre_zig", .{ .optimize = optimize, .target = target });
-    const lsp_kit_pkg = b.dependency("lsp_kit", .{ .optimize = optimize, .target = target });
-    const externals = ExternalModules{
-        .pcre = pcre_pkg.module("libpcre"),
-        .lsp = lsp_kit_pkg.module("lsp"),
-    };
-
-    inline for (0..modules.len) |i| {
-        inline for (0..modules.len) |j| {
-            if (i == j) continue;
-            modules[i].addImport(module_specs[j].name, modules[j]);
+    // initialze spec.module
+    for (&module_specs) |*spec| {
+        if (spec.dependency_module_name) |dep_mod_name| {
+            spec.dependency = b.dependency(spec.name, .{ .optimize = optimize, .target = target });
+            spec.module = spec.dependency.module(dep_mod_name);
+        } else {
+            spec.module = b.createModule(.{
+                .root_source_file = b.path(spec.root_file_path(b)),
+                .optimize = optimize,
+                .target = target,
+            });
         }
     }
 
-    inline for (module_specs, 0..) |spec, i| {
-        if (!spec.install_lib) continue;
-        const lib = b.addLibrary(.{
-            .linkage = .static,
-            .name = spec.name,
-            .root_module = modules[i],
-        });
-        b.installArtifact(lib);
+    // add all modules as imports to each other
+    for (&module_specs) |spec| {
+        if (spec.vendored()) continue;
+        for (&module_specs) |other_spec| {
+            if (spec.module == other_spec.module) continue;
+            spec.module.addImport(other_spec.name, other_spec.module);
+        }
     }
 
-    inline for (module_specs, 0..) |spec, i| {
-        if (!spec.add_to_exe) continue;
-        exe_mod.addImport(spec.name, modules[i]);
+    // add all modules as imports to the exe
+    for (module_specs) |spec| {
+        exe_mod.addImport(spec.name, spec.module);
     }
-    exe_mod.addImport("lsp", externals.lsp);
 
-    inline for (0..modules.len) |i| {
+    // add all module tests
+    inline for (module_specs) |spec| {
         const module_tests = b.addTest(.{
-            .name = module_specs[i].name,
-            .root_module = modules[i],
+            .name = spec.name,
+            .root_module = spec.module,
             .filters = test_filters,
         });
         check_step.dependOn(&module_tests.step);
         const run_module_tests = b.addRunArtifact(module_tests);
         test_step.dependOn(&run_module_tests.step);
     }
-
-    // TODO: remove module_by_name calls, this should be handled by import loop
-    const mod_base = module_by_name(&module_specs, &modules, "base");
-    const mod_json_schema = module_by_name(&module_specs, &modules, "json-schema");
-    const mod_server = module_by_name(&module_specs, &modules, "server");
-    const mod_testing = module_by_name(&module_specs, &modules, "testing");
-
-    mod_json_schema.addImport("pcre", externals.pcre);
-    mod_server.addImport("lsp", externals.lsp);
-    mod_testing.addImport("lsp", externals.lsp);
-
-    const testing_lib = b.addLibrary(.{
-        .linkage = .static,
-        .name = "testing",
-        .root_module = mod_testing,
-    });
-    b.installArtifact(testing_lib);
 
     const exe_unit_tests = b.addTest(.{
         .root_module = exe_mod,
@@ -154,69 +145,6 @@ pub fn build(b: *std.Build) void {
     check_step.dependOn(&exe_unit_tests.step);
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
     test_step.dependOn(&run_exe_unit_tests.step);
-
-    // Snapshot tests
-    {
-        const snapshot_test_step = b.step("test:snapshots", "Run snapshot tests");
-        const snapshot_build_step = b.step("snapshots", "Build snapshot test executable");
-
-        const update_snapshots = b.option(bool, "update-snapshots", "Update snapshot files with actual outputs") orelse false;
-
-        const options = b.addOptions();
-        options.addOption(bool, "update_snapshots", update_snapshots);
-
-        const snapshot_test_mod = b.createModule(.{
-            .root_source_file = b.path("src/snapshot_tests.zig"),
-            .optimize = optimize,
-            .target = target,
-        });
-        snapshot_test_mod.addOptions("build_options", options);
-        snapshot_test_mod.addImport("testing", mod_testing);
-
-        const snapshot_test_exe = b.addExecutable(.{
-            .name = "snapshot_tests",
-            .root_module = snapshot_test_mod,
-        });
-
-        const install_snapshot_exe = b.addInstallArtifact(snapshot_test_exe, .{});
-        snapshot_build_step.dependOn(&install_snapshot_exe.step);
-
-        const run_snapshot_tests = b.addRunArtifact(snapshot_test_exe);
-        run_snapshot_tests.setCwd(b.path("."));
-
-        if (b.args) |args| {
-            run_snapshot_tests.addArgs(args);
-        }
-
-        snapshot_test_step.dependOn(&run_snapshot_tests.step);
-    }
-
-    // Zed debug/task config generator
-    {
-        const debug_zed_step = b.step("debug:zed", "Generate Zed debug and task configurations");
-
-        const generator_mod = b.createModule(.{
-            .root_source_file = b.path("tools/generate_zed_config.zig"),
-            .target = b.graph.host,
-            .optimize = .Debug,
-        });
-
-        const generator_exe = b.addExecutable(.{
-            .name = "generate_zed_config",
-            .root_module = generator_mod,
-        });
-
-        const run_generator = b.addRunArtifact(generator_exe);
-        run_generator.setCwd(b.path("."));
-        const generated_dir = run_generator.addOutputDirectoryArg("zed-config-output");
-
-        const update_source_files = b.addUpdateSourceFiles();
-        update_source_files.addCopyFileToSource(generated_dir.path(b, "debug.json"), ".zed/debug.json");
-        update_source_files.addCopyFileToSource(generated_dir.path(b, "tasks.json"), ".zed/tasks.json");
-        update_source_files.step.dependOn(&run_generator.step);
-
-        debug_zed_step.dependOn(&update_source_files.step);
-    }
 
     const exe = b.addExecutable(.{
         .name = "jsonls",
@@ -233,6 +161,33 @@ pub fn build(b: *std.Build) void {
             .root_module = exe_mod,
         });
         check_step.dependOn(&exe_check.step);
+    }
+
+    inline for (tool_specs) |tool_spec| {
+        const tool_step = b.step("tool:" ++ tool_spec.name, tool_spec.description);
+        const tool_mod = b.createModule(.{
+            .root_source_file = b.path(tool_spec.source_file(b)),
+            .target = target,
+            .optimize = optimize,
+        });
+        add_specs_as_imports(tool_mod);
+        const tool_exe = b.addExecutable(.{
+            .name = tool_spec.name,
+            .root_module = tool_mod,
+        });
+        b.installArtifact(tool_exe);
+
+        const check_tool_exe = b.addExecutable(.{
+            .name = tool_spec.name,
+            .root_module = tool_mod,
+        });
+        check_step.dependOn(&check_tool_exe.step);
+
+        const run_step = b.addRunArtifact(tool_exe);
+        if (tool_spec.build_tool(b, run_step)) |step| {
+            tool_step.dependOn(step);
+        }
+        tool_step.dependOn(&run_step.step);
     }
 
     // Run step
@@ -252,56 +207,16 @@ pub fn build(b: *std.Build) void {
     {
         const test_suite_step = b.step("test:suite", "Run the JSON Schema test suite");
 
-        const build_test_suite = b.option(bool, "build-test-suite", "Run the JSON Schema test suite") orelse false;
-        const test_suite_dir_path = "src/json-schema/test-suite";
-        const build_test_suite_path = b.path("src/json-schema/tools/build-test-suite.zig");
         const run_suite = !(b.option(bool, "no-run", "Do not execute the test suite") orelse false);
 
-        const drafts = &.{
-            "draft3",
-            "draft4",
-            "draft6",
-            "draft7",
-            "draft2019-09",
-            "draft2020-12",
-            "draft-next",
-        };
-
-        if (build_test_suite) blk: {
-            test_suite_step.addWatchInput(build_test_suite_path) catch std.debug.panic("OOM", .{});
-            const test_suite = b.lazyDependency("json_schema_test_suite", .{}) orelse break :blk;
-            const tests_path = test_suite.path("tests");
-            const tool_module = b.createModule(.{
-                .root_source_file = build_test_suite_path,
-                .target = b.graph.host,
-                .optimize = .Debug,
-            });
-            tool_module.addImport("base", mod_base);
-            const tool = b.addExecutable(.{
-                .name = "generate_json_schema_test_suite",
-                .root_module = tool_module,
-            });
-            const tool_step = b.addRunArtifact(tool);
-            tool_step.addDirectoryArg(tests_path);
-            const generated_test_suite_dir = tool_step.addOutputDirectoryArg("build-test-suite-output");
-            const usf = b.addUpdateSourceFiles();
-            const fmt = b.addFmt(.{ .paths = &.{test_suite_dir_path} });
-            inline for (drafts) |draft| {
-                const source_draft_test_file = generated_test_suite_dir.path(b, draft ++ ".zig");
-                const target_draft_test_file = test_suite_dir_path ++ "/" ++ draft ++ ".zig";
-                usf.addCopyFileToSource(source_draft_test_file, target_draft_test_file);
-                fmt.step.dependOn(&usf.step);
-            }
-            exe.step.dependOn(&fmt.step);
-            test_suite_step.dependOn(&fmt.step);
-        }
-        inline for (drafts) |draft| {
+        // WIP: need to make this into a tool
+        inline for (json_schema_drafts) |draft| {
             const test_suite_module = b.createModule(.{
-                .root_source_file = b.path(test_suite_dir_path).path(b, draft ++ ".zig"),
+                .root_source_file = b.path(json_schema_test_suite_dir_path).path(b, draft ++ ".zig"),
                 .optimize = optimize,
                 .target = target,
             });
-            test_suite_module.addImport("json-schema", mod_json_schema);
+            add_specs_as_imports(test_suite_module);
             const test_suite_test = b.addTest(.{
                 .name = "test_suite_" ++ draft,
                 .root_module = test_suite_module,
@@ -316,4 +231,55 @@ pub fn build(b: *std.Build) void {
             }
         }
     }
+}
+
+fn add_specs_as_imports(module: *std.Build.Module) void {
+    for (module_specs) |spec| {
+        if (spec.module == module) continue;
+        module.addImport(spec.name, spec.module);
+    }
+}
+
+fn generate_zed_config(b: *std.Build, run: *std.Build.Step.Run) ?*std.Build.Step {
+    run.setCwd(b.path("."));
+    const generated_dir = run.addOutputDirectoryArg("zed-config-output");
+
+    const update_source_files = b.addUpdateSourceFiles();
+    update_source_files.addCopyFileToSource(generated_dir.path(b, "debug.json"), ".zed/debug.json");
+    update_source_files.addCopyFileToSource(generated_dir.path(b, "tasks.json"), ".zed/tasks.json");
+    update_source_files.step.dependOn(&run.step);
+    return &update_source_files.step;
+}
+
+fn run_snapshot_tests(b: *std.Build, run: *std.Build.Step.Run) ?*std.Build.Step {
+    run.setCwd(b.path("."));
+    const update_snapshots = b.option(bool, "update-snapshots", "Update snapshot files with actual outputs") orelse false;
+
+    const options = b.addOptions();
+    options.addOption(bool, "update_snapshots", update_snapshots);
+
+    run.producer.?.root_module.addOptions("build_options", options);
+
+    if (b.args) |args| {
+        run.addArgs(args);
+    }
+    return null;
+}
+
+fn build_json_schema_test_suite(b: *std.Build, run: *std.Build.Step.Run) ?*std.Build.Step {
+    const build_test_suite_path = b.path("src/json-schema/tools/build-test-suite.zig");
+    run.step.addWatchInput(build_test_suite_path) catch std.debug.panic("OOM", .{});
+    const test_suite = b.lazyDependency("json_schema_test_suite", .{}) orelse return null;
+    const tests_path = test_suite.path("tests");
+    run.addDirectoryArg(tests_path);
+    const generated_test_suite_dir = run.addOutputDirectoryArg("build-test-suite-output");
+    const usf = b.addUpdateSourceFiles();
+    const fmt = b.addFmt(.{ .paths = &.{json_schema_test_suite_dir_path} });
+    inline for (json_schema_drafts) |draft| {
+        const source_draft_test_file = generated_test_suite_dir.path(b, draft ++ ".zig");
+        const target_draft_test_file = json_schema_test_suite_dir_path ++ "/" ++ draft ++ ".zig";
+        usf.addCopyFileToSource(source_draft_test_file, target_draft_test_file);
+        fmt.step.dependOn(&usf.step);
+    }
+    return &fmt.step;
 }

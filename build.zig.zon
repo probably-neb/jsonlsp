@@ -4,19 +4,20 @@
     .fingerprint = 0xea5dba5b58d88d6b,
     .minimum_zig_version = "0.15.1",
     .dependencies = .{
-        .lsp_kit = .{
-            .url = "git+https://github.com/zigtools/lsp-kit.git?ref=0.15.x#421ae644f53bd788e3699b5fc22b3e07b161e2b6",
-            .hash = "lsp_kit-0.1.0-bi_PL5wxCgB1_jRIZtcodh-x-_nteVzuOrul2ken-ZLE",
+        .lsp = .{
+            // .url = "git+https://github.com/zigtools/lsp-kit.git?ref=0.15.x#421ae644f53bd788e3699b5fc22b3e07b161e2b6",
+            // .hash = "lsp_kit-0.1.0-bi_PL5wxCgB1_jRIZtcodh-x-_nteVzuOrul2ken-ZLE",
+            .path = "vendor/lsp-kit",
         },
         .json_schema_test_suite = .{
             .url = "git+https://github.com/json-schema-org/JSON-Schema-Test-Suite.git#15e4505bf689de5d30c29d50782bb48fa465c93f",
             .lazy = true,
             .hash = "N-V-__8AAFOgJgAiy7oY1TWfxw1UriUFQokgABVhNRkAU939",
         },
-        .libpcre_zig = .{
+        .pcre = .{
             // .url = "git+https://nossa.ee/~talya/libpcre.zig#04224f0bed09888d043c6fe4352458dbd907c815",
             // .hash = "libpcre_zig-0.1.0-Dtf6CQg4AACWtDDhtI-rjGGLKdBowMQiQrK1O5sx5icv",
-            .path = "src/json-schema/vendor/libpcre.zig",
+            .path = "vendor/libpcre",
         },
     },
 
